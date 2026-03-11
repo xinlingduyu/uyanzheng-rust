@@ -1,0 +1,126 @@
+//! 订单查询
+//! 
+//! 功能说明：
+//! 根据订单号查询单个订单的详细信息。
+//!
+//! 处理流程：
+//! 1. 验证token和订单号参数
+//! 2. 查询订单详情
+//! 3. 验证订单归属（只能查询自己的订单）
+//! 4. 返回订单详情
+
+use salvo::prelude::*;
+use std::sync::Arc;
+use serde::Serialize;
+
+use crate::core::AppState;
+use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::validator::Validator;
+use crate::app::models::requests::OrderQueryRequest;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::middleware::app_context::AppInfo;
+
+/// 订单查询响应 - 匹配API文档JSON格式
+#[derive(Debug, Serialize)]
+struct OrderQueryResponse {
+    order_no: String,
+    trade_no: String,
+    name: String,
+    payment: String,
+    money: i64,
+    add_time: i64,
+    end_time: i64,
+    state: i32,
+}
+
+#[handler]
+pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    // 获取 app_key 和 app_type（零拷贝）
+    let (app_key, app_type) = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => (info.app_key.as_str(), info.app_type.as_str()),
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            return;
+        }
+    };
+    
+    let query_req = match req.parse_json::<OrderQueryRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            return;
+        }
+    };
+
+    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
+    // PHP: 'order' => ['wordnum','13,32','查询订单号有误'],
+    let mut validator = Validator::new();
+    validator.wordnum("token", &query_req.token, 32, 32);
+    validator.wordnum("order", &query_req.order, 13, 32);
+    
+    if let Err(msg) = validator.validate() {
+        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        return;
+    }
+
+    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
+    if app_type != "user" {
+        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        return;
+    }
+
+    // 从 depot 获取用户信息（由 UserAuth 中间件提供）
+    let user_info = match depot.get::<UserInfo>("user_info") {
+        Ok(info) => info,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            return;
+        }
+    };
+
+    let (uid, appid) = (user_info.uid, user_info.appid);
+
+    // PHP: $list = $this->db->where('uid = ? and order_no = ? and appid = ?',[$this->user['id'],$_POST['order'],$this->app['id']])->fetch('order_no,trade_no,name,money,ptype,add_time,end_time,state');
+    let result = sqlx::query_as::<_, (String, Option<String>, String, i64, String, i64, Option<i64>, String)>(
+        "SELECT order_no, trade_no, name, money, payment, add_time, end_time, state FROM u_order WHERE uid = ? AND order_no = ? AND appid = ?"
+    )
+    .bind(uid)
+    .bind(&query_req.order)
+    .bind(appid)
+    .fetch_optional(app_state.get_db())
+    .await;
+
+    match result {
+        Ok(Some(row)) => {
+            // state: "0"=未支付, "1"=已支付, "2"=已关闭
+            let state = match row.7.as_str() {
+                "0" => 0,
+                "1" => 1,
+                "2" => 2,
+                _ => 0,
+            };
+            
+            let response = OrderQueryResponse {
+                order_no: row.0,
+                trade_no: row.1.unwrap_or_default(),
+                name: row.2,
+                payment: row.4,  // ptype -> payment
+                money: row.3,
+                add_time: row.5,
+                end_time: row.6.unwrap_or(0),
+                state,
+            };
+
+            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+        }
+        Ok(None) => {
+            res.render(Json(SignedApiResponse::<()>::error("订单不存在", 201, app_key)));
+        }
+        Err(e) => {
+            tracing::error!("查询订单失败: {}", e);
+            res.render(Json(SignedApiResponse::<()>::error("查询失败", 201, app_key)));
+        }
+    }
+}

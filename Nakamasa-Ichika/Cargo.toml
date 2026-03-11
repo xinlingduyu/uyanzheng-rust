@@ -1,0 +1,70 @@
+[package]
+name = "Nakamasa-Ichika"
+version = "0.1.0"
+edition = "2024"
+
+# 抑制第三方库的未来兼容性警告
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(coverage_nightly)'] }
+
+[dependencies]
+# Serialization
+serde.workspace = true
+tokio.workspace = true
+
+salvo.workspace = true
+config.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sqlx.workspace = true
+num_cpus.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+
+deadpool-redis.workspace = true
+fluent-templates.workspace = true
+unic-langid.workspace = true
+once_cell.workspace = true
+serde_json.workspace = true
+
+base64.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+chrono.workspace = true
+
+Nakamasa-utils.workspace = true
+Nakamasa-proc.workspace = true
+validator.workspace = true
+notify.workspace = true
+
+rust-embed = { workspace = true, features = ["include-exclude"] }
+mime_guess.workspace = true
+
+hex = "0.4"
+md5 = "0.7"
+sha1 = "0.10"
+regex = "1.10"
+rand = "0.8"
+rustls = "0.23"
+urlencoding = "2.1"
+hostname = "0.4"
+
+# RSA 签名 - 使用 rsa 0.9
+rsa = { version = "0.9", features = ["sha2", "pem", "std"] }
+
+# 加密库 - 跨平台纯 Rust 实现
+aes = "0.8"
+des = "0.8"
+cbc = "0.1"
+encoding_rs = "0.8"
+reqwest = { version = "0.12", features = ["json"] }
+
+# rustls crypto provider
+aws-lc-rs = "1"
+
+# 邮件发送 - lettre (成熟稳定的SMTP库)
+lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
+
+# JavaScript 引擎 - 云函数支持
+# QuickJS - 轻量级跨平台 JavaScript 引擎
+rquickjs = { workspace = true }

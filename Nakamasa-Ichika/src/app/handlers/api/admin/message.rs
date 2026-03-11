@@ -1,0 +1,134 @@
+//! Admin Message controller
+//! 管理员消息控制器
+
+use salvo::prelude::*;
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
+
+use crate::app::utils::response::ApiResponse;
+
+#[derive(Debug, Deserialize)]
+struct GetListRequest {
+    #[serde(default)]
+    pg: Option<u32>,
+    #[serde(default)]
+    size: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+struct MessageItem {
+    id: i64,
+    title: String,
+    user: Option<String>,
+    state: i64,
+    time: i64,
+}
+
+#[handler]
+pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let list_req = match req.parse_json::<GetListRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    let page = list_req.pg.unwrap_or(1).max(1);
+    let page_size = list_req.size.unwrap_or(10).max(1);
+    let offset = (page - 1) * page_size;
+
+    let query = "SELECT M.id, M.title, M.state, M.time, IFNULL(U.phone,IFNULL(U.email,U.acctno)) as user FROM u_message AS M LEFT JOIN u_user AS U ON (M.Uid = U.id) WHERE M.appid = ? AND M.reply_id IS NULL ORDER BY M.id DESC LIMIT ? OFFSET ?";
+    
+    let result = sqlx::query_as::<_, (i64, String, i64, i64, Option<String>)>(query)
+        .bind(appid)
+        .bind(page_size)
+        .bind(offset)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            let list: Vec<MessageItem> = rows.into_iter().map(|row| MessageItem {
+                id: row.0,
+                title: row.1,
+                user: row.4,
+                state: row.2,
+                time: row.3,
+            }).collect();
+
+            res.render(Json(ApiResponse::success("成功", Some(list))));
+        }
+        Err(e) => {
+            tracing::error!("数据库查询失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("列表获取失败", 201)));
+        }
+    }
+}
+
+#[handler]
+pub async fn edit(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
+    res.render(Json(ApiResponse::success_msg("编辑成功")));
+}
+
+#[derive(Debug, Deserialize)]
+struct DelRequest {
+    id: i64,
+}
+
+#[handler]
+pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let del_req = match req.parse_json::<DelRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let result = sqlx::query("DELETE FROM u_message WHERE id = ?")
+        .bind(del_req.id)
+        .execute(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                res.render(Json(ApiResponse::success_msg("删除成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("删除失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+        }
+    }
+}
+
+use std::sync::Arc;
+use crate::core::app_state::AppState;

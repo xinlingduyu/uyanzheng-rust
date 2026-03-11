@@ -1,0 +1,154 @@
+//! 解绑邮箱
+//! 
+//! 功能说明：
+//! 用户解绑已绑定的邮箱，需要验证码验证。
+//!
+//! 处理流程：
+//! 1. 验证token、邮箱、验证码参数
+//! 2. 验证验证码是否正确
+//! 3. 验证邮箱是否为当前用户绑定
+//! 4. 清空用户email字段
+//! 5. 返回成功
+
+use salvo::prelude::*;
+use std::sync::Arc;
+use chrono::Utc;
+
+use crate::core::AppState;
+use crate::core::middleware::get_client_ip;
+use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::validator::Validator;
+use crate::app::models::requests::ReEmailRequest;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::middleware::app_context::AppInfo;
+
+#[handler]
+pub async fn re_email(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    // 获取 app_key 和 vc_time（零拷贝）
+    let (app_key, vc_time) = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => (info.app_key.as_str(), info.vc_time),
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            return;
+        }
+    };
+    
+    let re_req = match req.parse_json::<ReEmailRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            return;
+        }
+    };
+
+    // PHP: 'token' => ['wordnum','32,32','TOKEN不规范'],
+    // PHP: 'email' => ['email','','邮箱账号不规范']
+    // PHP: 'code'  => ['int','4,6','验证码填写不规范']
+    let mut validator = Validator::new();
+    validator
+        .wordnum("token", &re_req.token, 32, 32)
+        .email("email", &re_req.email)
+        .int("code", re_req.code as i64, 4, 6);
+    
+    if let Err(msg) = validator.validate() {
+        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        return;
+    }
+
+    // 从 depot 获取用户信息（由 UserAuth 中间件提供）
+    let user_info = match depot.get::<UserInfo>("user_info") {
+        Ok(info) => info,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            return;
+        }
+    };
+
+    let (uid, appid) = (user_info.uid, user_info.appid);
+    let user_type = user_info.user_type.as_str();
+    let current_time = Utc::now().timestamp();
+    let ip = get_client_ip(req);
+
+    // PHP: $dtime = time() - (60*$this->app['vc_time']);
+    let dtime = current_time - (vc_time * 60) as i64;
+
+    // PHP: if($this->user['email'] != $_POST['email'])$this->out->e(201,'邮箱账号有误');
+    // 验证用户当前邮箱是否与提交的邮箱一致
+    let current_email = user_info.email.as_deref().unwrap_or("");
+    if current_email != re_req.email {
+        res.render(Json(SignedApiResponse::<()>::error("邮箱账号有误", 201, app_key)));
+        return;
+    }
+
+    // PHP: $vcDB = db('vcode');
+    // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [$_POST['email'],$_POST['code'],'reEmail','y',$dtime,$this->app['id']])->update(['usable'=>'n']);
+    // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
+    // 验证验证码并标记为已使用
+    let verify_result = sqlx::query(
+        "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
+    )
+    .bind(&re_req.email)
+    .bind(re_req.code)
+    .bind("reEmail")
+    .bind(dtime)
+    .bind(appid)
+    .execute(app_state.get_db())
+    .await;
+    
+    match verify_result {
+        Ok(result) => {
+            if result.rows_affected() < 1 {
+                res.render(Json(SignedApiResponse::<()>::error("验证码不正确", 119, app_key)));
+                return;
+            }
+        }
+        Err(e) => {
+            tracing::error!("验证码验证失败: {}", e);
+            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            return;
+        }
+    }
+
+    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['email'=>NULL]);
+    // 更新邮箱为NULL
+    let result = sqlx::query(
+        "UPDATE u_user SET email = NULL WHERE id = ? AND appid = ?"
+    )
+    .bind(uid)
+    .bind(appid)
+    .execute(app_state.get_db())
+    .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
+                // 记录日志
+                let _ = sqlx::query(
+                    "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
+                )
+                .bind(user_type)
+                .bind(uid)
+                .bind("reEmail")
+                .bind(true)
+                .bind(current_time)
+                .bind(&ip)
+                .bind(appid)
+                .execute(app_state.get_db())
+                .await;
+
+                // PHP: $this->out->e(200,"解绑成功");
+                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+            } else {
+                // PHP: if(!$res)$this->out->e(201,"解绑失败");
+                res.render(Json(SignedApiResponse::<()>::error("解绑失败", 201, app_key)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("解绑邮箱失败: {}", e);
+            res.render(Json(SignedApiResponse::<()>::error("解绑失败", 201, app_key)));
+        }
+    }
+}

@@ -1,0 +1,100 @@
+//! 修改昵称
+//! 
+//! 功能说明：
+//! 已登录用户修改自己的昵称。
+
+use salvo::prelude::*;
+use std::sync::Arc;
+use chrono::Utc;
+
+use crate::core::AppState;
+use crate::core::middleware::get_client_ip;
+use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::validator::Validator;
+use crate::app::models::requests::ModifyNameRequest;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::middleware::app_context::AppInfo;
+
+#[handler]
+pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    // 获取应用信息（避免 clone）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
+
+    // 只支持用户版应用
+    if app_info.app_type != "user" {
+        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        return;
+    }
+
+    let modify_req = match req.parse_json::<ModifyNameRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            return;
+        }
+    };
+
+    // 参数验证
+    let mut validator = Validator::new();
+    validator
+        .wordnum("token", &modify_req.token, 32, 32)
+        .string("name", &modify_req.name, 1, 64);
+    
+    if let Err(msg) = validator.validate() {
+        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        return;
+    }
+
+    // 从 depot 获取用户信息（避免 clone）
+    let user_info = match depot.get::<UserInfo>("user_info") {
+        Ok(info) => info,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            return;
+        }
+    };
+
+    let uid = user_info.uid;
+    let appid = user_info.appid;
+    let current_time = Utc::now().timestamp();
+    let ip = get_client_ip(req);
+
+    // 更新昵称
+    let result = sqlx::query(
+        "UPDATE u_user SET nickname = ? WHERE id = ? AND appid = ?"
+    )
+    .bind(&modify_req.name).bind(uid).bind(appid)
+    .execute(app_state.get_db())
+    .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                // 记录日志
+                let _ = sqlx::query(
+                    "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind("user").bind(uid).bind("modifyName")
+                .bind(current_time).bind(&ip).bind(appid)
+                .execute(app_state.get_db()).await;
+
+                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+            } else {
+                res.render(Json(SignedApiResponse::<()>::error("修改失败", 201, app_key)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("修改昵称失败: {}", e);
+            res.render(Json(SignedApiResponse::<()>::error("修改失败", 201, app_key)));
+        }
+    }
+}

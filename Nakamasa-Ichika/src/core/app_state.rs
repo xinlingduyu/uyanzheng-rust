@@ -1,0 +1,475 @@
+//! # 应用状态模块 (Application State Module)
+//!
+//! 提供全局共享的应用状态管理，包括数据库连接池、Redis 连接池、
+//! 缓存服务和配置访问器。
+//!
+//! ## 架构设计
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────┐
+//! │                        AppState                              │
+//! ├─────────────────────────────────────────────────────────────┤
+//! │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+//! │  │ MySQL Pool  │  │ Redis Pool  │  │   AdminCacheService │  │
+//! │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+//! │                                                              │
+//! │  ┌───────────────────────────────────────────────────────┐  │
+//! │  │              ShardedCacheV2 (高性能缓存)               │  │
+//! │  │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐      │  │
+//! │  │  │UserInfoCache│ │AppConfigCache│ │FenEventCache│      │  │
+//! │  │  │  (50,000)   │ │   (500)     │ │  (1,000)    │      │  │
+//! │  │  └─────────────┘ └─────────────┘ └─────────────┘      │  │
+//! │  └───────────────────────────────────────────────────────┘  │
+//! └─────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## 缓存策略
+//!
+//! | 缓存类型 | 容量 | TTL | 淘汰策略 | 分片数 |
+//! |----------|------|-----|----------|--------|
+//! | 用户信息 | 50,000 | 5分钟 | Hybrid(LFU 0.6 + LRU 0.4) | 32 |
+//! | 应用配置 | 500 | 10分钟 | LRU | 4 |
+//! | 积分事件 | 1,000 | 5分钟 | LRU | 4 |
+
+use std::sync::Arc;
+use std::time::Duration;
+
+use sqlx::mysql::MySqlPool;
+use deadpool_redis::Pool as RedisPool;
+
+use crate::core::RedisUtil;
+use crate::core::admin_cache::AdminCacheService;
+use crate::config::AppConfig;
+
+// 引入高性能缓存 V2
+use Nakamasa_utils::high_perf_cache::{
+    ShardedCacheV2, CacheConfig as V2CacheConfig, EvictionPolicy,
+};
+
+// ============================================================================
+// 应用状态
+// ============================================================================
+
+/// 全局应用状态
+///
+/// 存储应用程序运行时需要的所有共享状态，包括数据库连接、
+/// 缓存服务和配置访问器。使用 `Arc` 包装以支持多线程共享。
+///
+/// # 线程安全
+///
+/// 所有内部字段都是线程安全的：
+/// - `MySqlPool` 和 `RedisPool` 内部使用 Arc
+/// - 缓存使用 `ShardedCacheV2` 分片锁
+/// - `config` 使用 `Arc` 包装
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::sync::Arc;
+/// use crate::core::AppState;
+///
+/// // 创建应用状态
+/// let state = Arc::new(AppState::new(
+///     Some(db_pool),
+///     Some(redis_pool),
+///     Arc::new(RedisUtil::new("prefix_")),
+/// ));
+///
+/// // 获取数据库连接
+/// let db = state.get_db();
+///
+/// // 失效缓存
+/// state.invalidate_user_cache(12345);
+/// ```
+pub struct AppState {
+    // ========================================================================
+    // 数据存储层
+    // ========================================================================
+    
+    /// MySQL 数据库连接池
+    ///
+    /// 使用 `sqlx` 的异步连接池，支持自动重连和连接健康检查。
+    /// 在未安装状态下为 `None`。
+    pub db: Option<MySqlPool>,
+    
+    /// Redis 连接池
+    ///
+    /// 使用 `deadpool-redis` 管理连接，支持 Pipeline 批量操作。
+    /// 在未安装状态下为 `None`。
+    pub redis_pool: Option<RedisPool>,
+    
+    /// Redis 工具类
+    ///
+    /// 封装常用的 Redis 操作，支持键前缀。
+    pub redis_util: Arc<RedisUtil>,
+    
+    // ========================================================================
+    // 缓存层
+    // ========================================================================
+    
+    /// 管理员缓存服务
+    ///
+    /// 专门用于管理员信息的缓存，支持用户名索引和密码验证。
+    pub admin_cache: AdminCacheService,
+    
+    /// 用户基本信息缓存 (uid -> UserInfoCache)
+    ///
+    /// 高频访问的用户基本信息，减少数据库查询。
+    /// 容量：50,000，TTL：5分钟，策略：Hybrid
+    pub user_info_cache: Arc<ShardedCacheV2<u64, UserInfoCache>>,
+    
+    /// 应用配置缓存 (appid -> AppConfigCache)
+    ///
+    /// 应用配置信息，变更频率低。
+    /// 容量：500，TTL：10分钟，策略：LRU
+    pub app_config_cache: Arc<ShardedCacheV2<u64, AppConfigCache>>,
+    
+    /// 积分事件缓存 (fenid -> FenEventCache)
+    ///
+    /// 积分事件定义，用于积分计算。
+    /// 容量：1,000，TTL：5分钟，策略：LRU
+    pub fen_event_cache: Arc<ShardedCacheV2<u64, FenEventCache>>,
+    
+    // ========================================================================
+    // 配置访问器
+    // ========================================================================
+    
+    /// 配置获取器
+    ///
+    /// 使用函数指针实现延迟加载，避免循环依赖。
+    pub config: Arc<dyn Fn() -> &'static AppConfig + Send + Sync>,
+}
+
+// ============================================================================
+// 缓存数据结构
+// ============================================================================
+
+/// 用户信息缓存条目
+///
+/// 存储用户的核心信息，用于快速验证和响应。
+/// 字段与数据库表 `u_user` 对应。
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct UserInfoCache {
+    /// 用户 ID
+    pub uid: u64,
+    /// 手机号
+    pub phone: Option<String>,
+    /// 邮箱
+    pub email: Option<String>,
+    /// 账号
+    pub acctno: Option<String>,
+    /// 昵称
+    pub nickname: Option<String>,
+    /// VIP 过期时间 (Unix 时间戳)
+    pub vip: Option<i64>,
+    /// 积分余额
+    pub fen: i64,
+    /// 封禁过期时间 (Unix 时间戳，null 表示未封禁)
+    pub ban: Option<i64>,
+    /// 封禁原因/消息
+    pub ban_msg: Option<String>,
+    /// 密码哈希
+    pub password: String,
+    /// 设备绑定列表 (JSON 格式)
+    pub sn_list: Option<String>,
+    /// 额外设备绑定数量
+    pub sn_max: i32,
+    /// 邀请人 ID
+    pub inviter_id: Option<u64>,
+    /// 头像 URL
+    pub avatars: Option<String>,
+    /// 扩展信息 (JSON 格式)
+    pub extend: Option<String>,
+}
+
+/// 应用配置缓存条目
+///
+/// 存储应用的核心配置，用于请求验证和业务逻辑。
+/// 字段与数据库表 `u_app` 对应。
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct AppConfigCache {
+    /// 应用 ID
+    pub id: u64,
+    /// 应用密钥 (用于签名验证)
+    pub app_key: String,
+    /// 应用类型 (如 "app", "web" 等)
+    pub app_type: String,
+    /// 应用名称
+    pub app_name: String,
+    /// 登录状态 ("on" / "off")
+    pub logon_state: String,
+    /// 登录关闭时的提示消息
+    pub logon_off_msg: Option<String>,
+    /// 设备绑定数量限制
+    pub logon_sn_num: i32,
+    /// 设备绑定解绑方式
+    pub logon_sn_dk: String,
+    /// Token 过期时间 (秒)
+    pub logon_token_exp: i32,
+    /// 注册状态 ("on" / "off")
+    pub reg_state: String,
+    /// 注册方式
+    pub reg_way: String,
+    /// 验证码有效期 (秒)
+    pub vc_time: i32,
+    /// 签到奖励类型
+    pub diary_award: String,
+    /// 签到奖励值
+    pub diary_award_val: i32,
+}
+
+/// 积分事件缓存条目
+///
+/// 存储积分事件的定义，用于积分计算。
+/// 字段与数据库表 `u_fen_event` 对应。
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
+pub struct FenEventCache {
+    /// 事件 ID
+    pub id: u64,
+    /// 事件名称
+    pub name: String,
+    /// 积分值 (正数为增加，负数为减少)
+    pub fen: i64,
+    /// VIP 时长 (秒)
+    pub vip: i64,
+    /// VIP 赠送方式
+    pub vip_free: String,
+    /// 状态 ("on" / "off")
+    pub state: String,
+}
+
+// ============================================================================
+// AppState 实现
+// ============================================================================
+
+impl AppState {
+    /// 创建新的应用状态实例
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - MySQL 连接池 (安装后必须有值)
+    /// * `redis_pool` - Redis 连接池 (安装后必须有值)
+    /// * `redis_util` - Redis 工具类
+    ///
+    /// # Panics
+    ///
+    /// 当 `db` 为 `None` 时会 panic，因为 `AdminCacheService` 需要数据库连接。
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let state = AppState::new(
+    ///     Some(db_pool),
+    ///     Some(redis_pool),
+    ///     Arc::new(RedisUtil::new("prefix_")),
+    /// );
+    /// ```
+    pub fn new(
+        db: Option<MySqlPool>,
+        redis_pool: Option<RedisPool>,
+        redis_util: Arc<RedisUtil>,
+    ) -> Self {
+        // 创建管理员缓存服务
+        let admin_cache = AdminCacheService::new(
+            db.as_ref().expect("Database required for admin cache").clone(),
+            500, // 缓存容量
+        );
+        
+        // 用户信息缓存配置 - 高频访问，大容量
+        let user_cache_config = V2CacheConfig {
+            max_entries: 50_000,
+            shard_count: 32,
+            default_ttl: Duration::from_secs(300),
+            eviction_policy: EvictionPolicy::Hybrid {
+                lfu_weight: 0.6,
+                lru_weight: 0.4,
+            },
+            ..Default::default()
+        };
+        
+        // 应用配置缓存配置 - 低频访问，小容量
+        let app_config = V2CacheConfig {
+            max_entries: 500,
+            shard_count: 4,
+            default_ttl: Duration::from_secs(600),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+        
+        // 积分事件缓存配置 - 中频访问
+        let fen_config = V2CacheConfig {
+            max_entries: 1_000,
+            shard_count: 4,
+            default_ttl: Duration::from_secs(300),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+        
+        AppState {
+            db,
+            redis_pool,
+            redis_util,
+            admin_cache,
+            config: Arc::new(crate::config::get),
+            user_info_cache: Arc::new(ShardedCacheV2::new(user_cache_config)),
+            app_config_cache: Arc::new(ShardedCacheV2::new(app_config)),
+            fen_event_cache: Arc::new(ShardedCacheV2::new(fen_config)),
+        }
+    }
+    
+    // ========================================================================
+    // 便捷访问方法
+    // ========================================================================
+    
+    /// 获取应用配置
+    ///
+    /// 返回全局应用配置的静态引用。
+    #[inline]
+    pub fn config(&self) -> &'static AppConfig {
+        (self.config)()
+    }
+    
+    /// 获取数据库连接池
+    ///
+    /// # Panics
+    ///
+    /// 当数据库未初始化时会 panic。
+    #[inline]
+    pub fn get_db(&self) -> &MySqlPool {
+        self.db.as_ref().expect("Database not initialized")
+    }
+    
+    /// 尝试获取数据库连接池
+    ///
+    /// 返回 `Option`，不会 panic。
+    #[inline]
+    pub fn try_get_db(&self) -> Option<&MySqlPool> {
+        self.db.as_ref()
+    }
+    
+    /// 获取 Redis 连接池
+    ///
+    /// # Panics
+    ///
+    /// 当 Redis 未初始化时会 panic。
+    #[inline]
+    pub fn get_redis(&self) -> &RedisPool {
+        self.redis_pool.as_ref().expect("Redis not initialized")
+    }
+    
+    /// 尝试获取 Redis 连接池
+    ///
+    /// 返回 `Option`，不会 panic。
+    #[inline]
+    pub fn try_get_redis(&self) -> Option<&RedisPool> {
+        self.redis_pool.as_ref()
+    }
+    
+    // ========================================================================
+    // 缓存失效方法
+    // ========================================================================
+    
+    /// 失效用户信息缓存
+    ///
+    /// 当用户信息被修改后调用，确保下次请求获取最新数据。
+    ///
+    /// # Arguments
+    ///
+    /// * `uid` - 用户 ID
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// // 用户修改密码后
+    /// app_state.invalidate_user_cache(user_id);
+    /// ```
+    #[inline]
+    pub fn invalidate_user_cache(&self, uid: u64) {
+        self.user_info_cache.remove(&uid);
+        tracing::debug!("用户缓存已失效: uid={}", uid);
+    }
+    
+    /// 失效应用配置缓存
+    ///
+    /// 当应用配置被修改后调用。
+    ///
+    /// # Arguments
+    ///
+    /// * `appid` - 应用 ID
+    #[inline]
+    pub fn invalidate_app_cache(&self, appid: u64) {
+        self.app_config_cache.remove(&appid);
+        tracing::debug!("应用配置缓存已失效: appid={}", appid);
+    }
+    
+    /// 失效积分事件缓存
+    ///
+    /// 当积分事件配置被修改后调用。
+    ///
+    /// # Arguments
+    ///
+    /// * `fenid` - 积分事件 ID
+    #[inline]
+    pub fn invalidate_fen_event_cache(&self, fenid: u64) {
+        self.fen_event_cache.remove(&fenid);
+        tracing::debug!("积分事件缓存已失效: fenid={}", fenid);
+    }
+    
+    /// 批量失效积分事件缓存
+    ///
+    /// 当多个积分事件被修改后调用。
+    ///
+    /// # Arguments
+    ///
+    /// * `fenids` - 积分事件 ID 切片
+    #[inline]
+    pub fn invalidate_fen_event_cache_batch(&self, fenids: &[u64]) {
+        for fenid in fenids {
+            self.fen_event_cache.remove(fenid);
+        }
+        tracing::debug!("批量积分事件缓存已失效: count={}", fenids.len());
+    }
+    
+    /// 失效指定用户的所有相关缓存
+    ///
+    /// 同时失效用户信息缓存和相关的会话数据。
+    #[inline]
+    pub fn invalidate_user_all(&self, uid: u64) {
+        self.invalidate_user_cache(uid);
+        // 可以添加更多相关缓存的失效逻辑
+        tracing::info!("用户所有缓存已失效: uid={}", uid);
+    }
+}
+
+// ============================================================================
+// 测试
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_structures() {
+        let user_info = UserInfoCache {
+            uid: 1,
+            phone: Some("13800138000".to_string()),
+            email: None,
+            acctno: None,
+            nickname: Some("测试用户".to_string()),
+            vip: None,
+            fen: 100,
+            ban: None,
+            ban_msg: None,
+            password: "hash".to_string(),
+            sn_list: None,
+            sn_max: 0,
+            inviter_id: None,
+            avatars: None,
+            extend: None,
+        };
+        
+        assert_eq!(user_info.uid, 1);
+        assert_eq!(user_info.fen, 100);
+    }
+}

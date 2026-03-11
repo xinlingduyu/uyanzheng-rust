@@ -1,0 +1,32 @@
+//! Index API module
+//! 索引API模块
+
+pub mod authentication;
+pub mod index;
+pub mod install;
+pub mod notify;
+pub mod return_;
+
+use salvo::Router;
+
+pub fn index_routes() -> Router {
+    Router::with_path("/api/index")
+        // 认证程序
+        .push(Router::with_path("/authentication").post(authentication::authentication))
+        // 首页
+        .push(Router::with_path("/index").get(index::index))
+        // 支付异步通知
+        .push(Router::with_path("/notify/ali/<order_no>").post(notify::ali_notify))
+        .push(Router::with_path("/notify/wx/<order_no>").post(notify::wx_notify))
+        // 支付返回地址
+        .push(Router::with_path("/return/ali/<order_no>").get(return_::ali_return))
+        .push(Router::with_path("/return/wx/<order_no>").get(return_::wx_return))
+}
+
+pub fn install_routes() -> Router {
+    Router::with_path("/api/install")
+        // 安装程序
+        .push(Router::new().post(install::install))
+        .push(Router::with_path("/env").get(install::env))
+        .push(Router::with_path("/check").get(install::check))
+}

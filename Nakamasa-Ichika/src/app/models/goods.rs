@@ -1,0 +1,24 @@
+use sqlx::FromRow;
+use serde::{Serialize, Deserialize};
+use super::enums::{GoodsType, YesNoStatus};
+
+/// 商品模型 - 对应 u_goods 表
+#[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+pub struct Goods {
+    pub id: i64,
+    pub name: String,
+    #[sqlx(rename = "type")]
+    pub goods_type: GoodsType,
+    pub val: i64,
+    pub money: f64,
+    pub blurb: Option<String>,
+    pub state: YesNoStatus,
+    pub appid: u64,
+}
+
+impl Goods {
+    /// 检查商品是否可用
+    pub fn is_available(&self) -> bool {
+        self.state == YesNoStatus::Y
+    }
+}
