@@ -67,3 +67,4 @@ temp/
 
 # SQL dump files
 *.sqlGeoLite2-City.mmdb
+GeoLite2-City.mmdb
