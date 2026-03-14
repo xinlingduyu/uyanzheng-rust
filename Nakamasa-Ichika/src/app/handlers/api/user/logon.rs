@@ -8,6 +8,7 @@ use salvo::prelude::*;
 use std::sync::Arc;
 use std::fmt::Write;
 use chrono::Utc;
+use once_cell::sync::OnceCell;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
@@ -16,8 +17,49 @@ use crate::core::middleware::get_client_ip;
 use crate::app::utils::response::SignedApiResponse;
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::{LoginRequest, KamiLoginRequest};
-use crate::app::models::responses::{UserInfo, LoginResponse};
+use crate::app::models::responses::{UserInfo, LoginResponse, IpLocation};
 use crate::app::middleware::app_context::AppInfo;
+use Nakamasa_utils::geoip::GeoIpReader;
+
+/// 全局 GeoIP 查询器实例
+static GEOIP_READER: OnceCell<GeoIpReader> = OnceCell::new();
+
+/// 初始化 GeoIP 查询器
+/// 
+/// 从配置文件路径加载 GeoLite2-City.mmdb 数据库
+pub fn init_geoip(path: &str) -> Result<(), String> {
+    match GeoIpReader::new(path) {
+        Ok(reader) => {
+            let _ = GEOIP_READER.set(reader);
+            tracing::info!("GeoIP 初始化成功: {}", path);
+            Ok(())
+        }
+        Err(e) => {
+            tracing::warn!("GeoIP 初始化失败: {} (IP地域功能将不可用)", e);
+            Err(e.to_string())
+        }
+    }
+}
+
+/// 查询 IP 地域信息
+/// 
+/// 返回简化的地域信息，查询失败返回 None
+pub fn lookup_ip_location(ip: &str) -> Option<IpLocation> {
+    GEOIP_READER.get().and_then(|reader| {
+        match reader.lookup(ip) {
+            Ok(loc) if loc.is_valid() => Some(IpLocation {
+                country: loc.country,
+                province: loc.province,
+                city: loc.city,
+            }),
+            Ok(_) => None,
+            Err(e) => {
+                tracing::debug!("IP 地域查询失败: {} - {}", ip, e);
+                None
+            }
+        }
+    })
+}
 
 /// 应用登录配置
 struct LogonConfig {
@@ -265,6 +307,9 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 open_wx, open_qq,
             };
 
+            // 查询 IP 地域信息
+            let ip_location = lookup_ip_location(&ip);
+
             // 将token保存到Redis
             if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                 let mut token_pre = String::with_capacity(16);
@@ -295,7 +340,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .execute(app_state.get_db()).await;
 
             let response = LoginResponse {
-                token, state: token_state, info,
+                token, state: token_state, info, ip_location,
             };
 
             res.render(Json(SignedApiResponse::success(app_key, Some(response))));
@@ -578,9 +623,21 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             .bind(current_time).bind(&ip).bind(appid)
             .execute(app_state.get_db()).await;
 
-            let response = serde_json::json!({
+            // 查询 IP 地域信息
+            let ip_location = lookup_ip_location(&ip);
+
+            let mut response = serde_json::json!({
                 "token": token, "state": token_state, "info": info
             });
+            
+            // 添加 IP 地域信息（如果有）
+            if let Some(loc) = ip_location {
+                response["ipLocation"] = serde_json::json!({
+                    "country": loc.country,
+                    "province": loc.province,
+                    "city": loc.city
+                });
+            }
 
             res.render(Json(SignedApiResponse::success(app_key, Some(response))));
         }

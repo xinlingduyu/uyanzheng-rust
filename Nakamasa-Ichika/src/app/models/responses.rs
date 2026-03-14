@@ -26,11 +26,25 @@ pub struct UserInfo {
     pub open_qq: Option<String>,
 }
 
+/// IP 地域信息
+#[derive(Debug, Serialize, Clone, Default)]
+pub struct IpLocation {
+    /// 国家
+    pub country: String,
+    /// 省份
+    pub province: String,
+    /// 城市
+    pub city: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub token: String,
     pub state: String,
     pub info: UserInfo,
+    /// IP 地域信息
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_location: Option<IpLocation>,
 }
 
 // ========== 设备信息 ==========

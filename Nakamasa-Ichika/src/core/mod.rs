@@ -305,6 +305,27 @@ pub async fn run(router: Router) -> anyhow::Result<()> {
     tracing::info!("{}", terminal_t("app.starting"));
     tracing::debug!("Terminal language: {}", current_lang());
     
+    // 初始化 GeoIP 数据库
+    // 尝试多个可能的路径
+    let geoip_paths = ["GeoLite2-City.mmdb", "data/GeoLite2-City.mmdb", "/data/data/com.termux/files/home/rust/web/GeoLite2-City.mmdb"];
+    let mut geoip_initialized = false;
+    for path in geoip_paths {
+        if Path::new(path).exists() {
+            match crate::app::handlers::api::user::logon::init_geoip(path) {
+                Ok(()) => {
+                    geoip_initialized = true;
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!("GeoIP 初始化失败 ({}): {}", path, e);
+                }
+            }
+        }
+    }
+    if !geoip_initialized {
+        tracing::info!("GeoIP 数据库未找到，IP 地域功能将不可用");
+    }
+    
     // 检查是否已安装（config.yaml 是否存在）
     if !is_installed() {
         tracing::warn!("========================================");

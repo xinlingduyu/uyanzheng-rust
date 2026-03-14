@@ -24,6 +24,7 @@ use crate::app::utils::validator::Validator;
 use crate::app::models::requests::WxLoginSDKRequest;
 use crate::app::models::responses::{UserInfo, LoginResponse};
 use crate::app::middleware::app_context::AppInfo;
+use super::logon::lookup_ip_location;
 
 /// QQ用户信息响应
 #[derive(Debug, serde::Deserialize)]
@@ -408,6 +409,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 token,
                 state: token_state,
                 info,
+                ip_location: lookup_ip_location(&ip),
             };
 
             res.render(Json(SignedApiResponse::success(app_key, Some(response))));
@@ -603,6 +605,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         token,
                         state: "y".to_string(),
                         info,
+                        ip_location: lookup_ip_location(&ip),
                     };
 
                     let msg = format!("登录成功，您的初始密码为：{}", pwd);
