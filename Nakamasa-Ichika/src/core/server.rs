@@ -7,6 +7,8 @@ use salvo::prelude::*;
 use salvo::logging::Logger;
 use salvo::conn::rustls::{RustlsConfig, Keycert};
 use salvo::affix_state;
+use salvo::cors::Cors;
+use salvo::http::Method;
 use std::sync::Arc;
 use std::collections::HashMap;
 use crate::core::{AppState, I18nMiddleware, terminal_t, t_with_args};
@@ -35,9 +37,17 @@ impl Server {
         let key = include_bytes!("../../certs/ssl.key").to_vec();
 
         tracing::info!("{}", terminal_t("tls.loaded"));
+        
+        // 创建 CORS 中间件
+        let cors = Cors::new()
+        .allow_origin(["https://127.0.0.1:8888", "https://localhost:8888","https://192.168.138.235:8888"])
+        .allow_methods(vec![Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+       .allow_credentials(true)
+       .allow_headers(vec!["content-type", "authorization", "accept-language"])
+        .into_handler();
 
         // 创建服务
-        let mut service = Service::new(router);
+        let mut service = Service::new(router).hoop(cors); 
 
         // 检查 debug 标志，如果为 true 则添加 Logger 中间件
         if config::get().debug().debug() {

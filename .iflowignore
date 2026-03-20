@@ -1,0 +1,34 @@
+# Build outputs
+target/
+
+# Node.js
+node_modules/
+
+# Data files
+*.mmdb
+*.db
+
+# Frontend build outputs
+Nakamasa-Ichika/static/
+
+# macOS artifacts
+__MACOSX/
+
+# Frontend projects (uncomment if not working on frontend)
+# view/
+# view-pro/
+
+# Lock files (usually not needed for context)
+package-lock.json
+yarn.lock
+Cargo.lock
+
+# IDE
+.vscode/
+
+# Tests
+tests/
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js

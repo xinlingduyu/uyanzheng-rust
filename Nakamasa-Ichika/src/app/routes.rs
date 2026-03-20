@@ -48,6 +48,7 @@ use salvo::Router;
 use super::handlers;
 use super::handlers::api::{admin_routes, user_routes, index_routes, install_routes};
 use super::middleware::cors::cors;
+use super::middleware::connect::connect_handler;
 use crate::core::is_installed;
 
 /// 构建应用路由
@@ -93,7 +94,7 @@ fn build_installation_routes() -> Router {
         // 安装 API 路由
         .push(install_routes())
         // 欢迎页
-        .get(handlers::hello::hello)
+        .get(handlers::hello::hello).hoop(connect_handler)
 }
 
 /// 构建生产模式路由
@@ -137,7 +138,7 @@ fn build_production_routes() -> Router {
         .push(index_routes())
         
         // 欢迎页
-        .get(handlers::hello::hello)
+        .get(handlers::hello::hello).hoop(connect_handler)
 }
 
 /// OAuth2.0 回调路由

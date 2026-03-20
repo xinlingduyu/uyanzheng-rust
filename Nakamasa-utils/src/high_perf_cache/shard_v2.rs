@@ -720,7 +720,7 @@ where
         self.shards[shard_idx].get(hash)
     }
 
-    /// 设置值
+    /// 设置值（move 语义）
     #[inline(always)]
     pub fn set(&self, key: K, value: V)
     where
@@ -728,6 +728,18 @@ where
     {
         let (hash, shard_idx) = self.hash_and_shard(&key);
         self.shards[shard_idx].set(key, hash, value);
+    }
+
+    /// 设置值并返回原始值（内部 clone 存储）
+    /// 适用于需要保留原始值的场景，避免调用方额外 clone
+    #[inline(always)]
+    pub fn set_and_get(&self, key: K, value: V) -> V
+    where
+        K: std::hash::Hash,
+    {
+        let (hash, shard_idx) = self.hash_and_shard(&key);
+        self.shards[shard_idx].set(key, hash, value.clone());
+        value
     }
 
     /// 设置值（带哈希复用）

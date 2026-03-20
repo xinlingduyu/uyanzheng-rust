@@ -131,11 +131,9 @@ impl AdminCacheService {
         // 缓存未命中，从数据库加载
         match self.load_from_db_by_id(id).await {
             Ok(Some(data)) => {
-                // 先设置 name_index，再设置 cache 并转移所有权
                 self.name_index.set(data.user.clone(), id);
-                self.cache.set(id, data);
-                // 注意：cache.get() 会返回 clone，所以这里需要重新获取
-                CacheResult::Miss(self.cache.get(&id).unwrap())
+                let data = self.cache.set_and_get(id, data);
+                CacheResult::Miss(data)
             }
             Ok(None) => CacheResult::NotFound,
             Err(e) => CacheResult::Error(e),
@@ -157,10 +155,9 @@ impl AdminCacheService {
         match self.load_from_db_by_name(username).await {
             Ok(Some(data)) => {
                 let id = data.id;
-                // 先设置索引，再转移所有权到缓存
                 self.name_index.set(data.user.clone(), id);
-                self.cache.set(id, data);
-                CacheResult::Miss(self.cache.get(&id).unwrap())
+                let data = self.cache.set_and_get(id, data);
+                CacheResult::Miss(data)
             }
             Ok(None) => CacheResult::NotFound,
             Err(e) => CacheResult::Error(e),
@@ -186,10 +183,9 @@ impl AdminCacheService {
         match self.verify_from_db(username, password_hash).await {
             Ok(Some(data)) => {
                 let id = data.id;
-                // 先设置索引，再转移所有权到缓存
                 self.name_index.set(data.user.clone(), id);
-                self.cache.set(id, data);
-                CacheResult::Miss(self.cache.get(&id).unwrap())
+                let data = self.cache.set_and_get(id, data);
+                CacheResult::Miss(data)
             }
             Ok(None) => CacheResult::NotFound,
             Err(e) => CacheResult::Error(e),
@@ -214,10 +210,9 @@ impl AdminCacheService {
         // 缓存验证失败，查询数据库
         match self.verify_token_from_db(id, password_md5).await {
             Ok(Some(data)) => {
-                // 先设置索引，再转移所有权到缓存
                 self.name_index.set(data.user.clone(), id);
-                self.cache.set(id, data);
-                CacheResult::Miss(self.cache.get(&id).unwrap())
+                let data = self.cache.set_and_get(id, data);
+                CacheResult::Miss(data)
             }
             Ok(None) => CacheResult::NotFound,
             Err(e) => CacheResult::Error(e),

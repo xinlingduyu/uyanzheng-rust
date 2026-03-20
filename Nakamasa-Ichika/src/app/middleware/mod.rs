@@ -142,6 +142,8 @@ pub mod cors;
 /// 用于处理 HTTP/2 协议下的 multipart 表单数据。
 pub mod body_reader;
 
+pub mod connect;
+
 // ============================================================================
 // 公开导出
 // ============================================================================
@@ -151,3 +153,4 @@ pub use user_auth::*;
 pub use app_context::*;
 pub use cors::*;
 pub use body_reader::*;
+pub use connect::*;

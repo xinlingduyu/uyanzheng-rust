@@ -21,7 +21,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 # Framework
 tokio ={ version = "*", features = ["macros", "rt-multi-thread"] }
-salvo = {version = "*", features = ["quinn", "http2", "logging", "affix-state", "serve-static"]}
+salvo = {version = "*", features = ["quinn", "http2", "logging", "affix-state", "serve-static", "cors"]}
 lazy_static = "1.4.0"
 
 # Serialization

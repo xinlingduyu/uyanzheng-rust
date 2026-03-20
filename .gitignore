@@ -68,3 +68,7 @@ temp/
 # SQL dump files
 *.sqlGeoLite2-City.mmdb
 GeoLite2-City.mmdb
+
+# Node.js
+test/node_modules/
+node_modules/

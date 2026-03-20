@@ -3475,6 +3475,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11cbafcd40f4a57e76f678d1ec2118679b89f5dfb93f5ffcefa2c4c4123a162a"
 dependencies = [
  "salvo-acme",
+ "salvo-cors",
  "salvo-proxy",
  "salvo-serve-static",
  "salvo_core",
@@ -3506,6 +3507,17 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "x509-parser",
+]
+
+[[package]]
+name = "salvo-cors"
+version = "0.88.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d430aa82a57bc80147c2d9c5e1b13dabfe159e2c78bca69db24cfda5376a07b5"
+dependencies = [
+ "bytes",
+ "salvo_core",
+ "tracing",
 ]
 
 [[package]]
