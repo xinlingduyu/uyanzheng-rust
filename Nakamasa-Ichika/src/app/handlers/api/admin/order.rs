@@ -268,12 +268,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 处理搜索条件
     if let Some(so) = list_req.so {
         // status 过滤: 0=未支付, 1=已支付
-        if !so.status.is_empty() {
-            if let Ok(state) = so.status.parse::<i32>() {
+        if !so.status.is_empty()
+            && let Ok(state) = so.status.parse::<i32>() {
                 where_conditions.push("O.state = ?".to_string());
                 where_params_i64.push(state as i64);
             }
-        }
 
         // type 过滤
         if !so.r#type.is_empty() {
@@ -314,8 +313,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
 
         // date 日期范围过滤
-        if !so.date.is_empty() && so.date.len() >= 2 {
-            if let (Ok(start_time), Ok(end_time)) = (
+        if !so.date.is_empty() && so.date.len() >= 2
+            && let (Ok(start_time), Ok(end_time)) = (
                 so.date[0].parse::<i64>(),
                 so.date[1].parse::<i64>()
             ) {
@@ -323,7 +322,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 where_params_i64.push(start_time);
                 where_params_i64.push(end_time);
             }
-        }
     }
 
     let where_clause = where_conditions.join(" AND ");

@@ -128,7 +128,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
             .bind(uid)
             .bind("bindUdid")
             .bind(current_time)
-            .bind(&ip)
+            .bind(ip)
             .bind(appid)
             .execute(app_state.get_db())
             .await;

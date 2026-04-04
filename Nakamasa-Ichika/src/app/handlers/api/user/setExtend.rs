@@ -77,15 +77,12 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     // 获取当前扩展信息并更新
     let mut extend_map = serde_json::Map::new();
 
-    if let Some(ref extend) = user_info.extend {
-        if !extend.is_empty() {
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(extend) {
-                if let Some(obj) = parsed.as_object() {
+    if let Some(ref extend) = user_info.extend
+        && !extend.is_empty()
+            && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(extend)
+                && let Some(obj) = parsed.as_object() {
                     extend_map = obj.clone();
                 }
-            }
-        }
-    }
 
     // 更新扩展信息 - 一比一还原PHP逻辑
     let value = set_req.value.as_deref().unwrap_or("");
@@ -123,7 +120,7 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .bind("setExtend")
                 .bind(true)
                 .bind(current_time)
-                .bind(&ip)
+                .bind(ip)
                 .bind(appid)
                 .execute(app_state.get_db())
                 .await;

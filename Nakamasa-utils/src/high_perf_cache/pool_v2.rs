@@ -89,6 +89,12 @@ pub struct LockFreeStack {
     len: AtomicUsize,
 }
 
+impl Default for LockFreeStack {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LockFreeStack {
     pub const fn new() -> Self {
         Self {
@@ -203,6 +209,12 @@ pub struct PoolStats {
     pub cache_hits: AtomicU64,
     pub cache_misses: AtomicU64,
     pub current_free: AtomicUsize,
+}
+
+impl Default for PoolStats {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl PoolStats {
@@ -715,6 +727,12 @@ pub struct ObjectPoolStatsV2 {
     pub total_puts: AtomicU64,
     pub cache_hits: AtomicU64,
     pub current_free: AtomicUsize,
+}
+
+impl Default for ObjectPoolStatsV2 {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ObjectPoolStatsV2 {

@@ -5,21 +5,31 @@ import {
   LineChart,
   PieChart,
   RadarChart,
-  GaugeChart
+  GaugeChart,
+  ScatterChart,
+  MapChart
 } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
-  GraphicComponent
+  GraphicComponent,
+  GeoComponent,
+  VisualMapComponent
 } from 'echarts/components'
+import VueApexCharts from 'vue3-apexcharts'
 
 import MaWangEditor from './ma-wangEditor/index.vue'
 import MaColorPicker from './ma-colorPicker/index.vue'
 import MaCityLinkage from './ma-cityLinkage/index.vue'
 
 import SaChart from './sa-chart/index.vue'
+import SaApexChart from './sa-apexchart/index.vue'
+import SaChartCard from './sa-chart-card/index.vue'
+import SaCarousel from './sa-carousel/index.vue'
+import SaWorldMap from './sa-world-map/index.vue'
+import SaChinaMap from './sa-china-map/index.vue'
 import SaCheckbox from './sa-checkbox/index.vue'
 import SaRadio from './sa-radio/index.vue'
 import SaSelect from './sa-select/index.vue'
@@ -44,20 +54,30 @@ use([
   PieChart,
   RadarChart,
   GaugeChart,
+  ScatterChart,
+  MapChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
   DataZoomComponent,
-  GraphicComponent
+  GraphicComponent,
+  GeoComponent,
+  VisualMapComponent
 ])
 
 export default {
   install(Vue) {
+    Vue.use(VueApexCharts)
     Vue.component('MaWangEditor', MaWangEditor)
     Vue.component('MaColorPicker', MaColorPicker)
     Vue.component('MaCityLinkage', MaCityLinkage)
 
     Vue.component('SaChart', SaChart)
+    Vue.component('SaApexChart', SaApexChart)
+    Vue.component('SaChartCard', SaChartCard)
+    Vue.component('SaCarousel', SaCarousel)
+    Vue.component('SaWorldMap', SaWorldMap)
+    Vue.component('SaChinaMap', SaChinaMap)
     Vue.component('SaCheckbox', SaCheckbox)
     Vue.component('SaRadio', SaRadio)
     Vue.component('SaSelect', SaSelect)

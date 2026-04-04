@@ -55,7 +55,7 @@ where
 
     fn get(&mut self, key: &K) -> Option<V> {
         // 先检查是否存在且未过期
-        let exists_and_valid = self.data.get(key).map_or(false, |node| {
+        let exists_and_valid = self.data.get(key).is_some_and(|node| {
             Instant::now() < node.expires_at
         });
         
@@ -394,11 +394,10 @@ impl CacheManager {
     {
         let mut caches = self.caches.write().await;
         
-        if let Some(cache) = caches.get(name) {
-            if let Ok(typed) = cache.clone().downcast::<TypedCache<K, V>>() {
+        if let Some(cache) = caches.get(name)
+            && let Ok(typed) = cache.clone().downcast::<TypedCache<K, V>>() {
                 return typed;
             }
-        }
 
         let cache = Arc::new(TypedCache::<K, V>::new(self.default_config.clone()));
         caches.insert(name.to_string(), cache.clone());

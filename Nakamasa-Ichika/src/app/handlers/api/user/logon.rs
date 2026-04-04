@@ -109,13 +109,11 @@ async fn check_ip_locked(
 ) -> Option<i64> {
     if let Some(pool) = redis_pool {
         let fail_ip_key = format!("fail_ip_{}", ip_hash);
-        if let Ok(Some(fail_time_str)) = redis_util.get(pool, &fail_ip_key).await {
-            if let Ok(fail_time) = fail_time_str.parse::<i64>() {
-                if fail_time > current_time {
+        if let Ok(Some(fail_time_str)) = redis_util.get(pool, &fail_ip_key).await
+            && let Ok(fail_time) = fail_time_str.parse::<i64>()
+                && fail_time > current_time {
                     return Some(fail_time - current_time);
                 }
-            }
-        }
     }
     None
 }
@@ -238,16 +236,48 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let password_hash_bytes = md5_hex(login_req.password.as_bytes());
     let password_hash = md5_to_str(&password_hash_bytes);
     
-    // 查询用户 - 优化：一次性查询所有需要的字段包括 sn_list
-    let user_result = sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<serde_json::Value>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>)>(
-        "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq, sn_list
-         FROM u_user 
-         WHERE (phone = ? OR email = ? OR acctno = ?) AND password = ? AND appid = ?"
-    )
-    .bind(account).bind(account).bind(account)
-    .bind(password_hash).bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    // 查询用户 - 优化：根据账号类型使用不同查询，避免 OR 条件无法使用索引
+    // 判断账号类型以选择最优查询路径
+    let is_email = account.contains('@');
+    let is_phone = account.chars().all(|c| c.is_ascii_digit());
+    
+    let user_result = if is_email {
+        // 邮箱登录 - 使用 idx_user_appid_email 索引
+        sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<serde_json::Value>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>)>(
+            "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq, sn_list
+             FROM u_user 
+             WHERE email = ? AND password = ? AND appid = ?"
+        )
+        .bind(account)
+        .bind(password_hash)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await
+    } else if is_phone {
+        // 手机号登录 - 使用 idx_user_appid_phone 索引
+        sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<serde_json::Value>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>)>(
+            "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq, sn_list
+             FROM u_user 
+             WHERE phone = ? AND password = ? AND appid = ?"
+        )
+        .bind(account)
+        .bind(password_hash)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await
+    } else {
+        // 账号登录 - 使用 idx_user_appid_acctno 索引
+        sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<serde_json::Value>, Option<String>, Option<String>, Option<String>, Option<serde_json::Value>)>(
+            "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq, sn_list
+             FROM u_user 
+             WHERE acctno = ? AND password = ? AND appid = ?"
+        )
+        .bind(account)
+        .bind(password_hash)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await
+    };
 
     match user_result {
         Ok(Some((id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq, sn_list_json))) => {
@@ -255,13 +285,12 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let sn_list = sn_list_json.as_ref().and_then(|v| v.as_str()).map(|s| s.to_string())
                 .or_else(|| sn_list_json.map(|v| v.to_string()));
             // 检查是否被禁用
-            if let Some(ban_time) = ban {
-                if ban_time > current_time {
+            if let Some(ban_time) = ban
+                && ban_time > current_time {
                     let msg = ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
                     res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
                     return;
                 }
-            }
 
             let sn_max_val = sn_max.unwrap_or(0);
             
@@ -284,15 +313,14 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let token = md5_to_str(&token_bytes).to_string();
 
             // VIP过期日期格式化
-            let vip_exp_date = vip.map(|v| {
-                if v > 0 {
+            let vip_exp_date = match vip {
+                Some(v) if v > 0 => {
                     chrono::DateTime::from_timestamp(v, 0)
                         .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                        .unwrap_or_default()
-                } else {
-                    "未开通".to_string()
+                        .unwrap_or_else(|| "未开通".to_string())
                 }
-            }).unwrap_or_else(|| "未开通".to_string());
+                _ => "未开通".to_string(),
+            };
 
             let info = UserInfo {
                 uid: id, phone, email, acctno,
@@ -303,12 +331,12 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 fen: fen.unwrap_or(0),
                 vip_exp_time: vip.unwrap_or(0),
                 vip_exp_date,
-                extend: extend,
+                extend,
                 open_wx, open_qq,
             };
 
             // 查询 IP 地域信息
-            let ip_location = lookup_ip_location(&ip);
+            let ip_location = lookup_ip_location(ip);
 
             // 将token保存到Redis
             if let Some(redis_pool) = app_state.redis_pool.as_ref() {
@@ -336,11 +364,11 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
             )
             .bind("user").bind(id).bind("login")
-            .bind(current_time).bind(&ip).bind(appid)
+            .bind(current_time).bind(ip).bind(appid)
             .execute(app_state.get_db()).await;
 
             let response = LoginResponse {
-                token, state: token_state, info, ip_location,
+                token, state: token_state.to_string(), info, ip_location,
             };
 
             res.render(Json(SignedApiResponse::success(app_key, Some(response))));
@@ -361,6 +389,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 /// 优化点：
 /// 1. 使用 Option 提前返回，减少嵌套
 /// 2. 将 sn_list 解析合并到调用方，避免重复查询
+/// 3. 返回 &'static str 避免字符串分配
 #[allow(clippy::too_many_arguments)]
 async fn handle_user_device_binding(
     pool: &sqlx::MySqlPool,
@@ -374,14 +403,14 @@ async fn handle_user_device_binding(
     _redis_util: &crate::core::redis::RedisUtil,
     _redis_pool: Option<&deadpool_redis::Pool>,
     sn_list_str: Option<String>,  // 直接传入 sn_list 字符串，避免重复查询
-) -> String {
+) -> &'static str {
     // 没有绑定任何设备，直接绑定
-    if sn_list_str.is_none() || sn_list_str.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+    if sn_list_str.as_ref().is_none_or(|s| s.is_empty()) {
         let new_sn_list = serde_json::json!([{"udid": udid, "time": current_time}]);
         let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
             .bind(new_sn_list.to_string()).bind(uid)
             .execute(pool).await;
-        return "y".to_string();
+        return "y";
     }
 
     let sn_list: Vec<serde_json::Value> = serde_json::from_str(&sn_list_str.unwrap()).unwrap_or_default();
@@ -393,14 +422,14 @@ async fn handle_user_device_binding(
     
     if found {
         // 已绑定设备登录 - 检查同设备多开（暂不处理，保持原逻辑）
-        return "y".to_string();
+        return "y";
     }
     
     // 新设备登录
     if logon_sn_num > 0 {
         let max_devices = logon_sn_num as i64 + sn_max;
         if sn_list.len() >= max_devices as usize {
-            return "n".to_string();
+            return "n";
         }
         let mut new_list = sn_list;
         new_list.push(serde_json::json!({"udid": udid, "time": current_time}));
@@ -415,7 +444,7 @@ async fn handle_user_device_binding(
             .execute(pool).await;
     }
     
-    "y".to_string()
+    "y"
 }
 
 #[handler]
@@ -505,8 +534,8 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             let sn_list = sn_list_json.as_ref().and_then(|v| v.as_str()).map(|s| s.to_string())
                 .or_else(|| sn_list_json.map(|v| v.to_string()));
             // 检查密码
-            if let Some(ref pwd) = kami_password {
-                if !pwd.is_empty() {
+            if let Some(ref pwd) = kami_password
+                && !pwd.is_empty() {
                     let pwd_valid = kami_req.password.as_ref()
                         .map(|p| md5_to_str(&md5_hex(p.as_bytes())) == *pwd)
                         .unwrap_or(false);
@@ -516,7 +545,6 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                         return;
                     }
                 }
-            }
             
             // 检查卡密类型
             if kami_type == "addsn" {
@@ -525,13 +553,12 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             }
             
             // 检查是否被禁用
-            if let Some(ban_time) = ban {
-                if ban_time > current_time {
+            if let Some(ban_time) = ban
+                && ban_time > current_time {
                     let msg = ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
                     res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
                     return;
                 }
-            }
             
             // 检查是否已被使用（对冲使用）
             if use_id.is_some() {
@@ -542,33 +569,29 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             // 检查禁止到期卡密登录
             if logon_ban_expire {
                 if kami_type == "vip" {
-                    if let Some(vip_time) = kami_vip {
-                        if vip_time > 0 && vip_time < current_time {
+                    if let Some(vip_time) = kami_vip
+                        && vip_time > 0 && vip_time < current_time {
                             res.render(Json(SignedApiResponse::<()>::error("您的卡密已到期", 201, app_key)));
                             return;
                         }
-                    }
-                } else if let Some(fen_val) = kami_fen {
-                    if fen_val < 1 {
+                } else if let Some(fen_val) = kami_fen
+                    && fen_val < 1 {
                         res.render(Json(SignedApiResponse::<()>::error("您的积分已耗尽", 201, app_key)));
                         return;
                     }
-                }
             }
             
             clear_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash).await;
 
             let use_time_val = use_time.unwrap_or(0);
-            let mut token_state = "y".to_string();
             
             // 处理设备绑定
-            let (final_vip, token_state_out) = handle_kami_device_binding(
+            let (final_vip, token_state) = handle_kami_device_binding(
                 app_state.get_db(), id, &kami_req.udid, appid,
                 current_time, logon_config.logon_sn_num, &logon_config.logon_sn_dk,
                 redis_util, app_state.redis_pool.as_ref(),
-                use_time_val, &kami_type, val, kami_vip, &ip, sn_list
+                use_time_val, &kami_type, val, kami_vip, ip, sn_list
             ).await;
-            token_state = token_state_out;
 
             // 生成token
             let uniqid = generate_uniqid();
@@ -620,11 +643,11 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
             )
             .bind("kami").bind(id).bind("login")
-            .bind(current_time).bind(&ip).bind(appid)
+            .bind(current_time).bind(ip).bind(appid)
             .execute(app_state.get_db()).await;
 
             // 查询 IP 地域信息
-            let ip_location = lookup_ip_location(&ip);
+            let ip_location = lookup_ip_location(ip);
 
             let mut response = serde_json::json!({
                 "token": token, "state": token_state, "info": info
@@ -662,6 +685,7 @@ async fn get_logon_ban_expire(pool: &sqlx::MySqlPool, appid: u64) -> bool {
 }
 
 /// 处理卡密设备绑定
+/// 返回 &'static str 避免 String 分配
 #[allow(clippy::too_many_arguments)]
 async fn handle_kami_device_binding(
     pool: &sqlx::MySqlPool, id: u64, udid: &str, appid: u64,
@@ -670,7 +694,7 @@ async fn handle_kami_device_binding(
     redis_pool: Option<&deadpool_redis::Pool>,
     use_time_val: i64, kami_type: &str, val: Option<i64>, 
     kami_vip: Option<i64>, ip: &str, sn_list: Option<String>,
-) -> (Option<i64>, String) {
+) -> (Option<i64>, &'static str) {
     if use_time_val == 0 {
         // 新卡密，初始化
         let new_sn_list = serde_json::json!([{"udid": udid, "time": current_time}]);
@@ -690,7 +714,7 @@ async fn handle_kami_device_binding(
                 .bind(current_time).bind(ip).bind(new_sn_list.to_string()).bind(id)
                 .execute(pool).await;
         }
-        return (new_vip, "y".to_string());
+        return (new_vip, "y");
     }
 
     // 已使用的卡密，检查设备绑定
@@ -707,7 +731,7 @@ async fn handle_kami_device_binding(
     if !found {
         if logon_sn_num > 0 {
             if client_arr.len() >= logon_sn_num as usize {
-                return (kami_vip, "n".to_string());
+                return (kami_vip, "n");
             }
             let mut new_arr = client_arr;
             new_arr.push(serde_json::json!({"udid": udid, "time": current_time}));
@@ -720,8 +744,8 @@ async fn handle_kami_device_binding(
                 .bind(new_sn_list.to_string()).bind(id)
                 .execute(pool).await;
         }
-    } else if logon_sn_dk != "y" {
-        if let Some(pool) = redis_pool {
+    } else if logon_sn_dk != "y"
+        && let Some(pool) = redis_pool {
             let udid_hash_bytes = md5_hex(udid.as_bytes());
             let udid_hash = md5_to_str(&udid_hash_bytes);
             let mut sb = StringBuilder::with_capacity(64);
@@ -736,7 +760,6 @@ async fn handle_kami_device_binding(
                 // 已经登录了
             }
         }
-    }
     
-    (kami_vip, "y".to_string())
+    (kami_vip, "y")
 }

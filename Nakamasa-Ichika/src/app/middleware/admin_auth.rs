@@ -231,8 +231,8 @@ impl Handler for AdminAuth {
             // 检查是否需要续期（剩余时间小于24小时）
             let exp = claims.exp;
             let now = current_timestamp();
-            if (exp - now) < 86400 {
-                if let Ok(new_token) = jwt_builder
+            if (exp - now) < 86400
+                && let Ok(new_token) = jwt_builder
                     .set_iss("admin")
                     .add_claim("id", admin.0)
                     .add_claim("ip", ip_str)
@@ -244,7 +244,6 @@ impl Handler for AdminAuth {
                         exp: exp as i64,
                     });
                 }
-            }
 
             res.render(Json(ApiResponse::success("成功", Some(result))));
             ctrl.skip_rest();
@@ -261,25 +260,21 @@ impl Handler for AdminAuth {
 #[inline]
 fn get_client_ip(req: &Request) -> String {
     // 尝试从 X-Real-IP 获取
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP") {
-        if let Ok(ip) = x_real_ip.to_str() {
-            if is_valid_ip(ip) {
+    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
+        && let Ok(ip) = x_real_ip.to_str()
+            && is_valid_ip(ip) {
                 return ip.to_string();
             }
-        }
-    }
     
     // 尝试从 X-Forwarded-For 获取
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For") {
-        if let Ok(ip_list) = x_forwarded_for.to_str() {
-            if let Some(ip) = ip_list.split(',').next() {
+    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
+        && let Ok(ip_list) = x_forwarded_for.to_str()
+            && let Some(ip) = ip_list.split(',').next() {
                 let ip = ip.trim();
                 if is_valid_ip(ip) {
                     return ip.to_string();
                 }
             }
-        }
-    }
 
     // 默认返回本地IP
     "127.0.0.1".to_string()

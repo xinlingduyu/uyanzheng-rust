@@ -14,7 +14,7 @@ use thiserror::Error;
 
 // --- 全局驱动注册 ---
 static DRIVER_INIT: Lazy<()> = Lazy::new(|| {
-    let _ = sqlx::any::install_default_drivers();
+    sqlx::any::install_default_drivers();
 });
 
 // --- 全局连接池缓存 ---
@@ -424,12 +424,11 @@ impl Operator {
             let ordinal = col.ordinal();
             let key = col.name().to_string();
             
-            if let Ok(raw) = row.try_get_raw(ordinal) {
-                if raw.is_null() {
+            if let Ok(raw) = row.try_get_raw(ordinal)
+                && raw.is_null() {
                     map.insert(key, JsonValue::Null);
                     continue;
                 }
-            }
 
             let value = if let Ok(v) = row.try_get::<i64, _>(ordinal) {
                 JsonValue::Number(v.into())
@@ -439,7 +438,7 @@ impl Operator {
                 JsonValue::Bool(v)
             } else if let Ok(v) = row.try_get::<String, _>(ordinal) {
                 if (v.starts_with('{') && v.ends_with('}')) || (v.starts_with('[') && v.ends_with(']')) {
-                    serde_json::from_str(&v).unwrap_or_else(|_| JsonValue::String(v))
+                    serde_json::from_str(&v).unwrap_or(JsonValue::String(v))
                 } else {
                     Self::parse_string_value(&v)
                 }

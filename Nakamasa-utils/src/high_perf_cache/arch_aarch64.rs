@@ -15,7 +15,7 @@ use std::arch::aarch64::*;
 /// 调用者必须确保 src 和 dst 指针有效，且 count 是 16 的倍数
 #[target_feature(enable = "neon")]
 pub unsafe fn memcpy_neon_16(dst: *mut u8, src: *const u8, count: usize) {
-    debug_assert!(count % 16 == 0);
+    debug_assert!(count.is_multiple_of(16));
     
     let mut i = 0;
     while i < count {
@@ -164,6 +164,12 @@ pub struct SpinLock {
     locked: std::sync::atomic::AtomicU32,
 }
 
+impl Default for SpinLock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SpinLock {
     pub const fn new() -> Self {
         Self {
@@ -226,7 +232,7 @@ pub unsafe fn dc_clean_by_va(ptr: *const u8, size: usize) {
     let mut addr = ptr as usize;
     let end = addr + size;
     
-    addr = addr & !(CACHE_LINE_SIZE - 1);
+    addr &= !(CACHE_LINE_SIZE - 1);
     
     while addr < end {
         unsafe {
@@ -255,7 +261,7 @@ pub unsafe fn dc_invalidate_by_va(ptr: *const u8, size: usize) {
     let mut addr = ptr as usize;
     let end = addr + size;
     
-    addr = addr & !(CACHE_LINE_SIZE - 1);
+    addr &= !(CACHE_LINE_SIZE - 1);
     
     while addr < end {
         unsafe {

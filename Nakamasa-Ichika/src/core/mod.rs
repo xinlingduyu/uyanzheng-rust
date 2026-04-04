@@ -208,6 +208,11 @@ pub mod quickjs_runtime;
 #[deprecated(note = "已弃用，请使用 quickjs_runtime")]
 pub mod v8_runtime;
 
+/// 火焰图性能分析
+///
+/// 提供运行时 CPU 性能分析，支持生成 SVG 火焰图和 pprof 格式数据。
+pub mod flamegraph;
+
 // ============================================================================
 // 公开导出
 // ============================================================================
@@ -235,6 +240,13 @@ pub use handler_ext::*;
 
 // JavaScript 运行时导出
 pub use quickjs_runtime::{QuickJsRuntime, CloudFunctionContext, execute_cloud_function};
+
+// 火焰图性能分析导出
+pub use flamegraph::{
+    start_profiler, stop_profiler, get_status,
+    generate_flamegraph_svg, generate_pprof_data, profile_for_duration,
+    ProfilerStatus,
+};
 
 // 兼容性别名（保持 API 兼容性）
 #[allow(deprecated)]

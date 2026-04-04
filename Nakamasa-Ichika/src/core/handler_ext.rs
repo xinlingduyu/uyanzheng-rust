@@ -13,7 +13,7 @@ impl HandlerExt for Depot {
         // 2. map(|s| Arc::clone(s)) 将 &Arc 转换为 Arc (仅仅是引用计数+1，开销很小)
         // 3. map_err 将 Depot 的查找错误转换为 HTTP StatusError
         self.obtain::<Arc<AppState>>()
-            .map(|s| Arc::clone(s))
+            .map(Arc::clone)
             .map_err(|_| StatusError::internal_server_error())
     }
 }

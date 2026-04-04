@@ -4,17 +4,18 @@
 use std::sync::LazyLock;
 use regex::Regex;
 
-/// XML CDATA 内容提取正则
-/// 匹配: <key><![CDATA[value]]></key>
+/// XML CDATA 内容提取正则（宽松匹配）
+/// 匹配: <key><![CDATA[value]]></...>
+/// 注意：regex 库不支持 backreferences，使用宽松匹配后代码验证
 pub static XML_CDATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<([^>]+)><!\[CDATA\[([^\]]*)\]\]></\1>")
+    Regex::new(r#"<([a-zA-Z_][a-zA-Z0-9_-]*)><!\[CDATA\[([^\]]*)\]\]>"#)
         .expect("Invalid XML CDATA regex")
 });
 
-/// XML 普通内容提取正则
-/// 匹配: <key>value</key>
+/// XML 普通内容提取正则（宽松匹配）
+/// 匹配: <key>value</...>
 pub static XML_PLAIN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"<([^>]+)>([^<]+)</\1>")
+    Regex::new(r#"<([a-zA-Z_][a-zA-Z0-9_-]*)>([^<]+)<"#)
         .expect("Invalid XML plain regex")
 });
 
@@ -42,17 +43,20 @@ pub static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 pub fn xml_to_json(xml: &str) -> serde_json::Value {
     let mut result = serde_json::Map::new();
 
-    // 使用预编译的 CDATA 正则
+    // 使用宽松匹配提取 CDATA 内容
     for cap in XML_CDATA_REGEX.captures_iter(xml) {
         if let (Some(key), Some(value)) = (cap.get(1), cap.get(2)) {
             result.insert(key.as_str().to_string(), serde_json::json!(value.as_str()));
         }
     }
 
-    // 使用预编译的普通内容正则
+    // 使用宽松匹配提取普通内容
     for cap in XML_PLAIN_REGEX.captures_iter(xml) {
         if let (Some(key), Some(value)) = (cap.get(1), cap.get(2)) {
-            result.insert(key.as_str().to_string(), serde_json::json!(value.as_str()));
+            // 不覆盖已存在的 CDATA 值
+            if !result.contains_key(key.as_str()) {
+                result.insert(key.as_str().to_string(), serde_json::json!(value.as_str()));
+            }
         }
     }
 

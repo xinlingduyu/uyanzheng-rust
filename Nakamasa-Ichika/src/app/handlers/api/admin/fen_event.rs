@@ -146,13 +146,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // PHP: if(isset($_POST['so']) && $this->__isSo($_POST['so']))
     if let Some(so) = &list_req.so {
         // PHP: if(isset($_POST['so']['keyword']) && !empty($_POST['so']['keyword']))
-        if let Some(keyword) = &so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = &so.keyword
+            && !keyword.is_empty() {
                 // PHP: $where .= ' and name LIKE ?'; array_push($whereArr,'%'.$_POST['so']['keyword'].'%');
                 where_conditions.push("name LIKE ?".to_string());
                 params.push(format!("%{}%", keyword));
             }
-        }
     }
 
     let where_clause = where_conditions.join(" AND ");
@@ -293,7 +292,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         } else {
             match vip_str.parse::<i64>() {
                 Ok(v) => {
-                    if v < 0 || v > 9999999999 {
+                    if !(0..=9999999999).contains(&v) {
                         res.render(Json(ApiResponse::<()>::error("事件兑换会员数值有误", 201)));
                         return;
                     }
@@ -459,7 +458,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         } else {
             match vip_str.parse::<i64>() {
                 Ok(v) => {
-                    if v < 0 || v > 9999999999 {
+                    if !(0..=9999999999).contains(&v) {
                         res.render(Json(ApiResponse::<()>::error("事件兑换会员数值有误", 201)));
                         return;
                     }

@@ -2,8 +2,26 @@ import homePageRoutes from './homePageRoutes'
 //系统路由
 const routes = [
   {
-    name: 'layout',
+    name: 'portal',
     path: '/',
+    component: () => import('@/layout/components/portal/index.vue'),
+    redirect: 'apps',
+    children: [
+      {
+        name: 'apps',
+        path: '/apps',
+        meta: {
+          title: '应用中心',
+          icon: 'icon-apps',
+          type: 'M'
+        },
+        component: () => import('@/views/app-list/index.vue')
+      }
+    ]
+  },
+  {
+    name: 'layout',
+    path: '/admin',
     component: () => import('@/layout/index.vue'),
     redirect: 'dashboard',
     children: homePageRoutes

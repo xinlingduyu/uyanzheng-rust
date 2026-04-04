@@ -20,7 +20,8 @@ struct FunctionItem {
     id: u64,
     name: String,
     notes: String,
-    authority: i32,
+    allow: i32,
+    fen: i32,
     state: String,
 }
 
@@ -92,9 +93,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
 
     // 查询列表
-    let query = "SELECT id, name, notes, allow, state FROM u_app_function WHERE appid = ? ORDER BY id DESC LIMIT ? OFFSET ?";
+    let query = "SELECT id, name, notes, allow, IFNULL(fen, 0) as fen, state FROM u_app_function WHERE appid = ? ORDER BY id DESC LIMIT ? OFFSET ?";
     
-    let result = sqlx::query_as::<_, (u64, String, String, Option<i32>, String)>(query)
+    let result = sqlx::query_as::<_, (u64, String, String, Option<i32>, i32, String)>(query)
         .bind(appid)
         .bind(page_size)
         .bind(offset)
@@ -107,8 +108,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 id: row.0,
                 name: row.1,
                 notes: row.2,
-                authority: row.3.unwrap_or(0),
-                state: row.4,
+                allow: row.3.unwrap_or(0),
+                fen: row.4,
+                state: row.5,
             }).collect();
 
             let response = ListResponse {
@@ -132,8 +134,8 @@ struct AddFunctionRequest {
     name: String,
     code: String,
     notes: String,
-    #[serde(default, alias = "allow")]
-    authority: i32,
+    #[serde(default)]
+    allow: i32,
     #[serde(default)]
     fen: i32,
     #[serde(default = "default_state")]
@@ -196,8 +198,8 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    tracing::info!("插入云函数: name={}, appid={}, authority={}, fen={}, state={}", 
-        add_req.name, appid, add_req.authority, add_req.fen, add_req.state);
+    tracing::info!("插入云函数: name={}, appid={}, allow={}, fen={}, state={}", 
+        add_req.name, appid, add_req.allow, add_req.fen, add_req.state);
 
     let result = sqlx::query(
         "INSERT INTO u_app_function (name, code, notes, allow, fen, state, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -205,7 +207,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(&add_req.name)
     .bind(&add_req.code)
     .bind(&add_req.notes)
-    .bind(add_req.authority)
+    .bind(add_req.allow)
     .bind(add_req.fen)
     .bind(&add_req.state)
     .bind(appid)
@@ -242,7 +244,7 @@ struct FunctionDetail {
     allow: i32,
     fen: i32,
     state: String,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -301,7 +303,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let result = sqlx::query_as::<_, (u64, String, String, String, Option<i32>, Option<i32>, String, u64)>(
+    let result = sqlx::query_as::<_, (u64, String, String, String, Option<i32>, Option<i32>, String, i64)>(
         "SELECT id, name, code, notes, allow, fen, state, appid FROM u_app_function WHERE id = ?"
     )
     .bind(info_req.id)
@@ -338,8 +340,8 @@ struct EditFunctionRequest {
     name: String,
     code: String,
     notes: String,
-    #[serde(default, alias = "allow")]
-    authority: i32,
+    #[serde(default)]
+    allow: i32,
     #[serde(default)]
     fen: i32,
     #[serde(default = "default_state")]
@@ -382,7 +384,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(&edit_req.name)
     .bind(&edit_req.code)
     .bind(&edit_req.notes)
-    .bind(edit_req.authority)
+    .bind(edit_req.allow)
     .bind(edit_req.fen)
     .bind(&edit_req.state)
     .bind(edit_req.id)

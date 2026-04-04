@@ -110,14 +110,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut keyword_param: Option<String> = None;
 
     // 处理搜索条件 - PHP: keyword 搜索 sn 或 ip
-    if let Some(ref so) = list_req.so {
-        if !so.keyword.is_empty() {
+    if let Some(ref so) = list_req.so
+        && !so.keyword.is_empty() {
             // PHP: (sn LIKE ? or ip LIKE ?)
             // 但数据库用的是 type + val 结构，所以改为: (val LIKE ?)
             where_conditions.push("val LIKE ?".to_string());
             keyword_param = Some(format!("%{}%", so.keyword));
         }
-    }
 
     let where_clause = where_conditions.join(" AND ");
 
@@ -657,17 +656,15 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
 /// 获取客户端IP
 fn get_client_ip(req: &Request) -> String {
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP") {
-        if let Ok(ip) = x_real_ip.to_str() {
+    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
+        && let Ok(ip) = x_real_ip.to_str() {
             return ip.to_string();
         }
-    }
 
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For") {
-        if let Ok(ip) = x_forwarded_for.to_str() {
+    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
+        && let Ok(ip) = x_forwarded_for.to_str() {
             return ip.split(',').next().unwrap_or("").trim().to_string();
         }
-    }
 
     "127.0.0.1".to_string()
 }

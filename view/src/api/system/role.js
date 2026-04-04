@@ -7,7 +7,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/role/index',
+      url: '/admin/role/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   getMenuByRole(id) {
     return request({
-      url: '/core/role/getMenuByRole?id=' + id,
+      url: '/admin/role/getMenuByRole?id=' + id,
       method: 'get'
     })
   },
@@ -30,7 +30,7 @@ export default {
    */
   getDeptByRole(id) {
     return request({
-      url: '/core/role/getDeptByRole?id=' + id,
+      url: '/admin/role/getDeptByRole?id=' + id,
       method: 'get'
     })
   },
@@ -41,7 +41,7 @@ export default {
    */
   save(data = {}) {
     return request({
-      url: '/core/role/save',
+      url: '/admin/role/save',
       method: 'post',
       data
     })
@@ -53,7 +53,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/role/destroy',
+      url: '/admin/role/destroy',
       method: 'delete',
       data
     })
@@ -65,7 +65,7 @@ export default {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/role/update?id=' + id,
+      url: '/admin/role/update?id=' + id,
       method: 'put',
       data
     })
@@ -77,7 +77,7 @@ export default {
    */
   updateMenuPermission(id, data) {
     return request({
-      url: '/core/role/menuPermission?id=' + id,
+      url: '/admin/role/menuPermission?id=' + id,
       method: 'post',
       data
     })
@@ -89,7 +89,7 @@ export default {
    */
   updateDataPermission(id, data) {
     return request({
-      url: '/core/role/dataPermission?id=' + id,
+      url: '/admin/role/dataPermission?id=' + id,
       method: 'post',
       data
     })
@@ -101,7 +101,7 @@ export default {
    */
   changeStatus(params = {}) {
     return request({
-      url: '/core/role/changeStatus',
+      url: '/admin/role/changeStatus',
       method: 'post',
       data: params
     })

@@ -297,8 +297,8 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // 检查Token是否需要刷新（剩余时间小于24小时）
     let exp = claims.exp as i64;
     let now = current_timestamp();
-    if exp - now < 86400 {
-        if let Ok(new_token) = jwt_builder
+    if exp - now < 86400
+        && let Ok(new_token) = jwt_builder
             .set_iss("admin")
             .add_claim("id", admin_id)
             .add_claim("ip", ip)
@@ -310,7 +310,6 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 exp,
             });
         }
-    }
 
     res.render(Json(ApiResponse::success("成功", Some(data))));
 }

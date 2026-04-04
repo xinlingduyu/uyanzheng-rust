@@ -7,7 +7,7 @@ export const dictType = {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/dictType/index',
+      url: '/admin/dictType/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export const dictType = {
    */
   save(params = {}) {
     return request({
-      url: '/core/dictType/save',
+      url: '/admin/dictType/save',
       method: 'post',
       data: params
     })
@@ -31,7 +31,7 @@ export const dictType = {
    */
   destroy(data) {
     return request({
-      url: '/core/dictType/destroy',
+      url: '/admin/dictType/destroy',
       method: 'delete',
       data
     })
@@ -43,7 +43,7 @@ export const dictType = {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/dictType/update?id=' + id,
+      url: '/admin/dictType/update?id=' + id,
       method: 'put',
       data
     })
@@ -55,7 +55,7 @@ export const dictType = {
    */
   changeStatus(data = {}) {
     return request({
-      url: '/core/dictType/changeStatus',
+      url: '/admin/dictType/changeStatus',
       method: 'post',
       data
     })
@@ -70,7 +70,7 @@ export const dict = {
    */
   getDict(code) {
     return request({
-      url: '/core/dataDict/index?code=' + code,
+      url: '/admin/dataDict/index?code=' + code,
       method: 'get'
     })
   },
@@ -81,7 +81,7 @@ export const dict = {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/dictData/index',
+      url: '/admin/dictData/index',
       method: 'get',
       params
     })
@@ -93,7 +93,7 @@ export const dict = {
    */
   addDictData(data = {}) {
     return request({
-      url: '/core/dictData/save',
+      url: '/admin/dictData/save',
       method: 'post',
       data
     })
@@ -105,7 +105,7 @@ export const dict = {
    */
   destroyDictData(data) {
     return request({
-      url: '/core/dictData/destroy',
+      url: '/admin/dictData/destroy',
       method: 'delete',
       data
     })
@@ -117,7 +117,7 @@ export const dict = {
    */
   editDictData(id, data = {}) {
     return request({
-      url: '/core/dictData/update?id=' + id,
+      url: '/admin/dictData/update?id=' + id,
       method: 'put',
       data
     })
@@ -129,7 +129,7 @@ export const dict = {
    */
   changeStatus(data = {}) {
     return request({
-      url: '/core/dictData/changeStatus',
+      url: '/admin/dictData/changeStatus',
       method: 'post',
       data
     })

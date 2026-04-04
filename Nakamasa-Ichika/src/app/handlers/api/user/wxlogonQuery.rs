@@ -173,13 +173,12 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let inv_code: Option<String> = user_row.try_get(15).ok();
 
     // PHP: if($Ures['ban'] > time())$this->out->e(127,$Ures['ban_msg']);
-    if let Some(ban_time) = ban {
-        if ban_time > Utc::now().timestamp() {
+    if let Some(ban_time) = ban
+        && ban_time > Utc::now().timestamp() {
             let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
             res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
             return;
         }
-    }
 
     let current_time = Utc::now().timestamp();
     let mut token_state = "y".to_string();
@@ -196,10 +195,7 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
             .await;
     } else {
         // PHP: $client_Arr = json_decode($Ures['sn_list'],true);
-        let client_arr: Vec<serde_json::Value> = match serde_json::from_str(sn_list_val.as_ref().unwrap()) {
-            Ok(arr) => arr,
-            Err(_) => vec![]
-        };
+        let client_arr: Vec<serde_json::Value> = serde_json::from_str(sn_list_val.as_ref().unwrap()).unwrap_or_default();
         
         // PHP: $found_key = array_search($wxlogonInfo['udid'],array_column($client_Arr,'udid'));
         let found = client_arr.iter().any(|item| {

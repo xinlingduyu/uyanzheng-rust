@@ -20,7 +20,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
@@ -59,13 +59,17 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
 #[derive(Debug, Deserialize)]
 struct GetListRequest {
+    #[serde(default)]
     page: u32,
+    #[serde(default)]
     size: u32,
-    so: SearchOptions,
+    #[serde(default)]
+    so: Option<SearchOptions>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 struct SearchOptions {
+    #[serde(default)]
     keyword: String,
 }
 
@@ -77,7 +81,7 @@ struct CDKGroupListItem {
     cdk_type: String,
     val: i64,
     price: f64,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,7 +109,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
@@ -131,7 +135,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let count_query = String::from("SELECT COUNT(*) FROM ");
     let data_query = String::from("SELECT id, name, type, val, price, appid FROM ");
 
-    let has_keyword = !list_req.so.keyword.is_empty();
+    let keyword = list_req.so.as_ref().map(|s| s.keyword.as_str()).unwrap_or("");
+    let has_keyword = !keyword.is_empty();
 
     if has_keyword {
         base_query.push_str(" AND name LIKE ?");
@@ -151,8 +156,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 预构建 LIKE 模式
     let like_pattern = if has_keyword {
-        let mut sb = StringBuilder::with_capacity(list_req.so.keyword.len() + 2);
-        sb.append("%").append(&list_req.so.keyword).append("%");
+        let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
+        sb.append("%").append(keyword).append("%");
         Some(sb.finish())
     } else {
         None
@@ -172,7 +177,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
 
     let data_result = if let Some(ref pattern) = like_pattern {
-        sqlx::query_as::<_, (u64, String, String, i64, f64, u64)>(&list_query)
+        sqlx::query_as::<_, (u64, String, String, i64, f64, i64)>(&list_query)
             .bind(appid)
             .bind(pattern)
             .bind(page_size as i64)
@@ -180,7 +185,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .fetch_all(app_state.get_db())
             .await
     } else {
-        sqlx::query_as::<_, (u64, String, String, i64, f64, u64)>(&list_query)
+        sqlx::query_as::<_, (u64, String, String, i64, f64, i64)>(&list_query)
             .bind(appid)
             .bind(page_size as i64)
             .bind(offset as i64)
@@ -254,7 +259,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
@@ -345,7 +350,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));

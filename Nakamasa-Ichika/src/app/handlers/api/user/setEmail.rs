@@ -151,7 +151,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
                 .bind("setEmail")
                 .bind(true)
                 .bind(current_time)
-                .bind(&ip)
+                .bind(ip)
                 .bind(appid)
                 .execute(app_state.get_db())
                 .await;

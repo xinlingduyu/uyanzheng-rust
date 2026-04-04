@@ -7,7 +7,7 @@ export default {
    */
   getList(params = {}) {
     return request({
-      url: '/core/menu/index',
+      url: '/admin/menu/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   accessMenu(params = {}) {
     return request({
-      url: '/core/menu/accessMenu',
+      url: '/admin/menu/accessMenu',
       method: 'get',
       params
     })
@@ -31,7 +31,7 @@ export default {
    */
   save(params = {}) {
     return request({
-      url: '/core/menu/save',
+      url: '/admin/menu/save',
       method: 'post',
       data: params
     })
@@ -43,7 +43,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/menu/destroy',
+      url: '/admin/menu/destroy',
       method: 'delete',
       data
     })
@@ -55,7 +55,7 @@ export default {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/menu/update?id=' + id,
+      url: '/admin/menu/update?id=' + id,
       method: 'put',
       data
     })

@@ -107,8 +107,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     if let Some(so) = list_req.so {
         // 添加时间范围
-        if let Some(add_time_range) = so.add_time {
-            if add_time_range.len() == 2 {
+        if let Some(add_time_range) = so.add_time
+            && add_time_range.len() == 2 {
                 let condition = " AND U.add_time >= ? AND U.add_time <= ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
@@ -119,11 +119,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     params.push((end + 86399).to_string());
                 }
             }
-        }
 
         // 使用时间范围
-        if let Some(use_time_range) = so.use_time {
-            if use_time_range.len() == 2 {
+        if let Some(use_time_range) = so.use_time
+            && use_time_range.len() == 2 {
                 let condition = " AND U.use_time >= ? AND U.use_time <= ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
@@ -134,51 +133,46 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     params.push((end + 86399).to_string());
                 }
             }
-        }
 
         // 添加角色
-        if let Some(add_role) = so.add_role {
-            if !add_role.is_empty() {
+        if let Some(add_role) = so.add_role
+            && !add_role.is_empty() {
                 let condition = " AND U.add_role = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(add_role);
             }
-        }
 
         // 状态
-        if let Some(state) = so.state {
-            if !state.is_empty() {
+        if let Some(state) = so.state
+            && !state.is_empty() {
                 let condition = " AND U.state = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(state);
             }
-        }
 
         // 导出状态
-        if let Some(out_state) = so.out_state {
-            if !out_state.is_empty() {
+        if let Some(out_state) = so.out_state
+            && !out_state.is_empty() {
                 let condition = " AND U.out_state = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(out_state);
             }
-        }
 
         // 类型
-        if let Some(type_val) = so.type_val {
-            if !type_val.is_empty() {
+        if let Some(type_val) = so.type_val
+            && !type_val.is_empty() {
                 let condition = " AND U.type = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(type_val);
             }
-        }
 
         // 使用状态
-        if let Some(use_state) = so.use_state {
-            if !use_state.is_empty() {
+        if let Some(use_state) = so.use_state
+            && !use_state.is_empty() {
                 let condition = if use_state == "y" {
                     " AND U.use_time IS NOT NULL"
                 } else {
@@ -187,12 +181,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 query.push_str(condition);
                 count_query.push_str(condition);
             }
-        }
 
         // 关键词
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
-                if let Some(keyword_type) = so.keywordType {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty()
+                && let Some(keyword_type) = so.keywordType {
                     if keyword_type == "user" {
                         // 搜索用户
                         let user_query = "SELECT id FROM u_user WHERE email = ? OR phone = ? OR acctno = ? AND appid = ?";
@@ -234,14 +227,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                         params.push(keyword);
                     }
                 }
-            }
-        }
     }
 
     // 查询总数
     let mut count_sql_query = sqlx::query(&count_query);
-    for i in 0..params.len() {
-        count_sql_query = count_sql_query.bind(&params[i]);
+    for param in &params {
+        count_sql_query = count_sql_query.bind(param);
     }
 
     let total: i64 = match count_sql_query.fetch_one(app_state.get_db()).await {
@@ -439,7 +430,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
         query.push_str(") VALUES (");
         query.push_str(&placeholders.join(", "));
-        query.push_str(")");
+        query.push(')');
 
         let mut sql_values = Vec::new();
         for (_, val) in &params {
@@ -655,18 +646,16 @@ fn format_hex_int(mut n: i64, buf: &mut [u8; 16]) -> usize {
 /// 获取客户端IP
 fn get_client_ip(req: &Request) -> String {
     // 尝试从Header获取真实IP
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP") {
-        if let Ok(ip) = x_real_ip.to_str() {
+    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
+        && let Ok(ip) = x_real_ip.to_str() {
             return ip.to_string();
         }
-    }
     
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For") {
-        if let Ok(ip) = x_forwarded_for.to_str() {
+    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
+        && let Ok(ip) = x_forwarded_for.to_str() {
             // 取第一个IP
             return ip.split(',').next().unwrap_or("").trim().to_string();
         }
-    }
 
     // TODO: 获取连接的真实IP
     "127.0.0.1".to_string()
@@ -736,6 +725,220 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
         Err(e) => {
             tracing::error!("编辑失败: {}", e);
             res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DelAllRequest {
+    ids: Vec<i64>,
+}
+
+#[handler]
+pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let del_req = match req.parse_json::<DelAllRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    if del_req.ids.is_empty() {
+        res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
+        return;
+    }
+
+    let placeholders = del_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!("DELETE FROM u_cdk_user WHERE id IN ({})", placeholders);
+
+    let mut sql_query = sqlx::query(&query);
+    for id in del_req.ids {
+        sql_query = sql_query.bind(id);
+    }
+
+    let result = sql_query.execute(app_state.get_db()).await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                res.render(Json(ApiResponse::success_msg("删除成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("删除失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OutAllRequest {
+    ids: Vec<i64>,
+    #[serde(rename = "out")]
+    out_format: String,
+}
+
+#[handler]
+pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let out_req = match req.parse_json::<OutAllRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    if out_req.ids.is_empty() {
+        res.render(Json(ApiResponse::<()>::error("导出选中ID有误", 201)));
+        return;
+    }
+
+    let placeholders = out_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+
+    // 查询卡密数据
+    let query = format!(
+        "SELECT U.cdk, U.note, U.type, U.val, G.name as Gname, U.use_time, U.add_time, U.use_user
+         FROM u_cdk_user AS U
+         LEFT JOIN u_cdk_group AS G ON (U.gid = G.id)
+         WHERE U.id IN ({})",
+        placeholders
+    );
+
+    let mut sql_query = sqlx::query(&query);
+    for id in out_req.ids.clone() {
+        sql_query = sql_query.bind(id);
+    }
+
+    let result = sql_query.fetch_all(app_state.get_db()).await;
+
+    match result {
+        Ok(rows) => {
+            if rows.is_empty() {
+                res.render(Json(ApiResponse::<()>::error("导出失败，无数据", 201)));
+                return;
+            }
+
+            // 更新导出状态
+            let now = Utc::now().timestamp();
+            let update_placeholders = out_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let update_query = format!(
+                "UPDATE u_cdk_user SET out_state = 'y', out_time = ? WHERE id IN ({})",
+                update_placeholders
+            );
+
+            let mut update_sql = sqlx::query(&update_query);
+            update_sql = update_sql.bind(now);
+            for id in out_req.ids {
+                update_sql = update_sql.bind(id);
+            }
+
+            let _ = update_sql.execute(app_state.get_db()).await;
+
+            // 构建导出数据
+            let mut content = String::new();
+            if out_req.out_format == "csv" {
+                content.push_str("卡密,分组,类型,面值,备注,使用者,使用时间,创建时间\n");
+                for row in &rows {
+                    let cdk: String = row.try_get("cdk").unwrap_or_default();
+                    let gname: String = row.try_get("Gname").unwrap_or_default();
+                    let type_val: String = row.try_get("type").unwrap_or_default();
+                    let val: i64 = row.try_get("val").unwrap_or(0);
+                    let note: String = row.try_get("note").unwrap_or_default();
+                    let use_user: String = row.try_get("use_user").unwrap_or_default();
+                    let use_time: Option<i64> = row.try_get("use_time").ok();
+                    let add_time: i64 = row.try_get("add_time").unwrap_or(0);
+                    let type_text = if type_val == "vip" { "会员" } else if type_val == "fen" { "积分" } else { "增绑" };
+
+                    content.push_str(&format!(
+                        "{},{},{},{},{},{},{},{}\n",
+                        cdk,
+                        gname,
+                        type_text,
+                        val,
+                        note,
+                        use_user,
+                        use_time.map(|t| format_time_str(t)).unwrap_or_default(),
+                        format_time_str(add_time)
+                    ));
+                }
+            } else {
+                for row in &rows {
+                    let cdk: String = row.try_get("cdk").unwrap_or_default();
+                    content.push_str(&cdk);
+                    content.push('\n');
+                }
+            }
+
+            // 返回下载链接（这里简化处理，直接返回内容）
+            res.render(Json(ApiResponse::success("导出成功", Some(serde_json::json!({
+                "content": content,
+                "format": out_req.out_format,
+                "count": rows.len()
+            })))));
+        }
+        Err(e) => {
+            tracing::error!("导出失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("导出失败", 201)));
+        }
+    }
+}
+
+fn format_time_str(timestamp: i64) -> String {
+    use chrono::TimeZone;
+    chrono::Utc.timestamp_opt(timestamp, 0)
+        .single()
+        .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_default()
+}
+
+#[handler]
+pub async fn clear(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    // 删除已使用的卡密
+    let result = sqlx::query("DELETE FROM u_cdk_user WHERE use_time IS NOT NULL AND appid = ?")
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(r) => {
+            let deleted = r.rows_affected();
+            res.render(Json(ApiResponse::success(
+                format!("清理完成，共清理 {} 条已使用卡密", deleted),
+                Some(serde_json::json!({ "deleted": deleted })),
+            )));
+        }
+        Err(e) => {
+            tracing::error!("清理失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("清理失败", 201)));
         }
     }
 }

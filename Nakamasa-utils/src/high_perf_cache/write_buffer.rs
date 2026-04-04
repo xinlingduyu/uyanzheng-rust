@@ -30,9 +30,6 @@ pub struct RingBuffer<T, const N: usize> {
 impl<T, const N: usize> RingBuffer<T, N> {
     /// 创建新的环形缓冲区
     pub fn new() -> Self {
-        // 使用数组初始化语法
-        const INIT: CachePadded<AtomicPtr<core::ffi::c_void>> = CachePadded::new(AtomicPtr::new(ptr::null_mut()));
-        
         Self {
             buffer: unsafe { std::mem::zeroed() },
             write_pos: CachePadded::new(AtomicUsize::new(0)),
@@ -167,7 +164,7 @@ impl<T, const N: usize> RingBuffer<T, N> {
 impl<T, const N: usize> Drop for RingBuffer<T, N> {
     fn drop(&mut self) {
         // 释放所有剩余元素
-        while let Some(_) = self.try_pop() {}
+        while self.try_pop().is_some() {}
     }
 }
 

@@ -207,23 +207,21 @@ pub fn static_files_route() -> Router {
 }
 
 /// Admin 路由 - 所有 /admin 请求都由 admin_handler 处理
+/// 支持 /admin 和 /admin/ 两种路径格式
 pub fn admin_static_route() -> Router {
     Router::new()
-        .push(Router::with_path("/admin/").get(admin_handler).post(admin_handler).put(admin_handler).delete(admin_handler).patch(admin_handler))
+        // 处理 /admin（无尾部斜杠）- 直接返回 index.html
+        .push(Router::with_path("/admin").get(admin_handler))
+        // 处理 /admin/ 及其子路径
+        .push(Router::with_path("/admin/{**rest}").get(admin_handler).post(admin_handler).put(admin_handler).delete(admin_handler).patch(admin_handler))
+        // 处理 /admin/static/* 静态资源
         .push(Router::with_path("/admin/static/{**rest}").get(admin_assets_handler))
 }
 
-/// 根路径静态文件路由
+/// 根路径静态文件路由（仅处理根路径，不处理 /admin）
 pub fn root_static_route() -> Router {
     Router::new()
-        .push(
-            Router::with_path("/admin/static/{**rest}")
-                .get(root_handler)
-        )
-        .push(
-            Router::with_path("/admin/{**rest}")
-                .get(StaticDir::new(["Nakamasa-Ichika/static"]).fallback("index.html"))
-        )
+    // 不再在这里处理 /admin 路径，由 admin_static_route 统一处理
 }
 
 /// 根据文件扩展名获取 MIME 类型
@@ -434,14 +432,12 @@ pub async fn upload_file_handler(req: &mut Request, _depot: &mut Depot, res: &mu
     let etag = md5_to_str(&etag_bytes);
     
     // 检查客户端缓存
-    if let Some(if_none_match) = req.headers().get("If-None-Match") {
-        if let Ok(etag_value) = if_none_match.to_str() {
-            if etag_value == etag {
+    if let Some(if_none_match) = req.headers().get("If-None-Match")
+        && let Ok(etag_value) = if_none_match.to_str()
+            && etag_value == etag {
                 res.status_code(StatusCode::NOT_MODIFIED);
                 return;
             }
-        }
-    }
     
     // 设置响应头
     res.headers_mut().insert("Content-Type", mime_type.parse().unwrap());

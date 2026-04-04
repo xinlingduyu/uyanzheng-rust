@@ -84,7 +84,7 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
                     "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
                 )
                 .bind("user").bind(uid).bind("modifyName")
-                .bind(current_time).bind(&ip).bind(appid)
+                .bind(current_time).bind(ip).bind(appid)
                 .execute(app_state.get_db()).await;
 
                 res.render(Json(SignedApiResponse::success(app_key, None::<()>)));

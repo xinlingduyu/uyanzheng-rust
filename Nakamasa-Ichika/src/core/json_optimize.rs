@@ -46,7 +46,7 @@ impl FastJson {
     where
         I: Iterator<Item = &'a str>,
     {
-        json_strings.map(|s| serde_json::from_str(s)).collect()
+        json_strings.map(serde_json::from_str).collect()
     }
     
     /// 提取字符串字段（零拷贝）
@@ -105,24 +105,19 @@ impl FastJson {
     
     /// 安全地修改 JSON 对象
     pub fn insert_if_not_null(target: &mut Value, key: &str, value: Option<Value>) {
-        if let Some(v) = value {
-            if !v.is_null() {
-                if let Some(obj) = target.as_object_mut() {
+        if let Some(v) = value
+            && !v.is_null()
+                && let Some(obj) = target.as_object_mut() {
                     obj.insert(key.to_string(), v);
                 }
-            }
-        }
     }
     
     /// 合并两个 JSON 对象
     pub fn merge_into(target: &mut Value, source: &Value) {
-        match (target, source) {
-            (Value::Object(t), Value::Object(s)) => {
-                for (k, v) in s {
-                    t.insert(k.clone(), v.clone());
-                }
+        if let (Value::Object(t), Value::Object(s)) = (target, source) {
+            for (k, v) in s {
+                t.insert(k.clone(), v.clone());
             }
-            _ => {}
         }
     }
 }

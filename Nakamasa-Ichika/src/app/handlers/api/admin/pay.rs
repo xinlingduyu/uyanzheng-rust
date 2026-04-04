@@ -191,34 +191,30 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     
     // 验证pay_ali_config必须是对象
-    if let Some(ref ali_config) = edit_req.pay_ali_config {
-        if !ali_config.is_object() {
+    if let Some(ref ali_config) = edit_req.pay_ali_config
+        && !ali_config.is_object() {
             res.render(Json(ApiResponse::<()>::error("支付宝支付参数不规范", 201)));
             return;
         }
-    }
 
     // 验证pay_wx_config必须是对象
-    if let Some(ref wx_config) = edit_req.pay_wx_config {
-        if !wx_config.is_object() {
+    if let Some(ref wx_config) = edit_req.pay_wx_config
+        && !wx_config.is_object() {
             res.render(Json(ApiResponse::<()>::error("微信支付参数不规范", 201)));
             return;
         }
-    }
     
-    if let Some(ref state) = edit_req.pay_ali_state {
-        if state != "on" && state != "off" {
+    if let Some(ref state) = edit_req.pay_ali_state
+        && state != "on" && state != "off" {
             res.render(Json(ApiResponse::<()>::error("支付宝控制状态设置有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref state) = edit_req.pay_wx_state {
-        if state != "on" && state != "off" {
+    if let Some(ref state) = edit_req.pay_wx_state
+        && state != "on" && state != "off" {
             res.render(Json(ApiResponse::<()>::error("微信控制状态设置有误", 201)));
             return;
         }
-    }
     
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));

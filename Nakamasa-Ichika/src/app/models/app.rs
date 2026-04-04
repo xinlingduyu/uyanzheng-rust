@@ -16,62 +16,50 @@ pub enum AppType {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('on','off')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SwitchState {
+    #[default]
     On,
     Off,
 }
 
-impl Default for SwitchState {
-    fn default() -> Self {
-        SwitchState::On
-    }
-}
 
 /// 模式状态枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ModeState {
+    #[default]
     Y,
     N,
 }
 
-impl Default for ModeState {
-    fn default() -> Self {
-        ModeState::Y
-    }
-}
 
 /// 注册方式枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('phone','email','wordnum')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum RegWay {
     Phone,
+    #[default]
     Email,
     Wordnum,
 }
 
-impl Default for RegWay {
-    fn default() -> Self {
-        RegWay::Email
-    }
-}
 
 /// 奖励类型枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('vip','fen')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AwardType {
+    #[default]
     Vip,
     Fen,
 }
 
-impl Default for AwardType {
-    fn default() -> Self {
-        AwardType::Vip
-    }
-}
 
 /// 应用模型 (对应 u_app 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

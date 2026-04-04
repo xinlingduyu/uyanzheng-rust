@@ -1,10 +1,6 @@
 //! Nakamasa-proc 过程宏库
 
 // 全局警告抑制
-#![allow(unused_variables)]
-#![allow(unused_mut)]
-#![allow(dead_code)]
-#![allow(unused_imports)]
 #![allow(unused)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
@@ -465,67 +461,64 @@ fn generate_validation_code(field_name: &syn::Ident, field_name_str: &str, rules
     let mut validation_checks = Vec::new();
     
     for (rule_name, rule_value) in rules {
-        match rule_name.as_str() {
-            "rule" => {
-                // 处理多条规则，如 "required|email|min:6"
-                for rule in rule_value.split('|') {
-                    let rule_parts: Vec<&str> = rule.splitn(2, ':').collect();
-                    let (rule_type, rule_param) = if rule_parts.len() > 1 {
-                        (rule_parts[0], Some(rule_parts[1]))
-                    } else {
-                        (rule_parts[0], None)
-                    };
-                    
-                    let check = match rule_type {
-                        "required" => quote! {
-                            if #field_value.is_empty() {
-                                errors.push(format!("Field '{}' is required", #field_name_str));
-                            }
-                        },
-                        "email" => quote! {
-                            if !#field_value.is_empty() && !#field_value.contains('@') {
-                                errors.push(format!("Field '{}' must be a valid email", #field_name_str));
-                            }
-                        },
-                        "min" => {
-                            if let Some(param) = rule_param {
-                                let min_val: i32 = param.parse().unwrap_or(0);
-                                quote! {
-                                    if let Ok(num) = #field_value.parse::<i32>() {
-                                        if num < #min_val {
-                                            errors.push(format!("Field '{}' must be at least {}", #field_name_str, #min_val));
-                                        }
-                                    } else if #field_value.len() < #min_val as usize {
-                                        errors.push(format!("Field '{}' must be at least {} characters", #field_name_str, #min_val));
+        if rule_name.as_str() == "rule" {
+            // 处理多条规则，如 "required|email|min:6"
+            for rule in rule_value.split('|') {
+                let rule_parts: Vec<&str> = rule.splitn(2, ':').collect();
+                let (rule_type, rule_param) = if rule_parts.len() > 1 {
+                    (rule_parts[0], Some(rule_parts[1]))
+                } else {
+                    (rule_parts[0], None)
+                };
+                
+                let check = match rule_type {
+                    "required" => quote! {
+                        if #field_value.is_empty() {
+                            errors.push(format!("Field '{}' is required", #field_name_str));
+                        }
+                    },
+                    "email" => quote! {
+                        if !#field_value.is_empty() && !#field_value.contains('@') {
+                            errors.push(format!("Field '{}' must be a valid email", #field_name_str));
+                        }
+                    },
+                    "min" => {
+                        if let Some(param) = rule_param {
+                            let min_val: i32 = param.parse().unwrap_or(0);
+                            quote! {
+                                if let Ok(num) = #field_value.parse::<i32>() {
+                                    if num < #min_val {
+                                        errors.push(format!("Field '{}' must be at least {}", #field_name_str, #min_val));
                                     }
+                                } else if #field_value.len() < #min_val as usize {
+                                    errors.push(format!("Field '{}' must be at least {} characters", #field_name_str, #min_val));
                                 }
-                            } else {
-                                quote! {}
                             }
-                        },
-                        "max" => {
-                            if let Some(param) = rule_param {
-                                let max_val: i32 = param.parse().unwrap_or(0);
-                                quote! {
-                                    if let Ok(num) = #field_value.parse::<i32>() {
-                                        if num > #max_val {
-                                            errors.push(format!("Field '{}' must be at most {}", #field_name_str, #max_val));
-                                        }
-                                    } else if #field_value.len() > #max_val as usize {
-                                        errors.push(format!("Field '{}' must be at most {} characters", #field_name_str, #max_val));
+                        } else {
+                            quote! {}
+                        }
+                    },
+                    "max" => {
+                        if let Some(param) = rule_param {
+                            let max_val: i32 = param.parse().unwrap_or(0);
+                            quote! {
+                                if let Ok(num) = #field_value.parse::<i32>() {
+                                    if num > #max_val {
+                                        errors.push(format!("Field '{}' must be at most {}", #field_name_str, #max_val));
                                     }
+                                } else if #field_value.len() > #max_val as usize {
+                                    errors.push(format!("Field '{}' must be at most {} characters", #field_name_str, #max_val));
                                 }
-                            } else {
-                                quote! {}
                             }
-                        },
-                        _ => quote! {},
-                    };
-                    
-                    validation_checks.push(check);
-                }
-            },
-            _ => {}
+                        } else {
+                            quote! {}
+                        }
+                    },
+                    _ => quote! {},
+                };
+                
+                validation_checks.push(check);
+            }
         }
     }
     

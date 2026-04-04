@@ -15,7 +15,8 @@ let defaultSetting = {
   waterMark: true,
   waterContent: 'saiadmin',
   ws: false,
-  registerWangEditorButtonFlag: false
+  registerWangEditorButtonFlag: false,
+  videoSound: false
 }
 
 import { defineStore } from 'pinia'
@@ -153,6 +154,12 @@ const useAppStore = defineStore('app', {
 
     setRegisterWangEditorButtonFlag(value) {
       this.registerWangEditorButtonFlag = value
+    },
+
+    toggleVideoSound(status) {
+      this.videoSound = status
+      defaultSetting.videoSound = this.videoSound
+      tool.local.set('setting', defaultSetting)
     }
   }
 })

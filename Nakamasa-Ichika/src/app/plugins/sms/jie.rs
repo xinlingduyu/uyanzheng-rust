@@ -140,7 +140,9 @@ impl SmsPlugin for JieSmsPlugin {
         let url = "http://www.jienet.com/sms/api/send";
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        let result = tokio::task::block_in_place(|| {
+        
+
+        tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(30))
@@ -190,8 +192,6 @@ impl SmsPlugin for JieSmsPlugin {
                     }
                 }
             })
-        });
-
-        result
+        })
     }
 }

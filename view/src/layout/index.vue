@@ -1,6 +1,9 @@
 
 <template>
   <a-layout-content class="h-full main-container">
+    <!-- 视频背景 -->
+    <video-background />
+    
     <columns-layout v-if="appStore.layout === 'columns'" />
     <classic-layout v-if="appStore.layout === 'classic'" />
     <banner-layout v-if="appStore.layout === 'banner'" />
@@ -28,6 +31,7 @@
   import Setting from './setting.vue'
   import SystemSearch from './search.vue'
   import MaButtonMenu from './components/ma-buttonMenu.vue'
+  import VideoBackground from '@/components/video-background/index.vue'
 
   const appStore = useAppStore()
   const userStore = useUserStore()

@@ -7,7 +7,7 @@ export default {
    */
   getUserList(params = {}) {
     return request({
-      url: '/core/system/getUserList',
+      url: '/admin/system/getUserList',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   getUserInfoByIds(data = {}) {
     return request({
-      url: '/core/system/getUserInfoByIds',
+      url: '/admin/system/getUserInfoByIds',
       method: 'post',
       data
     })
@@ -31,7 +31,7 @@ export default {
    */
   getNoticeList(params = {}) {
     return request({
-      url: '/core/system/notice',
+      url: '/admin/system/notice',
       method: 'get',
       params
     })
@@ -43,7 +43,7 @@ export default {
    */
   getStatistics(params = {}) {
     return request({
-      url: '/core/system/statistics',
+      url: '/admin/system/statistics',
       method: 'get',
       params
     })
@@ -55,7 +55,7 @@ export default {
    */
   loginChart(params = {}) {
     return request({
-      url: '/core/system/loginChart',
+      url: '/admin/system/loginChart',
       method: 'get',
       params
     })
@@ -67,7 +67,7 @@ export default {
    */
   clearAllCache() {
     return request({
-      url: '/core/system/clearAllCache',
+      url: '/admin/system/clearAllCache',
       method: 'get'
     })
   },
@@ -78,7 +78,7 @@ export default {
    */
   uploadImage(data = {}) {
     return request({
-      url: '/core/system/uploadImage',
+      url: '/admin/system/uploadImage',
       method: 'post',
       timeout: 30000,
       // headers: { 'Content-Type': 'multipart/form-data' },
@@ -92,7 +92,7 @@ export default {
    */
   uploadFile(data = {}) {
     return request({
-      url: '/core/system/uploadFile',
+      url: '/admin/system/uploadFile',
       method: 'post',
       timeout: 30000,
       // headers: { 'Content-Type': 'multipart/form-data' },
@@ -106,7 +106,7 @@ export default {
    */
   chunkUpload(data = {}) {
     return request({
-      url: '/core/system/chunkUpload',
+      url: '/admin/system/chunkUpload',
       method: 'post',
       timeout: 30000,
       // headers: { 'Content-Type': 'multipart/form-data' },
@@ -120,7 +120,7 @@ export default {
    */
   saveNetWorkImage(data = {}) {
     return request({
-      url: '/core/system/saveNetworkImage',
+      url: '/admin/system/saveNetworkImage',
       method: 'post',
       data
     })
@@ -131,7 +131,7 @@ export default {
    */
   getLoginLogList(params = {}) {
     return request({
-      url: '/core/system/getLoginLogList',
+      url: '/admin/system/getLoginLogList',
       method: 'get',
       params
     })
@@ -142,7 +142,7 @@ export default {
    */
   getOperationLogList(params = {}) {
     return request({
-      url: '/core/system/getOperationLogList',
+      url: '/admin/system/getOperationLogList',
       method: 'get',
       params
     })
@@ -153,7 +153,7 @@ export default {
    */
   getResourceList(params = {}) {
     return request({
-      url: '/core/system/getResourceList',
+      url: '/admin/system/getResourceList',
       method: 'get',
       params
     })
@@ -191,7 +191,7 @@ export default {
    */
   dictAll() {
     return request({
-      url: '/core/system/dictAll',
+      url: '/admin/system/dictAll',
       method: 'get'
     })
   },
@@ -201,7 +201,7 @@ export default {
    */
   downloadById(id) {
     return request({
-      url: '/core/system/downloadById?id=' + id,
+      url: '/admin/system/downloadById?id=' + id,
       responseType: 'blob',
       method: 'get'
     })
@@ -212,7 +212,7 @@ export default {
    */
   downloadByHash(hash) {
     return request({
-      url: '/core/system/downloadByHash?hash=' + hash,
+      url: '/admin/system/downloadByHash?hash=' + hash,
       responseType: 'blob',
       method: 'get'
     })

@@ -177,7 +177,9 @@ impl SmsPlugin for AliSmsPlugin {
         let url = format!("http://dysmsapi.aliyuncs.com/?{}", query);
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        let result = tokio::task::block_in_place(|| {
+        
+
+        tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(10))
@@ -190,8 +192,8 @@ impl SmsPlugin for AliSmsPlugin {
                             Ok(text) => {
                                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text) {
                                     // PHP: if (isset($result['Code']) && $result['Code'] != 'OK')
-                                    if let Some(code) = result.get("Code").and_then(|v| v.as_str()) {
-                                        if code != "OK" {
+                                    if let Some(code) = result.get("Code").and_then(|v| v.as_str())
+                                        && code != "OK" {
                                             return Ok(SmsResult {
                                                 success: false,
                                                 message: result.get("Message")
@@ -203,7 +205,6 @@ impl SmsPlugin for AliSmsPlugin {
                                                     .map(|s| s.to_string()),
                                             });
                                         }
-                                    }
                                     // PHP: return ['code'=>200,'msg'=>'发送成功'];
                                     return Ok(SmsResult {
                                         success: true,
@@ -228,8 +229,6 @@ impl SmsPlugin for AliSmsPlugin {
                     }
                 }
             })
-        });
-
-        result
+        })
     }
 }

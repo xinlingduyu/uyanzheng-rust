@@ -279,14 +279,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut params: Vec<String> = vec![appid.to_string()];
     
     // 处理搜索条件 - 与PHP源码逻辑一致
-    if let Some(so) = &list_req.so {
-        if let Some(keyword) = &so.keyword {
-            if !keyword.is_empty() {
+    if let Some(so) = &list_req.so
+        && let Some(keyword) = &so.keyword
+            && !keyword.is_empty() {
                 where_clause.push_str(" AND name LIKE ?");
                 params.push(format!("%{}%", keyword));
             }
-        }
-    }
 
     // 查询总数
     let count_query = format!("SELECT COUNT(*) FROM u_app_mi WHERE {}", where_clause);

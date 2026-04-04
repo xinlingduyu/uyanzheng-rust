@@ -54,9 +54,7 @@ export default ({ mode }) => {
           target: env.VITE_APP_BASE_URL,
           secure: false, // 关键：允许代理访问自签名证书的 HTTPS 后端
           changeOrigin: true,
-          ws: true,
-          toProxy: true,
-          rewrite: (path) => path.replace(new RegExp(`^${proxyPrefix}`), '')
+          ws: true
         }
       }
     }

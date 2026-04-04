@@ -55,7 +55,7 @@ pub struct QuickJsRuntime {
 }
 
 thread_local! {
-    static CF_CONTEXT: RefCell<Option<CloudFunctionContext>> = RefCell::new(None);
+    static CF_CONTEXT: RefCell<Option<CloudFunctionContext>> = const { RefCell::new(None) };
 }
 
 /// 蛇形命名转驼峰命名

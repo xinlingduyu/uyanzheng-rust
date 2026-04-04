@@ -169,15 +169,13 @@ impl AdminCacheService {
     pub async fn verify_login(&self, username: &str, password_hash: &str) -> CacheResult<AdminData> {
         // 先尝试从缓存验证
         let username_key = username.to_string();
-        if let Some(id) = self.name_index.get(&username_key) {
-            if let Some(data) = self.cache.get(&id) {
-                if data.password == password_hash && data.is_active() {
+        if let Some(id) = self.name_index.get(&username_key)
+            && let Some(data) = self.cache.get(&id)
+                && data.password == password_hash && data.is_active() {
                     return CacheResult::Hit(data);
                 }
                 // 密码不匹配或账号已禁用，移除过期缓存
                 // 但不立即删除，让数据库验证后决定
-            }
-        }
         
         // 缓存验证失败，查询数据库
         match self.verify_from_db(username, password_hash).await {

@@ -20,6 +20,7 @@ sqlx.workspace = true
 num_cpus.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
+parking_lot.workspace = true
 
 deadpool-redis.workspace = true
 fluent-templates.workspace = true
@@ -68,3 +69,7 @@ lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
 # JavaScript 引擎 - 云函数支持
 # QuickJS - 轻量级跨平台 JavaScript 引擎
 rquickjs = { workspace = true }
+
+# 性能分析 - 火焰图支持
+pprof = { workspace = true }
+criterion = { version = "0.5", optional = true }

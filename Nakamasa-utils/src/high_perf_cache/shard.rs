@@ -218,12 +218,11 @@ where
         }
 
         // 使用淘汰策略
-        if let Some(hash) = self.eviction.select_eviction() {
-            if let Some(key) = self.key_hashes.get(&hash).cloned() {
+        if let Some(hash) = self.eviction.select_eviction()
+            && let Some(key) = self.key_hashes.get(&hash).cloned() {
                 self.remove_entry(&key);
                 self.stats.record_eviction();
             }
-        }
     }
 
     /// 检查键是否存在
@@ -475,22 +474,20 @@ where
         // 先尝试读
         {
             let shard = self.shards[index].read().await;
-            if let Some(entry) = shard.data.get(&key) {
-                if !entry.is_expired() {
+            if let Some(entry) = shard.data.get(&key)
+                && !entry.is_expired() {
                     return entry.value.clone();
                 }
-            }
         }
         
         // 需要写入
         let mut shard = self.shards[index].write().await;
         
         // 双重检查
-        if let Some(entry) = shard.data.get(&key) {
-            if !entry.is_expired() {
+        if let Some(entry) = shard.data.get(&key)
+            && !entry.is_expired() {
                 return entry.value.clone();
             }
-        }
         
         let value = f();
         shard.set(key.clone(), value.clone());

@@ -115,6 +115,7 @@ impl CacheConfig {
 
 /// 淘汰策略
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Default)]
 pub enum EvictionPolicy {
     /// 最近最少使用
     LRU,
@@ -126,6 +127,7 @@ pub enum EvictionPolicy {
     FIFO,
     
     /// 自适应策略（根据访问模式动态调整）
+    #[default]
     Adaptive,
     
     /// 混合策略（LFU + LRU）
@@ -143,11 +145,6 @@ pub enum EvictionPolicy {
     Random,
 }
 
-impl Default for EvictionPolicy {
-    fn default() -> Self {
-        Self::Adaptive
-    }
-}
 
 impl EvictionPolicy {
     /// 创建混合策略

@@ -143,7 +143,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }
             }).collect();
 
-            let page_total = (data_total + PAGE_SIZE - 1) / PAGE_SIZE;
+            let page_total = data_total.div_ceil(PAGE_SIZE);
 
             let response = OrderListResponse {
                 currentPage: page,

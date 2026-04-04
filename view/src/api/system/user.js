@@ -7,7 +7,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/user/index',
+      url: '/admin/user/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   read(id) {
     return request({
-      url: '/core/user/read?id=' + id,
+      url: '/admin/user/read?id=' + id,
       method: 'get'
     })
   },
@@ -30,7 +30,7 @@ export default {
    */
   save(params = {}) {
     return request({
-      url: '/core/user/save',
+      url: '/admin/user/save',
       method: 'post',
       data: params
     })
@@ -42,7 +42,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/user/destroy',
+      url: '/admin/user/destroy',
       method: 'delete',
       data
     })
@@ -54,7 +54,7 @@ export default {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/user/update?id=' + id,
+      url: '/admin/user/update?id=' + id,
       method: 'put',
       data
     })
@@ -66,7 +66,7 @@ export default {
    */
   changeStatus(data = {}) {
     return request({
-      url: '/core/user/changeStatus',
+      url: '/admin/user/changeStatus',
       method: 'post',
       data
     })
@@ -78,7 +78,7 @@ export default {
    */
   clearCache(params = {}) {
     return request({
-      url: '/core/user/clearCache',
+      url: '/admin/user/clearCache',
       method: 'post',
       data: params
     })
@@ -90,7 +90,7 @@ export default {
    */
   setHomePage(data = {}) {
     return request({
-      url: '/core/user/setHomePage',
+      url: '/admin/user/setHomePage',
       method: 'post',
       data
     })
@@ -102,7 +102,7 @@ export default {
    */
   initUserPassword(data) {
     return request({
-      url: '/core/user/initUserPassword',
+      url: '/admin/user/initUserPassword',
       method: 'post',
       data
     })
@@ -114,7 +114,7 @@ export default {
    */
   updateInfo(data = {}) {
     return request({
-      url: '/core/user/updateInfo',
+      url: '/admin/user/updateInfo',
       method: 'post',
       data
     })
@@ -126,7 +126,7 @@ export default {
    */
   modifyPassword(data = {}) {
     return request({
-      url: '/core/user/modifyPassword',
+      url: '/admin/user/modifyPassword',
       method: 'post',
       data
     })

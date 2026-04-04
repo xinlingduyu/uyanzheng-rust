@@ -124,7 +124,7 @@ impl GeoIpReader {
             .reader
             .lookup(ip)
             .map_err(|e| GeoIpError::LookupFailed(e.to_string()))?
-            .ok_or_else(|| GeoIpError::NoData)?;
+            .ok_or(GeoIpError::NoData)?;
 
         Ok(self.extract_location(&city))
     }

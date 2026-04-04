@@ -46,7 +46,7 @@ impl RedisConfig {
 
       // 添加认证信息
       if let Some(password) = self.password() {
-          url.push_str(":");
+          url.push(':');
           url.push_str(password);
           url.push('@');
       }

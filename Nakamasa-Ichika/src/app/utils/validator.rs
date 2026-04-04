@@ -197,11 +197,10 @@ impl Validator {
 
     #[inline]
     pub fn reg(&mut self, field: &str, value: &str, pattern: &str) -> &mut Self {
-        if let Ok(regex) = Regex::new(pattern) {
-            if !regex.is_match(value) {
+        if let Ok(regex) = Regex::new(pattern)
+            && !regex.is_match(value) {
                 self.error = Some(format!("{}{}", field, ERR_FORMAT));
             }
-        }
         self
     }
 

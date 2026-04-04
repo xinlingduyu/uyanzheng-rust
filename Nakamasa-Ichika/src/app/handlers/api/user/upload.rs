@@ -6,21 +6,26 @@
 //!
 //! 处理流程：
 //! 1. 验证token参数
-//! 2. 检查文件类型和大小
-//! 3. 生成唯一文件名
-//! 4. 保存文件到上传目录
-//! 5. 返回文件访问URL
+//! 2. 检查每日上传限制（基于用户 uid）
+//! 3. 检查文件类型和大小
+//! 4. 生成唯一文件名
+//! 5. 保存文件到上传目录
+//! 6. 异步更新上传计数和日志
+//! 7. 返回文件访问URL
 
 use salvo::prelude::*;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::fs;
+use chrono::{Utc, TimeZone, Datelike};
+use tokio::spawn;
 
 use crate::app::utils::response::SignedApiResponse;
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::ModifyPicRequest;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::core::AppState;
 
 #[derive(Debug, Serialize)]
 struct UploadResponse {
@@ -119,6 +124,22 @@ fn validate_image_content(data: &[u8]) -> Result<(), String> {
     Err("文件内容不是有效的图片格式".to_string())
 }
 
+/// 生成每日上传计数的 Redis key（基于用户 uid）
+/// 格式: upload_limit:{appid}:{uid}:{date}
+fn get_daily_limit_key(appid: u64, uid: u64) -> String {
+    let today = Utc::now().format("%Y%m%d");
+    format!("upload_limit:{}:{}:{}", appid, uid, today)
+}
+
+/// 计算到当天结束的剩余秒数
+fn seconds_until_midnight() -> u64 {
+    let now = Utc::now();
+    let tomorrow = Utc.with_ymd_and_hms(now.year(), now.month(), now.day() + 1, 0, 0, 0)
+        .single()
+        .unwrap_or_else(|| now + chrono::Duration::hours(24));
+    (tomorrow - now).num_seconds().max(1) as u64
+}
+
 /// 用户上传文件接口
 #[handler]
 pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -141,13 +162,18 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     let uid = user_info.uid;
 
-    // 获取配置
-    let config = depot.obtain::<crate::core::AppState>()
-        .map(|state| state.config())
-        .ok();
+    // 获取 AppState 和配置
+    let app_state = match depot.obtain::<AppState>() {
+        Ok(state) => state,
+        Err(_) => {
+            res.render(Json(SignedApiResponse::<()>::error("服务状态异常", 3, app_key)));
+            return;
+        }
+    };
     
-    let upload_base_dir = config.map(|c| c.app().upload_dir.as_str())
-        .unwrap_or("./data/upload");
+    let config = app_state.config();
+    let upload_base_dir = config.app().upload_dir.as_str();
+    let daily_limit = config.app().upload_daily_limit;
 
     // 设置最大大小限制
     req.set_secure_max_size(MAX_FILE_SIZE as usize);
@@ -176,6 +202,36 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if let Err(msg) = validator.validate() {
         res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
         return;
+    }
+    
+    // 检查每日上传限制（基于用户 uid，仅在限制大于 0 时生效）
+    if daily_limit > 0 {
+        if let Some(redis_pool) = app_state.try_get_redis() {
+            let limit_key = get_daily_limit_key(appid, uid);
+            
+            // 获取当前上传次数
+            match app_state.redis_util.get(redis_pool, &limit_key).await {
+                Ok(Some(count_str)) => {
+                    if let Ok(count) = count_str.parse::<u32>() {
+                        if count >= daily_limit {
+                            res.render(Json(SignedApiResponse::<()>::error(
+                                format!("今日上传次数已达上限（{}次）", daily_limit),
+                                22,
+                                app_key
+                            )));
+                            return;
+                        }
+                    }
+                }
+                Ok(None) => {
+                    // 首次上传，计数为 0，无需处理
+                }
+                Err(e) => {
+                    tracing::warn!("获取上传计数失败: {}", e);
+                    // Redis 错误不阻止上传，继续执行
+                }
+            }
+        }
     }
     
     // 获取文件字段
@@ -258,6 +314,52 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     
     // 构造相对URL路径: /upload/appid/uid/filename
     let url = format!("/upload/{}/{}/{}", appid, uid, unique_filename);
+    
+    // 异步更新上传计数和写入日志（仅在限制大于 0 时）
+    if daily_limit > 0 {
+        if let Some(redis_pool) = app_state.try_get_redis().cloned() {
+            let limit_key = get_daily_limit_key(appid, uid);
+            let ttl = seconds_until_midnight();
+            let redis_util = app_state.redis_util.clone();
+            let log_uid = uid;
+            let log_appid = appid;
+            let log_filename = unique_filename.clone();
+            let log_url = url.clone();
+            
+            // 异步执行 Redis 更新和日志记录
+            spawn(async move {
+                // 更新上传计数
+                if let Err(e) = redis_util.incr_with_expire(&redis_pool, &limit_key, ttl).await {
+                    tracing::warn!("更新上传计数失败: {}", e);
+                }
+                
+                // 写入上传日志
+                tracing::info!(
+                    appid = log_appid,
+                    uid = log_uid,
+                    filename = %log_filename,
+                    url = %log_url,
+                    "用户上传文件成功"
+                );
+            });
+        }
+    } else {
+        // 无限制时也记录日志
+        let log_uid = uid;
+        let log_appid = appid;
+        let log_filename = unique_filename.clone();
+        let log_url = url.clone();
+        
+        spawn(async move {
+            tracing::info!(
+                appid = log_appid,
+                uid = log_uid,
+                filename = %log_filename,
+                url = %log_url,
+                "用户上传文件成功"
+            );
+        });
+    }
     
     res.render(Json(SignedApiResponse::success(app_key, Some(UploadResponse { url }))));
 }

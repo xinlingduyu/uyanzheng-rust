@@ -446,3 +446,240 @@ pub async fn switch_user_api_code(req: &mut Request, depot: &mut Depot, res: &mu
         }
     }
 }
+
+// ========== 公告接口 ==========
+
+#[derive(Debug, Serialize)]
+struct NoticeItem {
+    id: u64,
+    title: String,
+    content: String,
+    #[serde(rename = "type")]
+    notice_type: i32,
+    status: i32,
+    create_time: String,
+}
+
+/// 获取公告列表 (GET /system/notice)
+#[handler]
+pub async fn get_notice_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    // 获取查询参数
+    let limit: i64 = req.query("limit").unwrap_or(10);
+    let _order_by: String = req.query("orderBy").unwrap_or("id".to_string());
+    let _order_type: String = req.query("orderType").unwrap_or("desc".to_string());
+
+    // 查询公告列表
+    let query = r#"
+        SELECT id, content, time 
+        FROM u_app_notice 
+        WHERE appid = ? OR appid IS NULL 
+        ORDER BY id DESC 
+        LIMIT ?
+    "#;
+
+    let result = sqlx::query(query)
+        .bind(appid)
+        .bind(limit)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            let list: Vec<NoticeItem> = rows.iter().map(|row| {
+                let id: u64 = row.try_get("id").unwrap_or(0);
+                let content: String = row.try_get("content").unwrap_or_default();
+                let time: i64 = row.try_get("time").unwrap_or(0);
+                
+                let create_time = chrono::DateTime::from_timestamp(time, 0)
+                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_default();
+
+                NoticeItem {
+                    id,
+                    title: content.chars().take(50).collect(),
+                    content,
+                    notice_type: 1,
+                    status: 1,
+                    create_time,
+                }
+            }).collect();
+
+            res.render(Json(ApiResponse::success("成功", Some(list))));
+        }
+        Err(e) => {
+            tracing::error!("获取公告列表失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("获取公告列表失败", 201)));
+        }
+    }
+}
+
+// ========== 统计接口 ==========
+
+#[derive(Debug, Serialize)]
+struct StatisticsResponse {
+    user: i64,
+    attach: i64,
+    login: i64,
+    operate: i64,
+}
+
+/// 获取基础统计 (GET /system/statistics)
+#[handler]
+pub async fn get_statistics(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    // 用户总数
+    let user: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_user WHERE appid = ?")
+        .bind(appid)
+        .fetch_one(app_state.get_db())
+        .await
+        .unwrap_or(0);
+
+    // 附件数量（暂无附件表，返回0）
+    let attach: i64 = 0;
+
+    // 登录日志数量
+    let login: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'login' AND appid = ?")
+        .bind(appid)
+        .fetch_one(app_state.get_db())
+        .await
+        .unwrap_or(0);
+
+    // 操作日志数量
+    let operate: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'admin' AND appid = ?")
+        .bind(appid)
+        .fetch_one(app_state.get_db())
+        .await
+        .unwrap_or(0);
+
+    let data = StatisticsResponse {
+        user,
+        attach,
+        login,
+        operate,
+    };
+
+    res.render(Json(ApiResponse::success("成功", Some(data))));
+}
+
+#[derive(Debug, Serialize)]
+struct LoginChartResponse {
+    login_date: Vec<String>,
+    login_count: Vec<i64>,
+}
+
+/// 获取登录图表统计 (GET /system/loginChart)
+#[handler]
+pub async fn get_login_chart(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    // 计算7天前的时间戳
+    let now = chrono::Utc::now();
+    let seven_days_ago = now - chrono::Duration::days(6);
+    let seven_days_ago_ts = seven_days_ago.timestamp();
+    let seven_days_ago_start = seven_days_ago_ts - (seven_days_ago_ts % 86400);
+
+    // 查询近7天的登录日志统计
+    let query = r#"
+        SELECT FROM_UNIXTIME(time, '%m-%d') as day, COUNT(*) as cnt 
+        FROM u_logs 
+        WHERE ug = 'user' AND type = 'login' AND time >= ? AND appid = ?
+        GROUP BY FROM_UNIXTIME(time, '%m-%d')
+        ORDER BY day ASC
+    "#;
+
+    let result = sqlx::query(query)
+        .bind(seven_days_ago_start)
+        .bind(appid)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    // 构建日期到数量的映射
+    let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    if let Ok(rows) = result {
+        for row in rows {
+            if let (Ok(day), Ok(cnt)) = (row.try_get::<String, _>("day"), row.try_get::<i64, _>("cnt")) {
+                day_counts.insert(day, cnt);
+            }
+        }
+    }
+
+    // 生成近7天的统计（填充缺失的日期）
+    let mut login_date = Vec::with_capacity(7);
+    let mut login_count = Vec::with_capacity(7);
+    
+    for i in (0..7).rev() {
+        let day_date = (now - chrono::Duration::days(i)).format("%m-%d").to_string();
+        login_date.push(day_date.clone());
+        login_count.push(day_counts.get(&day_date).copied().unwrap_or(0));
+    }
+
+    let data = LoginChartResponse {
+        login_date,
+        login_count,
+    };
+
+    res.render(Json(ApiResponse::success("成功", Some(data))));
+}

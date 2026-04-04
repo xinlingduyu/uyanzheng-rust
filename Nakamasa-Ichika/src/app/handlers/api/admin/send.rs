@@ -242,62 +242,54 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator.int_u64("id", edit_req.id, 1, 99999999999);
     
     // 验证vc_length和vc_time范围
-    if let Some(ref vc_length) = edit_req.vc_length {
-        if *vc_length < 4 || *vc_length > 6 {
+    if let Some(ref vc_length) = edit_req.vc_length
+        && (*vc_length < 4 || *vc_length > 6) {
             res.render(Json(ApiResponse::<()>::error("验证码长度有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref vc_time) = edit_req.vc_time {
-        if *vc_time < 1 || *vc_time > 30 {
+    if let Some(ref vc_time) = edit_req.vc_time
+        && (*vc_time < 1 || *vc_time > 30) {
             res.render(Json(ApiResponse::<()>::error("验证码有效期有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref state) = edit_req.smtp_state {
-        if state != "on" && state != "off" {
+    if let Some(ref state) = edit_req.smtp_state
+        && state != "on" && state != "off" {
             res.render(Json(ApiResponse::<()>::error("邮箱控制状态设置有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref state) = edit_req.sms_state {
-        if state != "on" && state != "off" {
+    if let Some(ref state) = edit_req.sms_state
+        && state != "on" && state != "off" {
             res.render(Json(ApiResponse::<()>::error("短信控制状态设置有误", 201)));
             return;
         }
-    }
     
     // 验证SMTP配置
-    if let Some(ref host) = edit_req.smtp_host {
-        if host.len() < 8 || host.len() > 64 {
+    if let Some(ref host) = edit_req.smtp_host
+        && (host.len() < 8 || host.len() > 64) {
             res.render(Json(ApiResponse::<()>::error("邮箱发信服务器设置有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref port) = edit_req.smtp_port {
-        if *port < 10 || *port > 9999 {
+    if let Some(ref port) = edit_req.smtp_port
+        && (*port < 10 || *port > 9999) {
             res.render(Json(ApiResponse::<()>::error("邮箱端口设置有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref user) = edit_req.smtp_user {
-        if user.len() < 4 || user.len() > 64 {
+    if let Some(ref user) = edit_req.smtp_user
+        && (user.len() < 4 || user.len() > 64) {
             res.render(Json(ApiResponse::<()>::error("邮箱发信账号设置有误", 201)));
             return;
         }
-    }
     
-    if let Some(ref pass) = edit_req.smtp_pass {
-        if pass.len() < 4 || pass.len() > 64 {
+    if let Some(ref pass) = edit_req.smtp_pass
+        && (pass.len() < 4 || pass.len() > 64) {
             res.render(Json(ApiResponse::<()>::error("邮箱发信密码设置有误", 201)));
             return;
         }
-    }
     
     // 验证sms_type
     if let Some(ref sms_type) = edit_req.sms_type {
@@ -312,12 +304,11 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     
     // 验证sms_config必须是数组
-    if let Some(ref sms_config) = edit_req.sms_config {
-        if !sms_config.is_array() {
+    if let Some(ref sms_config) = edit_req.sms_config
+        && !sms_config.is_array() {
             res.render(Json(ApiResponse::<()>::error("短信发信参数不规范", 201)));
             return;
         }
-    }
     
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
@@ -335,14 +326,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
          sms_type = ?, sms_config = ?
          WHERE id = ?"
     )
-    .bind(&edit_req.vc_length)
-    .bind(&edit_req.vc_time)
+    .bind(edit_req.vc_length)
+    .bind(edit_req.vc_time)
     .bind(&edit_req.smtp_state)
     .bind(&edit_req.sms_state)
-    .bind(&edit_req.smtp_host.as_deref())
-    .bind(&edit_req.smtp_port)
-    .bind(&edit_req.smtp_user.as_deref())
-    .bind(&edit_req.smtp_pass.as_deref())
+    .bind(edit_req.smtp_host.as_deref())
+    .bind(edit_req.smtp_port)
+    .bind(edit_req.smtp_user.as_deref())
+    .bind(edit_req.smtp_pass.as_deref())
     .bind(&edit_req.sms_type)
     .bind(sms_config_json.as_deref())
     .bind(edit_req.id)

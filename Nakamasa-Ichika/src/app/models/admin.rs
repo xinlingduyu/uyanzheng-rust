@@ -6,16 +6,13 @@ use serde_json::Value;
 #[derive(Debug, Type, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AdminState {
+    #[default]
     Y,  // 启用
     N,  // 禁用
 }
 
-impl Default for AdminState {
-    fn default() -> Self {
-        AdminState::Y
-    }
-}
 
 /// 管理员模型 - 对应 u_admin 表
 #[derive(Debug, Serialize, Deserialize, FromRow)]

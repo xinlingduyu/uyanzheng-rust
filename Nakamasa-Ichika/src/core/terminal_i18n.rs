@@ -60,12 +60,11 @@ fn detect_terminal_language() -> String {
                 return normalized;
             }
             // 尝试只匹配主标签 (如 zh_CN -> zh)
-            if let Some(main_tag) = normalized.split('-').next() {
-                if is_supported_lang(main_tag) {
+            if let Some(main_tag) = normalized.split('-').next()
+                && is_supported_lang(main_tag) {
                     // 返回对应的完整语言标签
                     return get_matching_lang(main_tag);
                 }
-            }
         }
     }
     
@@ -99,9 +98,7 @@ fn normalize_lang(lang: &str) -> String {
 fn is_supported_lang(lang: &str) -> bool {
     crate::config::get()
         .i18n()
-        .supported_languages()
-        .iter()
-        .any(|&supported| supported == lang)
+        .supported_languages().contains(&lang)
 }
 
 /// 获取匹配的支持语言
@@ -124,20 +121,18 @@ fn load_terminal_resources() -> HashMap<String, String> {
     
     // 尝试加载对应语言的资源文件
     let lang_file = resources_path.join(format!("{}.json", lang));
-    if let Ok(content) = fs::read_to_string(&lang_file) {
-        if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
+    if let Ok(content) = fs::read_to_string(&lang_file)
+        && let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
             return map;
         }
-    }
     
     // 如果加载失败，尝试加载默认语言
     let default_lang = config.default_language();
     let default_file = resources_path.join(format!("{}.json", default_lang));
-    if let Ok(content) = fs::read_to_string(&default_file) {
-        if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
+    if let Ok(content) = fs::read_to_string(&default_file)
+        && let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&content) {
             return map;
         }
-    }
     
     // 都失败则返回空 Map
     HashMap::new()
@@ -159,8 +154,7 @@ fn load_terminal_resources() -> HashMap<String, String> {
 #[inline]
 pub fn t(key: &str) -> String {
     TERMINAL_RESOURCES
-        .get(key)
-        .map(|s| s.clone())
+        .get(key).cloned()
         .unwrap_or_else(|| key.to_string())
 }
 

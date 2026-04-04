@@ -61,8 +61,8 @@ async fn update_order(db: &sqlx::MySqlPool, order: &sqlx::mysql::MySqlRow, trade
     }
 
     // 代理分账
-    if let Some(inv_uid) = inviter_id {
-        if divide_money > 0 {
+    if let Some(inv_uid) = inviter_id
+        && divide_money > 0 {
             let _ = sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
                 .bind(divide_money)
                 .bind(inv_uid)
@@ -70,7 +70,6 @@ async fn update_order(db: &sqlx::MySqlPool, order: &sqlx::mysql::MySqlRow, trade
                 .execute(&mut *tx)
                 .await;
         }
-    }
 
     // 根据订单类型处理
     match order_type.as_str() {
@@ -243,11 +242,10 @@ fn parse_xml_to_json(xml: &str) -> serde_json::Value {
     
     // 使用预编译的普通内容正则
     for cap in XML_PLAIN_REGEX.captures_iter(xml) {
-        if let (Some(k), Some(v)) = (cap.get(1), cap.get(2)) {
-            if !result.contains_key(k.as_str()) {
+        if let (Some(k), Some(v)) = (cap.get(1), cap.get(2))
+            && !result.contains_key(k.as_str()) {
                 result.insert(k.as_str().to_string(), serde_json::Value::String(v.as_str().to_string()));
             }
-        }
     }
     serde_json::Value::Object(result)
 }

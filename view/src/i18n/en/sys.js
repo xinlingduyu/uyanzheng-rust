@@ -89,4 +89,8 @@ export default {
   noticeTitle: 'System Prompted',
   save: 'Save',
   cancel: 'Cancel',
+  lightMode: 'Switch to Light Mode',
+  darkMode: 'Switch to Dark Mode',
+  videoSound: 'Video Sound',
+  videoSoundHelp: 'Enable to play video background sound',
 }

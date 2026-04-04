@@ -134,7 +134,7 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .bind("rePhone")
                 .bind(true)
                 .bind(current_time)
-                .bind(&ip)
+                .bind(ip)
                 .bind(appid)
                 .execute(app_state.get_db())
                 .await;

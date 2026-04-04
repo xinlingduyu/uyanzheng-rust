@@ -2,6 +2,7 @@ import mine from '@/assets/skins-thumb/mine/thumb.jpg'
 import classics from '@/assets/skins-thumb/classics/thumb.jpg'
 import businessGray from '@/assets/skins-thumb/businessGray/thumb.jpg'
 import city from '@/assets/skins-thumb/city/thumb.jpg'
+import video from '@/assets/skins-thumb/video/thumb.svg'
 
 export default [
   {
@@ -19,5 +20,9 @@ export default [
   {
     name: 'city',
     thumb: city
+  },
+  {
+    name: 'video',
+    thumb: video
   }
 ]

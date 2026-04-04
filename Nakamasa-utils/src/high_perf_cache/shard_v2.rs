@@ -244,6 +244,12 @@ impl<K: Hash + Eq + Clone> FastLru<K> {
     pub fn len(&self) -> usize {
         self.nodes.len()
     }
+
+    /// 检查是否为空
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
 }
 
 impl<K> Drop for FastLru<K> {
@@ -465,8 +471,8 @@ where
         // 先尝试读锁
         {
             let data = self.data.read();
-            if let Some((_, entry)) = data.entries.get(&hash) {
-                if !entry.is_expired() {
+            if let Some((_, entry)) = data.entries.get(&hash)
+                && !entry.is_expired() {
                     // 记录访问（无锁操作）
                     entry.touch();
                     
@@ -475,7 +481,6 @@ where
                     data.stats.record_hit();
                     return Some(entry.value.clone());
                 }
-            }
         }
 
         self.stats.record_miss();
@@ -486,14 +491,13 @@ where
     #[inline(always)]
     pub fn get_with_meta(&self, hash: u64) -> Option<(V, u64, Duration)> {
         let data = self.data.read();
-        if let Some((_, entry)) = data.entries.get(&hash) {
-            if !entry.is_expired() {
+        if let Some((_, entry)) = data.entries.get(&hash)
+            && !entry.is_expired() {
                 let count = entry.touch();
                 let ttl = entry.remaining_ttl();
                 data.stats.record_hit();
                 return Some((entry.value.clone(), count, ttl));
             }
-        }
         drop(data);
         self.stats.record_miss();
         None

@@ -89,4 +89,8 @@ export default {
   noticeTitle: '系统提示',
   save: '保存',
   cancel: '取消',
+  lightMode: '切换到浅色模式',
+  darkMode: '切换到深色模式',
+  videoSound: '视频声音',
+  videoSoundHelp: '开启后播放视频背景声音',
 }

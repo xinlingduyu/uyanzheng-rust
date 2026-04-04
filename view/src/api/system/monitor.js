@@ -10,7 +10,7 @@ export default {
    */
   getServerInfo() {
     return request({
-      url: '/core/system/monitor',
+      url: '/admin/system/monitor',
       method: 'get'
     })
   }

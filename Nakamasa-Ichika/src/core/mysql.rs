@@ -113,7 +113,157 @@ pub struct PoolStatus {
 // 批量操作辅助
 // ============================================================================
 
-/// 批量插入辅助器
+/// 批量值类型（支持参数化绑定）
+#[derive(Clone, Debug)]
+pub enum BatchValue {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+}
+
+impl From<&str> for BatchValue {
+    fn from(s: &str) -> Self {
+        BatchValue::String(s.to_string())
+    }
+}
+
+impl From<String> for BatchValue {
+    fn from(s: String) -> Self {
+        BatchValue::String(s)
+    }
+}
+
+impl From<i64> for BatchValue {
+    fn from(v: i64) -> Self {
+        BatchValue::Int(v)
+    }
+}
+
+impl From<i32> for BatchValue {
+    fn from(v: i32) -> Self {
+        BatchValue::Int(v as i64)
+    }
+}
+
+impl From<f64> for BatchValue {
+    fn from(v: f64) -> Self {
+        BatchValue::Float(v)
+    }
+}
+
+impl From<bool> for BatchValue {
+    fn from(v: bool) -> Self {
+        BatchValue::Bool(v)
+    }
+}
+
+/// 批量插入辅助器（参数化版本 - 安全高效）
+/// 
+/// 使用参数化查询避免 SQL 注入，同时保持批量插入的性能优势。
+/// 
+/// # Example
+/// ```rust,ignore
+/// let mut inserter = BatchInserterSafe::new("users", vec!["id", "name"], 100);
+/// inserter.add_row(vec![BatchValue::Int(1), BatchValue::String("Alice".into())]);
+/// 
+/// while let Some((sql, params)) = inserter.get_batch() {
+///     let mut query = sqlx::query(&sql);
+///     for param in params {
+///         query = match param {
+///             BatchValue::Null => query.bind(None::<String>),
+///             BatchValue::Bool(b) => query.bind(*b as i8),
+///             BatchValue::Int(i) => query.bind(*i),
+///             BatchValue::Float(f) => query.bind(*f),
+///             BatchValue::String(s) => query.bind(s),
+///         };
+///     }
+///     query.execute(&pool).await?;
+/// }
+/// ```
+pub struct BatchInserterSafe<'a> {
+    table: &'a str,
+    columns: Vec<&'a str>,
+    batch_size: usize,
+    current_batch: Vec<Vec<BatchValue>>,
+    total_rows: usize,
+}
+
+impl<'a> BatchInserterSafe<'a> {
+    /// 创建新的批量插入器
+    pub fn new(table: &'a str, columns: Vec<&'a str>, batch_size: usize) -> Self {
+        Self {
+            table,
+            columns,
+            batch_size: max(batch_size, 1),
+            current_batch: Vec::with_capacity(batch_size),
+            total_rows: 0,
+        }
+    }
+    
+    /// 添加一行数据
+    pub fn add_row(&mut self, values: Vec<BatchValue>) {
+        if values.len() != self.columns.len() {
+            return;
+        }
+        
+        self.current_batch.push(values);
+        self.total_rows += 1;
+    }
+    
+    /// 获取当前批次的 SQL 和参数（如果达到批量大小）
+    pub fn get_batch(&mut self) -> Option<(String, Vec<BatchValue>)> {
+        if self.current_batch.len() >= self.batch_size {
+            self.take_batch()
+        } else {
+            None
+        }
+    }
+    
+    /// 强制获取当前批次的 SQL 和参数
+    pub fn take_batch(&mut self) -> Option<(String, Vec<BatchValue>)> {
+        if self.current_batch.is_empty() {
+            return None;
+        }
+        
+        let columns = self.columns.join(", ");
+        let row_count = self.current_batch.len();
+        let col_count = self.columns.len();
+        
+        // 构建参数化 SQL: INSERT INTO table (col1, col2) VALUES (?, ?), (?, ?), ...
+        let placeholders: Vec<&str> = (0..col_count).map(|_| "?").collect();
+        let row_placeholder = format!("({})", placeholders.join(", "));
+        let all_placeholders: Vec<String> = (0..row_count).map(|_| row_placeholder.clone()).collect();
+        
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES {}",
+            self.table, columns, all_placeholders.join(", ")
+        );
+        
+        // 展平参数
+        let params: Vec<BatchValue> = self.current_batch.drain(..).flatten().collect();
+        
+        Some((sql, params))
+    }
+    
+    /// 获取总行数
+    #[inline]
+    pub fn total_rows(&self) -> usize {
+        self.total_rows
+    }
+    
+    /// 检查是否还有未处理的批次
+    #[inline]
+    pub fn has_remaining(&self) -> bool {
+        !self.current_batch.is_empty()
+    }
+}
+
+/// 批量插入辅助器（字符串版本 - 保持向后兼容）
+/// 
+/// 注意：此版本使用字符串拼接，仅用于受信任的数据。
+/// 对于用户输入，请使用 BatchInserterSafe。
 pub struct BatchInserter<'a> {
     table: &'a str,
     columns: Vec<&'a str>,
@@ -199,6 +349,24 @@ mod tests {
         let sql = inserter.get_batch_sql();
         assert!(sql.is_some());
         assert!(sql.unwrap().contains("INSERT INTO users"));
+        
+        assert_eq!(inserter.total_rows(), 2);
+    }
+    
+    #[test]
+    fn test_batch_inserter_safe() {
+        let mut inserter = BatchInserterSafe::new("users", vec!["id", "name"], 2);
+        
+        inserter.add_row(vec![BatchValue::Int(1), BatchValue::String("Alice".into())]);
+        assert!(!inserter.has_remaining() || inserter.current_batch.len() < 2);
+        
+        inserter.add_row(vec![BatchValue::Int(2), BatchValue::String("Bob".into())]);
+        let batch = inserter.get_batch();
+        assert!(batch.is_some());
+        
+        let (sql, params) = batch.unwrap();
+        assert!(sql.contains("INSERT INTO users"));
+        assert_eq!(params.len(), 4); // 2 rows * 2 columns
         
         assert_eq!(inserter.total_rows(), 2);
     }

@@ -74,7 +74,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     // 计算总页数
-    let page_total = (data_total + PAGE_SIZE - 1) / PAGE_SIZE;
+    let page_total = data_total.div_ceil(PAGE_SIZE);
 
     // 查询列表数据
     let result = sqlx::query_as::<_, (i64, String, i64, i64, i32)>(

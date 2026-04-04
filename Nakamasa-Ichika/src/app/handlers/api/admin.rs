@@ -5,6 +5,7 @@ pub mod login;
 pub mod app;
 pub mod user;
 pub mod system;
+pub mod dict;
 pub mod cdk_kami;
 pub mod agent_list;
 pub mod agent_group;
@@ -33,6 +34,7 @@ pub mod blocklist;
 
 use salvo::Router;
 use crate::app::middleware::admin_auth::AdminAuth;
+use crate::core::flamegraph;
 
 pub fn admin_routes() -> Router {
     Router::with_path("/api/admin")
@@ -54,6 +56,12 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/system/getUserApiCode").hoop(AdminAuth::new()).post(system::get_user_api_code))
         .push(Router::with_path("/system/editUserApiCode").hoop(AdminAuth::new()).post(system::edit_user_api_code))
         .push(Router::with_path("/system/switchUserApiCode").hoop(AdminAuth::new()).post(system::switch_user_api_code))
+        // Dict - 字典数据（不需要认证）
+        .push(Router::with_path("/system/dictAll").get(dict::dict_all))
+        // Notice/Statistics - 需要认证
+        .push(Router::with_path("/system/notice").hoop(AdminAuth::new()).get(system::get_notice_list))
+        .push(Router::with_path("/system/statistics").hoop(AdminAuth::new()).get(system::get_statistics))
+        .push(Router::with_path("/system/loginChart").hoop(AdminAuth::new()).get(system::get_login_chart))
         // App - 需要认证
         .push(Router::with_path("/app/get").hoop(AdminAuth::new()).post(app::get_info))
         .push(Router::with_path("/app/getInfo").hoop(AdminAuth::new()).post(app::get_info))
@@ -107,6 +115,9 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/cdkUser/edit").hoop(AdminAuth::new()).post(cdk_user::edit))
         .push(Router::with_path("/cdkUser/editState").hoop(AdminAuth::new()).post(cdk_user::edit_state))
         .push(Router::with_path("/cdkUser/del").hoop(AdminAuth::new()).post(cdk_user::del))
+        .push(Router::with_path("/cdkUser/delall").hoop(AdminAuth::new()).post(cdk_user::del_all))
+        .push(Router::with_path("/cdkUser/outall").hoop(AdminAuth::new()).post(cdk_user::out_all))
+        .push(Router::with_path("/cdkUser/clear").hoop(AdminAuth::new()).get(cdk_user::clear))
         // Goods - 需要认证
         .push(Router::with_path("/goods/list").hoop(AdminAuth::new()).post(goods::get_list))
         .push(Router::with_path("/goods/add").hoop(AdminAuth::new()).post(goods::add))
@@ -201,4 +212,11 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/blocklist/edit").hoop(AdminAuth::new()).post(blocklist::edit))
         .push(Router::with_path("/blocklist/del").hoop(AdminAuth::new()).post(blocklist::del))
         .push(Router::with_path("/blocklist/delall").hoop(AdminAuth::new()).post(blocklist::del_all))
+        // Flamegraph - 火焰图性能分析（需要认证）
+        .push(Router::with_path("/flamegraph/start").hoop(AdminAuth::new()).post(flamegraph::flame_start))
+        .push(Router::with_path("/flamegraph/stop").hoop(AdminAuth::new()).post(flamegraph::flame_stop))
+        .push(Router::with_path("/flamegraph/status").hoop(AdminAuth::new()).get(flamegraph::flame_status))
+        .push(Router::with_path("/flamegraph/svg").hoop(AdminAuth::new()).get(flamegraph::flame_svg))
+        .push(Router::with_path("/flamegraph/pprof").hoop(AdminAuth::new()).get(flamegraph::flame_pprof))
+        .push(Router::with_path("/flamegraph/auto").hoop(AdminAuth::new()).post(flamegraph::flame_auto_profile))
 }

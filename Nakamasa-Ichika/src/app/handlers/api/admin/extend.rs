@@ -83,8 +83,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut count_params: Vec<String> = vec![appid.to_string()];
 
     // 添加搜索条件
-    if let Some(so) = list_req.so {
-        if !so.keyword.is_empty() {
+    if let Some(so) = list_req.so
+        && !so.keyword.is_empty() {
             query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
             count_query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
             let keyword = format!("%{}%", so.keyword);
@@ -95,7 +95,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             count_params.push(keyword.clone());
             count_params.push(keyword.clone());
         }
-    }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
 

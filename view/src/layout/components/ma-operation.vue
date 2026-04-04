@@ -2,7 +2,7 @@
   <div class="mr-2 flex justify-end lg:justify-between w-full lg:w-auto">
     <a-space class="mr-0 lg:mr-5" size="medium">
       <a-tooltip :content="$t('sys.store')" v-if="isDev">
-        <a-button :shape="'circle'" class="hidden lg:inline" @click="handleAppStore">
+        <a-button :shape="'circle'" @click="handleAppStore">
           <template #icon>
             <icon-apps :size="16" :rotate="45" />
           </template>
@@ -10,23 +10,26 @@
       </a-tooltip>
 
       <a-tooltip :content="$t('sys.search')">
-        <a-button :shape="'circle'" @click="() => (appStore.searchOpen = true)" class="hidden lg:inline">
+        <a-button :shape="'circle'" @click="() => (appStore.searchOpen = true)">
           <template #icon>
             <icon-search />
           </template>
         </a-button>
       </a-tooltip>
 
-      <!--      <a-tooltip content="锁屏">-->
-      <!--        <a-button :shape="'circle'" class="hidden lg:inline">-->
-      <!--          <template #icon>-->
-      <!--            <icon-lock />-->
-      <!--          </template>-->
-      <!--        </a-button>-->
-      <!--      </a-tooltip>-->
+      <!-- 黑白模式切换 -->
+      <a-tooltip :content="appStore.mode === 'dark' ? $t('sys.lightMode') : $t('sys.darkMode')">
+        <a-button :shape="'circle'" @click="toggleDarkMode">
+          <template #icon>
+            <icon-moon-fill v-if="appStore.mode === 'light'" />
+            <icon-sun-fill v-else />
+          </template>
+        </a-button>
+      </a-tooltip>
 
+      <!-- 全屏切换 -->
       <a-tooltip :content="isFullScreen ? $t('sys.closeFullScreen') : $t('sys.fullScreen')">
-        <a-button :shape="'circle'" class="hidden lg:inline" @click="screen">
+        <a-button :shape="'circle'" @click="screen">
           <template #icon>
             <icon-fullscreen-exit v-if="isFullScreen" />
             <icon-fullscreen v-else />
@@ -34,14 +37,14 @@
         </a-button>
       </a-tooltip>
 
+      <!-- 消息通知 -->
       <a-trigger trigger="click">
         <a-button :shape="'circle'">
           <template #icon>
             <a-badge
-              :count="5"
-              dot
+              :count="messageStore.messageList?.length || 0"
               :dotStyle="{ width: '5px', height: '5px' }"
-              v-if="messageStore.messageList.length > 0">
+              v-if="messageStore.messageList && messageStore.messageList.length > 0">
               <icon-notification />
             </a-badge>
             <icon-notification v-else />
@@ -53,8 +56,9 @@
         </template>
       </a-trigger>
 
+      <!-- 页面设置 -->
       <a-tooltip :content="$t('sys.pageSetting')">
-        <a-button :shape="'circle'" @click="() => (appStore.settingOpen = true)" class="hidden lg:inline">
+        <a-button :shape="'circle'" @click="() => (appStore.settingOpen = true)">
           <template #icon>
             <icon-settings />
           </template>
@@ -82,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAppStore, useUserStore, useMessageStore } from '@/store'
 import tool from '@/utils/tool'
 import MessageNotification from './components/message-notification.vue'
@@ -104,6 +108,11 @@ const router = useRouter()
 const isFullScreen = ref(false)
 const showLogoutModal = ref(false)
 const isDev = ref(import.meta.env.DEV)
+
+// WebSocket 连接实例
+let wsConnection = null
+let wsChannel = null
+
 const handleSelect = async (name) => {
   if (name === 'userCenter') {
     router.push({ name: 'userCenter' })
@@ -124,6 +133,8 @@ const handleAppStore = async () => {
 }
 
 const handleLogout = async () => {
+  // 断开 WebSocket
+  disconnectWebSocket()
   await userStore.logout()
   document.querySelector('#app').style.filter = 'grayscale(0)'
   router.push({ name: 'login' })
@@ -138,26 +149,87 @@ const screen = () => {
   isFullScreen.value = !isFullScreen.value
 }
 
-if (appStore.ws) {
+// 黑白模式切换
+const toggleDarkMode = () => {
+  const newMode = appStore.mode === 'dark' ? 'light' : 'dark'
+  appStore.toggleMode(newMode)
+}
+
+// 初始化 WebSocket 连接
+const initWebSocket = () => {
+  if (!appStore.ws || wsConnection) return
+
   const env = import.meta.env
   const baseURL = env.VITE_APP_OPEN_PROXY === 'true' ? env.VITE_APP_PROXY_PREFIX : env.VITE_APP_BASE_URL
-  const wsURL = env.VITE_APP_WS_URL ? env.VITE_APP_WS_URL : ''
-  const appKey = env.VITE_APP_WS_APPKEY ? env.VITE_APP_WS_APPKEY : ''
-  // 建立连接
-  var connection = new Push({
-    url: wsURL, // websocket地址
-    app_key: appKey, // appkey
-    auth: baseURL + '/plugin/webman/push/auth',
-  })
-  // 创建监听频道
-  var user_channel = connection.subscribe('saiadmin')
-  // 当saiadmin频道有message事件的消息时
-  user_channel.on('message', function (message) {
-    // message是消息内容
-    info('新消息提示', '您有新的消息，请注意查收！')
-    messageStore.messageList = message.data
-  })
+  const wsURL = env.VITE_APP_WS_URL || ''
+  const appKey = env.VITE_APP_WS_APPKEY || ''
+
+  if (!wsURL || !appKey) {
+    console.warn('[WebSocket] 缺少配置: VITE_APP_WS_URL 或 VITE_APP_WS_APPKEY')
+    return
+  }
+
+  try {
+    // 建立连接
+    wsConnection = new Push({
+      url: wsURL,
+      app_key: appKey,
+      auth: baseURL + '/plugin/webman/push/auth',
+    })
+
+    // 创建监听频道
+    wsChannel = wsConnection.subscribe('saiadmin')
+
+    // 监听消息
+    wsChannel.on('message', function (message) {
+      info('新消息提示', '您有新的消息，请注意查收！')
+      if (message && message.data) {
+        messageStore.messageList = message.data
+      }
+    })
+
+    console.log('[WebSocket] 连接成功')
+  } catch (error) {
+    console.error('[WebSocket] 连接失败:', error)
+  }
 }
+
+// 断开 WebSocket 连接
+const disconnectWebSocket = () => {
+  if (wsConnection) {
+    try {
+      wsConnection.unsubscribe('saiadmin')
+      wsConnection.disconnect()
+    } catch (e) {
+      console.warn('[WebSocket] 断开连接异常:', e)
+    }
+    wsConnection = null
+    wsChannel = null
+  }
+}
+
+// 监听 ws 设置变化
+watch(
+  () => appStore.ws,
+  (enabled) => {
+    if (enabled) {
+      initWebSocket()
+    } else {
+      disconnectWebSocket()
+    }
+  }
+)
+
+onMounted(() => {
+  // 初始化时如果 ws 已启用，则建立连接
+  if (appStore.ws) {
+    initWebSocket()
+  }
+})
+
+onUnmounted(() => {
+  disconnectWebSocket()
+})
 </script>
 <style scoped>
 :deep(.arco-avatar-text) {

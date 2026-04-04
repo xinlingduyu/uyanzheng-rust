@@ -467,18 +467,26 @@ tool.getRequestParams = (url) => {
 }
 
 tool.attachUrl = (path) => {
-  // 非完整url地址在此处理
-  return path
+  if (!path) return ''
+  // 已经是完整URL则直接返回
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  // 后端返回的相对路径，需要拼接后端地址
+  const baseUrl = import.meta.env.VITE_APP_OPEN_PROXY === 'true' 
+    ? import.meta.env.VITE_APP_PROXY_PREFIX 
+    : import.meta.env.VITE_APP_BASE_URL
+  // 确保路径以/开头
+  const normalizedPath = path.startsWith('/') ? path : '/' + path
+  return baseUrl + normalizedPath
 }
 
 tool.viewImage = (path) => {
-  // 非完整url地址在此处理
-  return path
+  return tool.attachUrl(path)
 }
 
 tool.showFile = (path) => {
-  // 非完整url地址在此处理
-  return path
+  return tool.attachUrl(path)
 }
 
 /**

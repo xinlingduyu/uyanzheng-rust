@@ -24,6 +24,28 @@
       </div>
       <div class="ma-content-block w-full lg:w-6/12 mt-3 p-4 ml-0 lg:ml-3">
         <a-tabs type="rounded">
+          <a-tab-pane key="update-log" title="更新日志">
+            <div class="update-log-container">
+              <a-spin :loading="uplogLoading" class="w-full">
+                <a-timeline v-if="uplogList && uplogList.length">
+                  <a-timeline-item v-for="(item, idx) in uplogList" :key="idx">
+                    <div class="update-item">
+                      <div class="update-header">
+                        <span class="version-badge">
+                          <span class="ver-num">v{{ item.ver }}</span>
+                          <span v-if="item.revision" class="revision">r{{ item.revision }}</span>
+                        </span>
+                        <span class="update-time">{{ formatTime(item.time) }}</span>
+                        <a-tag v-if="item.type === 'official'" color="arcoblue" size="small">正式版</a-tag>
+                      </div>
+                      <div class="update-content" v-html="item.content"></div>
+                    </div>
+                  </a-timeline-item>
+                </a-timeline>
+                <a-empty v-else-if="!uplogLoading" />
+              </a-spin>
+            </div>
+          </a-tab-pane>
           <a-tab-pane key="login-log" title="登录日志">
             <a-timeline class="pl-5 mt-3" v-if="loginLogList && loginLogList.length">
               <a-timeline-item :label="`地理位置；${item.ip_location}，操作系统：${item.os}`" v-for="(item, idx) in loginLogList" :key="idx">
@@ -55,6 +77,7 @@ import { useUserStore } from '@/store'
 import { Message } from '@arco-design/web-vue'
 import user from '@/api/system/user'
 import commonApi from '@/api/common'
+import systemApi from '@/api/system/system'
 
 import ModifyPassword from './components/modifyPassword.vue'
 import UserInfomation from './components/userInfomation.vue'
@@ -66,10 +89,35 @@ const userInfo = reactive({
 
 const loginLogList = ref([])
 const operationLogList = ref([])
+const uplogList = ref([])
+const uplogLoading = ref(false)
 
 const requestParams = reactive({
   limit: 5,
 })
+
+const formatTime = (timestamp) => {
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  })
+}
+
+const fetchUplog = async () => {
+  uplogLoading.value = true
+  try {
+    const res = await systemApi.getUplog()
+    if (res.code === 200 && res.data) {
+      uplogList.value = res.data
+    }
+  } catch (e) {
+    console.error('获取更新日志失败', e)
+  } finally {
+    uplogLoading.value = false
+  }
+}
 
 onMounted(() => {
   commonApi.getLoginLogList(Object.assign(requestParams, { orderBy: 'login_time', orderType: 'desc' })).then((res) => {
@@ -79,6 +127,8 @@ onMounted(() => {
   commonApi.getOperationLogList(Object.assign(requestParams, { orderBy: 'create_time', orderType: 'desc' })).then((res) => {
     operationLogList.value = res.data.data
   })
+
+  fetchUplog()
 })
 
 userInfo.avatar = userStore?.user?.avatar ?? undefined
@@ -109,5 +159,81 @@ export default { name: 'userCenter' }
   height: 200px;
   background: url('@/assets/userBanner.jpg') no-repeat;
   background-size: cover;
+}
+
+.update-log-container {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.update-log-container :deep(.arco-timeline-item-dot) {
+  background: #165dff !important;
+  border: 2px solid #165dff !important;
+  width: 8px !important;
+  height: 8px !important;
+  min-width: 8px !important;
+}
+
+.update-log-container :deep(.arco-timeline-item-line) {
+  background: #e5e6eb !important;
+  width: 2px !important;
+}
+
+.version-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-primary);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.version-badge .ver-num {
+  font-size: 13px;
+}
+
+.version-badge .revision {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.update-item {
+  padding-left: 12px;
+}
+
+.update-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.update-time {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.update-content {
+  color: var(--color-text-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.update-content :deep(ol),
+.update-content :deep(ul) {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.update-content :deep(li) {
+  margin: 2px 0;
+}
+
+.update-content :deep(p) {
+  margin: 2px 0;
 }
 </style>

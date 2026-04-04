@@ -7,7 +7,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/database/index',
+      url: '/admin/database/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   getDataSource(params = {}) {
     return request({
-      url: '/core/database/dataSource',
+      url: '/admin/database/dataSource',
       method: 'get',
       params
     })
@@ -31,7 +31,7 @@ export default {
    */
   getDetailed(params = {}) {
     return request({
-      url: '/core/database/detailed',
+      url: '/admin/database/detailed',
       method: 'get',
       params
     })
@@ -43,7 +43,7 @@ export default {
    */
   getRecycle(params = {}) {
     return request({
-      url: '/core/database/recycle',
+      url: '/admin/database/recycle',
       method: 'get',
       params
     })
@@ -55,7 +55,7 @@ export default {
    */
   delete(data) {
     return request({
-      url: '/core/database/delete',
+      url: '/admin/database/delete',
       method: 'delete',
       data
     })
@@ -67,7 +67,7 @@ export default {
    */
   recovery(data) {
     return request({
-      url: '/core/database/recovery',
+      url: '/admin/database/recovery',
       method: 'post',
       data
     })
@@ -79,7 +79,7 @@ export default {
    */
   optimize(data = {}) {
     return request({
-      url: '/core/database/optimize',
+      url: '/admin/database/optimize',
       method: 'post',
       data
     })
@@ -91,7 +91,7 @@ export default {
    */
   fragment(data = {}) {
     return request({
-      url: '/core/database/fragment',
+      url: '/admin/database/fragment',
       method: 'post',
       data
     })

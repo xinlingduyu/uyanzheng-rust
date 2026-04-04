@@ -25,31 +25,25 @@ pub enum AddRole {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum OutState {
     Y,
+    #[default]
     N,
 }
 
-impl Default for OutState {
-    fn default() -> Self {
-        OutState::N
-    }
-}
 
 /// 状态枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum State {
+    #[default]
     Y,
     N,
 }
 
-impl Default for State {
-    fn default() -> Self {
-        State::Y
-    }
-}
 
 /// 用户卡券模型 (对应 u_cdk_user 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

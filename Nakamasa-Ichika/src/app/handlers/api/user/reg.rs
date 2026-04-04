@@ -213,7 +213,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         let ip_check = sqlx::query_as::<_, (u64,)>(
             "SELECT id FROM u_user WHERE reg_ip = ? AND appid = ? AND reg_time > ?"
         )
-        .bind(&ip)
+        .bind(ip)
         .bind(appid)
         .bind(ip_time)
         .fetch_optional(app_state.get_db())
@@ -312,8 +312,8 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 处理邀请人
     let mut inviter_id: Option<i64> = None;
-    if let Some(invid) = reg_req.invid {
-        if invid > 0 {
+    if let Some(invid) = reg_req.invid
+        && invid > 0 {
             // PHP: $inv_res = $this->db->where('id = ? and appid = ?',[$_POST['invid'],$this->app['id']])->fetch();
             // PHP: if(!$inv_res)$this->out->e(122);
             let inviter_check = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
@@ -394,7 +394,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
             }
         }
-    }
 
     // 插入新用户
     // PHP: $user = $this->app['reg_way'] == 'wordnum' ? 'acctno' : $this->app['reg_way'];
@@ -413,7 +412,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(initial_vip)
     .bind(initial_fen)
     .bind(current_time)
-    .bind(&ip)
+    .bind(ip)
     .bind(&reg_req.udid)
     .bind(appid)
     .bind(inviter_id)
@@ -434,7 +433,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .bind("register")
                 .bind(true)
                 .bind(current_time)
-                .bind(&ip)
+                .bind(ip)
                 .bind(appid)
                 .execute(app_state.get_db())
                 .await;

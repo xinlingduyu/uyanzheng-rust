@@ -10,7 +10,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/post/index',
+      url: '/admin/post/index',
       method: 'get',
       params
     })
@@ -22,7 +22,7 @@ export default {
    */
   read(id) {
     return request({
-      url: '/core/post/read?id=' + id,
+      url: '/admin/post/read?id=' + id,
       method: 'get'
     })
   },
@@ -33,7 +33,7 @@ export default {
    */
   save(params = {}) {
     return request({
-      url: '/core/post/save',
+      url: '/admin/post/save',
       method: 'post',
       data: params
     })
@@ -45,7 +45,7 @@ export default {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/post/update?id=' + id,
+      url: '/admin/post/update?id=' + id,
       method: 'put',
       data
     })
@@ -57,7 +57,7 @@ export default {
    */
   changeStatus(data = {}) {
     return request({
-      url: '/core/post/changeStatus',
+      url: '/admin/post/changeStatus',
       method: 'post',
       data
     })
@@ -69,7 +69,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/post/destroy',
+      url: '/admin/post/destroy',
       method: 'delete',
       data
     })

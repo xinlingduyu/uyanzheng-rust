@@ -130,6 +130,17 @@ pub struct AppState {
     /// 容量：1,000，TTL：5分钟，策略：LRU
     pub fen_event_cache: Arc<ShardedCacheV2<u64, FenEventCache>>,
     
+    /// Token 验证缓存 (token_hash -> CachedTokenData)
+    ///
+    /// 缓存已验证的 Token 数据，减少 Redis 查询。
+    /// 容量：20,000，TTL：60秒，策略：LRU
+    /// 
+    /// 性能优化：
+    /// - 高频访问的 Token 只需每分钟验证一次 Redis
+    /// - 减少网络 I/O 开销
+    /// - 使用 token_hash 作为 key，避免长字符串存储
+    pub token_cache: Arc<ShardedCacheV2<u64, CachedTokenData>>,
+    
     // ========================================================================
     // 配置访问器
     // ========================================================================
@@ -238,6 +249,34 @@ pub struct FenEventCache {
     pub state: String,
 }
 
+/// Token 缓存条目
+///
+/// 缓存已验证的 Token 数据，避免每次请求都查询 Redis。
+/// 使用 token 的 u64 hash 作为 key。
+#[derive(Clone, Debug)]
+pub struct CachedTokenData {
+    /// 用户 ID
+    pub uid: u64,
+    /// 设备 ID
+    pub udid: String,
+    /// 应用 ID
+    pub appid: u64,
+    /// 用户类型 ("user" 或 "kami")
+    pub user_type: String,
+    /// 密码哈希
+    pub password: String,
+    /// Token 过期时间 (Unix 时间戳)
+    pub expires_at: i64,
+}
+
+impl CachedTokenData {
+    /// 检查缓存是否仍然有效
+    #[inline]
+    pub fn is_valid(&self, current_time: i64) -> bool {
+        self.expires_at > current_time
+    }
+}
+
 // ============================================================================
 // AppState 实现
 // ============================================================================
@@ -305,6 +344,16 @@ impl AppState {
             ..Default::default()
         };
         
+        // Token 验证缓存配置 - 高频访问
+        // 短 TTL 确保安全性，同时大幅减少 Redis 查询
+        let token_cache_config = V2CacheConfig {
+            max_entries: 20_000,
+            shard_count: 32,
+            default_ttl: Duration::from_secs(60),  // 60秒短期缓存
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+        
         AppState {
             db,
             redis_pool,
@@ -314,6 +363,7 @@ impl AppState {
             user_info_cache: Arc::new(ShardedCacheV2::new(user_cache_config)),
             app_config_cache: Arc::new(ShardedCacheV2::new(app_config)),
             fen_event_cache: Arc::new(ShardedCacheV2::new(fen_config)),
+            token_cache: Arc::new(ShardedCacheV2::new(token_cache_config)),
         }
     }
     
@@ -438,6 +488,44 @@ impl AppState {
         self.invalidate_user_cache(uid);
         // 可以添加更多相关缓存的失效逻辑
         tracing::info!("用户所有缓存已失效: uid={}", uid);
+    }
+    
+    // ========================================================================
+    // Token 缓存方法
+    // ========================================================================
+    
+    /// 计算 Token 的缓存 key
+    ///
+    /// 使用标准 hasher 对 token 字符串计算 u64 hash，
+    /// 作为缓存 key 避免存储长字符串。
+    #[inline]
+    pub fn token_cache_key(token: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        token.hash(&mut hasher);
+        hasher.finish()
+    }
+    
+    /// 失效 Token 缓存
+    ///
+    /// 当用户修改密码或被踢下线时调用。
+    #[inline]
+    pub fn invalidate_token_cache(&self, token: &str) {
+        let key = Self::token_cache_key(token);
+        self.token_cache.remove(&key);
+        tracing::debug!("Token缓存已失效: key={}", key);
+    }
+    
+    /// 批量失效 Token 缓存
+    ///
+    /// 当需要踢掉用户所有设备时调用。
+    #[inline]
+    pub fn invalidate_token_cache_batch(&self, tokens: &[&str]) {
+        for token in tokens {
+            let key = Self::token_cache_key(token);
+            self.token_cache.remove(&key);
+        }
+        tracing::debug!("批量Token缓存已失效: count={}", tokens.len());
     }
 }
 

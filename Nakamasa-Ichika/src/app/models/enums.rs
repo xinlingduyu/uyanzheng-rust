@@ -59,31 +59,25 @@ pub enum OnOffStatus {
 #[derive(Debug, Type, Clone, PartialEq, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum YesNoStatus {
+    #[default]
     Y,
     N,
 }
 
-impl Default for YesNoStatus {
-    fn default() -> Self {
-        YesNoStatus::Y
-    }
-}
 
 /// Yes/No 状态枚举 - 用于 sign 字段
 #[derive(Debug, Type, Clone, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum SignStatus {
     Y,
+    #[default]
     N,
 }
 
-impl Default for SignStatus {
-    fn default() -> Self {
-        SignStatus::N
-    }
-}
 
 /// 商品类型枚举 - 对应 u_goods.type, u_order.type
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]

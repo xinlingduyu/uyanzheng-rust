@@ -4,7 +4,7 @@
 use salvo::prelude::*;
 use serde::Serialize;
 use chrono::{Utc, Duration};
-use deadpool_redis::redis::AsyncCommands;
+use deadpool_redis::redis::{self, AsyncCommands};
 use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
@@ -50,6 +50,11 @@ struct StatisticsData {
 
 // 获取用户统计数据
 async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Option<deadpool_redis::Pool>) -> Result<UserStatistics, sqlx::Error> {
+    // 性能优化：在函数开头计算所有时间值，避免重复调用
+    let now_ts = Utc::now().timestamp();
+    let today_start = now_ts - (now_ts % 86400);
+    let seven_days_ago_start = today_start - (6 * 86400);
+    
     // 获取用户总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_user WHERE appid = ?")
         .bind(appid)
@@ -57,9 +62,6 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
         .await?;
 
     // 优化：单次查询获取近7天用户注册数量（使用 GROUP BY 替代 7 次循环查询）
-    let seven_days_ago = (Utc::now() - Duration::days(6)).timestamp();
-    let seven_days_ago_start = seven_days_ago - (seven_days_ago % 86400);
-    
     let census_rows = sqlx::query(
         r#"
         SELECT FROM_UNIXTIME(reg_time, '%Y-%m-%d') as day, COUNT(*) as cnt 
@@ -90,13 +92,31 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
         census.push(day_count);
     }
 
-    // 获取在线用户数量（从Redis获取）
+    // 性能优化：使用 SCAN 替代 KEYS 命令，避免阻塞 Redis
     let on_line = if let Some(pool) = redis_pool {
         match pool.get().await {
             Ok(mut conn) => {
                 let pattern = format!("user_{}_*", appid);
-                let keys: Vec<String> = conn.keys(&pattern).await.unwrap_or_default();
-                keys.len() as i64
+                // 使用 SCAN 命令替代 KEYS，非阻塞
+                let mut count = 0i64;
+                let mut cursor: u64 = 0;
+                loop {
+                    let result: (u64, Vec<String>) = redis::cmd("SCAN")
+                        .arg(cursor)
+                        .arg("MATCH")
+                        .arg(&pattern)
+                        .arg("COUNT")
+                        .arg(100)
+                        .query_async(&mut conn)
+                        .await
+                        .unwrap_or((0, Vec::new()));
+                    cursor = result.0;
+                    count += result.1.len() as i64;
+                    if cursor == 0 {
+                        break;
+                    }
+                }
+                count
             }
             Err(_) => 0i64,
         }
@@ -105,7 +125,6 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
     };
 
     // 从 u_logs 表获取今日签到数量
-    let today_start = Utc::now().timestamp() - (Utc::now().timestamp() % 86400);
     let today_end = today_start + 86400;
     let sign_in: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'signIn' AND time >= ? AND time < ? AND appid = ?"
@@ -118,12 +137,11 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
 
     // 获取昨日签到数量
     let yesterday_start = today_start - 86400;
-    let yesterday_end = today_start;
     let sign_in_yesterday: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'signIn' AND time >= ? AND time < ? AND appid = ?"
     )
     .bind(yesterday_start)
-    .bind(yesterday_end)
+    .bind(today_start)
     .bind(appid)
     .fetch_one(db)
     .await?;
@@ -142,6 +160,11 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
 
 // 获取用户版卡密统计数据
 async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<KamiStatistics, sqlx::Error> {
+    // 性能优化：在函数开头计算时间值
+    let now_ts = Utc::now().timestamp();
+    let today_start = now_ts - (now_ts % 86400);
+    let seven_days_ago_start = today_start - (6 * 86400);
+    
     // 获取卡密总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_cdk_user WHERE appid = ?")
         .bind(appid)
@@ -157,9 +180,6 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
     .await?;
 
     // 优化：单次查询获取近7天卡密使用数量
-    let seven_days_ago = (Utc::now() - Duration::days(6)).timestamp();
-    let seven_days_ago_start = seven_days_ago - (seven_days_ago % 86400);
-    
     let census_rows = sqlx::query(
         r#"
         SELECT FROM_UNIXTIME(use_time, '%Y-%m-%d') as day, COUNT(*) as cnt 
@@ -181,9 +201,10 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
         day_counts.insert(day, cnt);
     }
     
+    let now = Utc::now();
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
-        let day_date = (Utc::now() - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let day_date = (now - Duration::days(i)).format("%Y-%m-%d").to_string();
         let day_count = day_counts.get(&day_date).copied().unwrap_or(0);
         census.push(day_count);
     }
@@ -197,6 +218,11 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
 
 // 获取卡密版卡密统计数据
 async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<KamiStatistics, sqlx::Error> {
+    // 性能优化：在函数开头计算时间值
+    let now_ts = Utc::now().timestamp();
+    let today_start = now_ts - (now_ts % 86400);
+    let seven_days_ago_start = today_start - (6 * 86400);
+    
     // 获取卡密总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_cdk_kami WHERE appid = ?")
         .bind(appid)
@@ -212,9 +238,6 @@ async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
         .await?;
 
     // 优化：单次查询获取近7天卡密使用数量
-    let seven_days_ago = (Utc::now() - Duration::days(6)).timestamp();
-    let seven_days_ago_start = seven_days_ago - (seven_days_ago % 86400);
-    
     let census_rows = sqlx::query(
         r#"
         SELECT FROM_UNIXTIME(use_time, '%Y-%m-%d') as day, COUNT(*) as cnt 
@@ -236,9 +259,10 @@ async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
         day_counts.insert(day, cnt);
     }
     
+    let now = Utc::now();
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
-        let day_date = (Utc::now() - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let day_date = (now - Duration::days(i)).format("%Y-%m-%d").to_string();
         let day_count = day_counts.get(&day_date).copied().unwrap_or(0);
         census.push(day_count);
     }

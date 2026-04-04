@@ -10,7 +10,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/email/index',
+      url: '/admin/email/index',
       method: 'get',
       params
     })
@@ -22,7 +22,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/email/destroy',
+      url: '/admin/email/destroy',
       method: 'delete',
       data
     })

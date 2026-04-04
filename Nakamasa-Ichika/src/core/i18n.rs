@@ -14,11 +14,10 @@ fn determine_language(req: &Request) -> &'static str {
     let default_lang = i18n_config.default_language();
     
     // 1. 检查查询参数 - 快速路径
-    if let Some(lang) = req.query::<String>(i18n_config.query_param()) {
-        if supported.contains(&lang.as_str()) {
+    if let Some(lang) = req.query::<String>(i18n_config.query_param())
+        && supported.contains(&lang.as_str()) {
             return match_supported_lang(&lang, default_lang);
         }
-    }
     
     // 2. 检查Cookie - 避免to_string()
     if let Some(cookie) = req.cookie(i18n_config.cookie_name()) {
@@ -47,11 +46,10 @@ fn determine_language(req: &Request) -> &'static str {
             
             for part in parts {
                 let part = part.trim();
-                if part.starts_with("q=") && part.len() > 2 {
-                    if let Ok(value) = part[2..].parse::<f32>() {
+                if part.starts_with("q=") && part.len() > 2
+                    && let Ok(value) = part[2..].parse::<f32>() {
                         q = value;
                     }
-                }
             }
             
             languages[count] = (lang_tag, q);
@@ -62,16 +60,13 @@ fn determine_language(req: &Request) -> &'static str {
         for i in 0..count {
             for j in (i + 1)..count {
                 if languages[j].1 > languages[i].1 {
-                    let tmp = languages[i];
-                    languages[i] = languages[j];
-                    languages[j] = tmp;
+                    languages.swap(i, j);
                 }
             }
         }
         
         // 查找支持的语言
-        for i in 0..count {
-            let (lang_tag, _) = languages[i];
+        for &(lang_tag, _) in languages.iter().take(count) {
             if lang_tag.is_empty() { continue; }
             
             // 尝试完全匹配
@@ -88,7 +83,7 @@ fn determine_language(req: &Request) -> &'static str {
                 // 检查支持的语言中是否有以主标签开头的
                 for supported_lang in &supported {
                     if supported_lang.starts_with(main_tag) {
-                        return *supported_lang;
+                        return supported_lang;
                     }
                 }
             }
@@ -132,21 +127,15 @@ static RESOURCES: Lazy<HashMap<String, HashMap<String, String>>> = Lazy::new(|| 
     // 遍历资源目录下的所有JSON文件
     if let Ok(entries) = fs::read_dir(resources_path) {
         for entry in entries.flatten() {
-            if let Ok(file_type) = entry.file_type() {
-                if file_type.is_file() {
-                    if let Some(file_name) = entry.file_name().to_str() {
-                        if let Some((lang_tag, _)) = file_name.split_once('.') {
-                            if config.supported_languages().contains(&lang_tag) {
-                                if let Ok(file_content) = fs::read_to_string(entry.path()) {
-                                    if let Ok(json_data) = serde_json::from_str::<HashMap<String, String>>(&file_content) {
+            if let Ok(file_type) = entry.file_type()
+                && file_type.is_file()
+                    && let Some(file_name) = entry.file_name().to_str()
+                        && let Some((lang_tag, _)) = file_name.split_once('.')
+                            && config.supported_languages().contains(&lang_tag)
+                                && let Ok(file_content) = fs::read_to_string(entry.path())
+                                    && let Ok(json_data) = serde_json::from_str::<HashMap<String, String>>(&file_content) {
                                         resources.insert(lang_tag.to_string(), json_data);
                                     }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
     

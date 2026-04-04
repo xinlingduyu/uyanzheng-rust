@@ -134,8 +134,8 @@ impl<B: RedisBackend + 'static> DistributedLock<B> {
         // 检查本地是否已持有（可重入）
         {
             let mut held = self.held_locks.write();
-            if let Some(info) = held.get_mut(key) {
-                if info.expires_at > Instant::now() {
+            if let Some(info) = held.get_mut(key)
+                && info.expires_at > Instant::now() {
                     info.reentry_count += 1;
                     return Ok(LockGuard {
                         lock: self,
@@ -144,7 +144,6 @@ impl<B: RedisBackend + 'static> DistributedLock<B> {
                         owned: true,
                     });
                 }
-            }
         }
         
         // 使用 SET NX EX 原子操作
@@ -210,15 +209,14 @@ impl<B: RedisBackend + 'static> DistributedLock<B> {
         // 检查重入计数
         {
             let mut held = self.held_locks.write();
-            if let Some(info) = held.get_mut(key) {
-                if info.value == lock_value {
+            if let Some(info) = held.get_mut(key)
+                && info.value == lock_value {
                     info.reentry_count -= 1;
                     if info.reentry_count > 0 {
                         return Ok(true); // 还有重入，不真正释放
                     }
                     held.remove(key);
                 }
-            }
         }
         
         // 使用 Lua 脚本原子释放
@@ -311,11 +309,10 @@ impl<'a, B: RedisBackend + 'static> Drop for LockGuard<'a, B> {
             // 在同步 Drop 中无法使用 async，这里标记为待释放
             // 实际应用中应该使用后台任务处理
             // 这里简化实现，直接更新本地状态
-            if let Some(held) = unsafe { &*lock }.held_locks.write().get_mut(&key) {
-                if held.value == value {
+            if let Some(held) = unsafe { &*lock }.held_locks.write().get_mut(&key)
+                && held.value == value {
                     held.reentry_count = held.reentry_count.saturating_sub(1);
                 }
-            }
         }
     }
 }
@@ -491,9 +488,9 @@ impl<B: RedisBackend + 'static> FairLock<B> {
                 }
                 Some(holder) => {
                     // 解析当前持有者的票号
-                    if let Some(holder_ticket) = holder.strip_prefix("ticket:") {
-                        if let Ok(holder_num) = holder_ticket.parse::<i64>() {
-                            if holder_num >= ticket {
+                    if let Some(holder_ticket) = holder.strip_prefix("ticket:")
+                        && let Ok(holder_num) = holder_ticket.parse::<i64>()
+                            && holder_num >= ticket {
                                 // 不是自己的回合，等待
                                 if start.elapsed() >= self.config.max_wait_time {
                                     return Err(LockError::Timeout);
@@ -501,8 +498,6 @@ impl<B: RedisBackend + 'static> FairLock<B> {
                                 tokio::time::sleep(self.config.retry_interval).await;
                                 continue;
                             }
-                        }
-                    }
                 }
             }
             

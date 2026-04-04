@@ -10,7 +10,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/logs/getLoginLogPageList',
+      url: '/admin/logs/getLoginLogPageList',
       method: 'get',
       params
     })
@@ -22,7 +22,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/logs/deleteLoginLog',
+      url: '/admin/logs/deleteLoginLog',
       method: 'delete',
       data
     })

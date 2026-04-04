@@ -74,11 +74,10 @@ where
             }
             
             // 如果还是满了，移除最旧的
-            if cache.len() >= self.max_size {
-                if let Some(oldest_key) = cache.keys().next().cloned() {
+            if cache.len() >= self.max_size
+                && let Some(oldest_key) = cache.keys().next().cloned() {
                     cache.remove(&oldest_key);
                 }
-            }
         }
         
         cache.insert(key, (Instant::now(), value));
@@ -201,7 +200,7 @@ where
         let ttl = ttl.unwrap_or(Duration::from_secs(300));
         
         // 设置 Redis（如果可用）
-        if let Some(_) = &self.redis_pool {
+        if self.redis_pool.is_some() {
             self.set_redis(&key, &value, ttl).await?;
         }
         

@@ -224,11 +224,10 @@ where
     pub async fn remove(&self, key: &K) -> bool {
         let result = self.cache.remove(key).await;
         
-        if result {
-            if let Some(tx) = &self.event_tx {
+        if result
+            && let Some(tx) = &self.event_tx {
                 let _ = tx.send(CacheEvent::Remove { key: key.clone() });
             }
-        }
         
         result
     }
@@ -382,11 +381,10 @@ impl MultiCacheManager {
     {
         let mut caches = self.caches.write().await;
         
-        if let Some(cache) = caches.get(name) {
-            if let Ok(typed) = cache.clone().downcast::<CacheManager<K, V>>() {
+        if let Some(cache) = caches.get(name)
+            && let Ok(typed) = cache.clone().downcast::<CacheManager<K, V>>() {
                 return typed;
             }
-        }
 
         let manager = Arc::new(CacheManager::new(self.default_config.clone()));
         caches.insert(name.to_string(), manager.clone() as Arc<dyn std::any::Any + Send + Sync>);

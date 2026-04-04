@@ -75,16 +75,14 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut query = String::from("SELECT A.id, A.aggid, A.uid, A.note, A.pay_divide, A.km_discount, A.money, A.state FROM u_agent AS A WHERE A.appid = ?");
     let mut params: Vec<String> = vec![appid.to_string()];
 
-    if let Some(so) = list_req.so {
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+    if let Some(so) = list_req.so
+        && let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 query.push_str(" AND (A.note LIKE ?)");
                 let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
                 sb.append("%").append(&keyword).append("%");
                 params.push(sb.finish());
             }
-        }
-    }
 
     query.push_str(" ORDER BY A.id DESC LIMIT ? OFFSET ?");
     params.push(page_size.to_string());

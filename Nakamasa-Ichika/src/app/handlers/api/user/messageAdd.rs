@@ -113,7 +113,7 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
                     "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
                 )
                 .bind(user_type).bind(uid).bind("messageAdd")
-                .bind(current_time).bind(&ip).bind(appid)
+                .bind(current_time).bind(ip).bind(appid)
                 .execute(app_state.get_db()).await;
 
                 res.render(Json(SignedApiResponse::success(app_key, None::<()>)));

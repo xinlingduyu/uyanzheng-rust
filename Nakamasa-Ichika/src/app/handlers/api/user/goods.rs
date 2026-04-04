@@ -72,7 +72,7 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 计算总页数（向上取整）
-    let page_total = (data_total + PAGE_SIZE - 1) / PAGE_SIZE;
+    let page_total = data_total.div_ceil(PAGE_SIZE);
 
     // 查询列表数据
     let result = sqlx::query_as::<_, (i64, String, String, i64, String)>(

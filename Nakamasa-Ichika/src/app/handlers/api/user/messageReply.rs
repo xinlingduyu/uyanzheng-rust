@@ -71,7 +71,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
 
             // 处理文件参数（可选）
             let file_json = reply_req.file.as_ref()
-                .filter(|f| f.is_array() && !f.as_array().map_or(true, |a| a.is_empty()))
+                .filter(|f| f.is_array() && !f.as_array().is_none_or(|a| a.is_empty()))
                 .map(|f| f.to_string());
 
             // 插入回复

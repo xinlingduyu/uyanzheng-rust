@@ -176,7 +176,7 @@ impl AliPayPlugin {
         // 业务参数
         let mut biz_content = json!({
             "out_trade_no": &order.order_no,
-            "total_amount": (order.money as f64 / 100.0), // 分转元
+            "total_amount": (order.money / 100.0), // 分转元
             "subject": order.name.clone(),
             "product_code": "QUICK_WAP_WAY"
         });
@@ -252,7 +252,7 @@ impl AliPayPlugin {
         // 业务参数
         let biz_content = json!({
             "out_trade_no": &order.order_no,
-            "total_amount": (order.money as f64 / 100.0), // 分转元
+            "total_amount": (order.money / 100.0), // 分转元
             "subject": order.name.clone(),
             "product_code": "FAST_INSTANT_TRADE_PAY"
         });
@@ -374,23 +374,20 @@ impl PayPlugin for AliPayPlugin {
             // 构建验签参数（排除sign和sign_type）
             let mut params = BTreeMap::new();
             for (k, v) in obj {
-                if k != "sign" && k != "sign_type" {
-                    if let Some(s) = v.as_str() {
+                if k != "sign" && k != "sign_type"
+                    && let Some(s) = v.as_str() {
                         params.insert(k.clone(), s.to_string());
                     }
-                }
             }
 
             // 验证签名
             if self.verify(&params, &sign) {
-                if let Some(out_trade_no) = obj.get("out_trade_no") {
-                    if let Some(trade_status) = obj.get("trade_status") {
-                        if trade_status.as_str() == Some("TRADE_SUCCESS") ||
-                           trade_status.as_str() == Some("TRADE_FINISHED") {
+                if let Some(out_trade_no) = obj.get("out_trade_no")
+                    && let Some(trade_status) = obj.get("trade_status")
+                        && (trade_status.as_str() == Some("TRADE_SUCCESS") ||
+                           trade_status.as_str() == Some("TRADE_FINISHED")) {
                             return Ok(out_trade_no.as_str().unwrap_or("").to_string());
                         }
-                    }
-                }
                 return Err("订单状态未成功".to_string());
             }
         }

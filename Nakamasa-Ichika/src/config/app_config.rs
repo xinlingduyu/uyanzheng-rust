@@ -6,6 +6,9 @@ pub struct AppConfig {
     pub code: String,
     pub upload_dir: String,
     pub upload_size: u32,
+    /// 每个 token 每天允许上传的最大文件数量，0 表示不限制
+    #[serde(default)]
+    pub upload_daily_limit: u32,
     pub cache: bool,
     pub user_api_rewrite: bool,
     pub output_msg: bool,

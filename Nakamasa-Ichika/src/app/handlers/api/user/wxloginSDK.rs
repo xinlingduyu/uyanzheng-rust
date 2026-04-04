@@ -190,13 +190,12 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     // 检查微信API是否返回错误
-    if let Some(errcode) = wx_info.errcode {
-        if errcode != 0 {
+    if let Some(errcode) = wx_info.errcode
+        && errcode != 0 {
             let err_msg = wx_info.errmsg.clone().unwrap_or_else(|| "微信API错误".to_string());
             res.render(Json(SignedApiResponse::<()>::error(err_msg, 201, app_key)));
             return;
         }
-    }
 
     let wx_openid = match wx_info.openid {
         Some(ref openid) => openid.clone(),
@@ -223,13 +222,12 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         Ok(Some((id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq))) => {
             // PHP: 已有用户，直接登录
             // 检查是否被禁用
-            if let Some(ban_time) = ban {
-                if ban_time > current_time {
+            if let Some(ban_time) = ban
+                && ban_time > current_time {
                     let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
                     res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
                     return;
                 }
-            }
 
             let sn_max_val = sn_max.unwrap_or(0);
             
@@ -281,8 +279,8 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 
                 if found {
                     // 已绑定设备登录 - 检查同设备多开
-                    if logon_config.logon_sn_dk != "y" {
-                        if let Some(redis_pool) = app_state.redis_pool.as_ref() {
+                    if logon_config.logon_sn_dk != "y"
+                        && let Some(redis_pool) = app_state.redis_pool.as_ref() {
                             let udid_hash_bytes = md5_hex(wx_req.udid.as_bytes());
                             let udid_hash = md5_to_str(&udid_hash_bytes);
                             let logon_key = format!("logon_{}_{}_{}", appid, id, udid_hash);
@@ -291,7 +289,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                                 return;
                             }
                         }
-                    }
                 } else {
                     // 新设备登录
                     if logon_config.logon_sn_num > 0 {
@@ -405,7 +402,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             .bind("wxloginSDK")
             .bind(true)
             .bind(current_time)
-            .bind(&ip)
+            .bind(ip)
             .bind(Some(appid))
             .execute(app_state.get_db())
             .await;
@@ -414,7 +411,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 token,
                 state: token_state,
                 info,
-                ip_location: lookup_ip_location(&ip),
+                ip_location: lookup_ip_location(ip),
             };
 
             res.render(Json(SignedApiResponse::success(app_key, Some(response))));
@@ -525,7 +522,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             .bind(reg_vip)
             .bind(reg_fen)
             .bind(current_time)
-            .bind(&ip)
+            .bind(ip)
             .bind(&wx_req.udid)
             .bind(appid)
             .bind(inviter_id_val)
@@ -535,7 +532,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
             match insert_result {
                 Ok(result) => {
-                    let reg_id = result.last_insert_id() as u64;
+                    let reg_id = result.last_insert_id();
 
                     // 生成token
                     let uniqid = generate_uniqid();
@@ -597,7 +594,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     .bind("wxloginSDK_reg")
                     .bind(true)
                     .bind(current_time)
-                    .bind(&ip)
+                    .bind(ip)
                     .bind(Some(appid))
                     .execute(app_state.get_db())
                     .await;
@@ -606,7 +603,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         token,
                         state: "y".to_string(),
                         info,
-                        ip_location: lookup_ip_location(&ip),
+                        ip_location: lookup_ip_location(ip),
                     };
 
                     let msg = format!("登录成功，您的初始密码为：{}", pwd);

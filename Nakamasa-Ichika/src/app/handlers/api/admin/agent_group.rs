@@ -81,7 +81,7 @@ struct AgentGroupListItem {
     pay_divide: i64,
     km_discount: i64,
     authority: Option<serde_json::Value>,
-    appid: u64,
+    appid: i64,
 }
 
 #[handler]
@@ -124,22 +124,20 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut query = String::from("SELECT id, name, pay_divide, km_discount, authority, appid FROM u_agent_group WHERE appid = ?");
     let mut params: Vec<String> = vec![appid.to_string()];
 
-    if let Some(so) = list_req.so {
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+    if let Some(so) = list_req.so
+        && let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 query.push_str(" AND name LIKE ?");
                 let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
                 sb.append("%").append(&keyword).append("%");
                 params.push(sb.finish());
             }
-        }
-    }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
     params.push(page_size.to_string());
     params.push(offset.to_string());
 
-    let mut sql_query = sqlx::query_as::<_, (i64, String, i64, i64, Option<String>, u64)>(&query);
+    let mut sql_query = sqlx::query_as::<_, (i64, String, i64, i64, Option<String>, i64)>(&query);
     for param in params {
         sql_query = sql_query.bind(param);
     }

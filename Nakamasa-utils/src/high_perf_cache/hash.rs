@@ -209,7 +209,7 @@ impl XxHash64 {
             self.state.wrapping_add(Self::PRIME5)
         };
 
-        hash = (hash as u64).wrapping_add(self.total_len);
+        hash = hash.wrapping_add(self.total_len);
 
         Self::finalize(hash, &self.buffer[..self.buffer_len])
     }
@@ -278,7 +278,8 @@ impl WyHash {
 
     #[inline(always)]
     fn wyr3(data: &[u8], len: usize) -> u64 {
-        let k = if len >= 3 {
+        
+        if len >= 3 {
             ((data[2] as u64) << 16) | ((data[1] as u64) << 8) | (data[0] as u64)
         } else if len >= 2 {
             ((data[1] as u64) << 8) | (data[0] as u64)
@@ -286,8 +287,7 @@ impl WyHash {
             data[0] as u64
         } else {
             0
-        };
-        k
+        }
     }
 
     pub fn update(&mut self, data: &[u8]) {
@@ -569,6 +569,7 @@ pub use x86_64_hash::*;
 
 /// 高性能哈希函数选择
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum HashAlgorithm {
     /// FNV-1a（短键最优）
     Fnv1a,
@@ -577,14 +578,10 @@ pub enum HashAlgorithm {
     /// WyHash（极快）
     WyHash,
     /// 自动选择（根据键长度）
+    #[default]
     Auto,
 }
 
-impl Default for HashAlgorithm {
-    fn default() -> Self {
-        Self::Auto
-    }
-}
 
 /// 计算哈希值
 #[inline(always)]

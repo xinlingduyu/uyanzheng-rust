@@ -144,7 +144,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
                         .bind("resetPwd")
                         .bind(true)
                         .bind(current_time)
-                        .bind(&ip)
+                        .bind(ip)
                         .bind(appid)
                         .execute(app_state.get_db())
                         .await;

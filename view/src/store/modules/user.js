@@ -6,6 +6,18 @@ import webRouter from '@/router/webRouter'
 import { isUndefined } from 'lodash'
 import { homePage } from '@/router/homePageRoutes'
 import { useAppStore, useTagStore, useDictStore } from '@/store'
+import { menuSeed } from '@/mock/index.js'
+
+// 构建菜单树
+function buildMenuTree(items, parentId = '0') {
+  return items
+    .filter(item => item.parent_id === parentId)
+    .sort((a, b) => a.sort - b.sort)
+    .map(item => ({
+      ...item,
+      children: buildMenuTree(items, item.id).length > 0 ? buildMenuTree(items, item.id) : undefined
+    }))
+}
 
 const useUserStore = defineStore('user', {
   state: () => ({
@@ -66,7 +78,24 @@ const useUserStore = defineStore('user', {
             await router.push({ name: 'login' })
             reject(false)
           } else {
-            this.setInfo(response.data)
+            // 适配后端响应格式：data.info 包含用户信息
+            const userData = response.data.info || response.data
+            this.setInfo({
+              user: {
+                id: userData.id,
+                username: userData.user,
+                nickname: userData.notes || userData.user,
+                avatar: userData.avatars || '',
+                email: '',
+                phone: '',
+                dept_id: 1,
+                dashboard: 'statistics',
+                backend_setting: '{"mode":"light"}'
+              },
+              roles: [{ id: 1, name: '超级管理员', code: 'super_admin' }],
+              codes: ['*'],
+              routers: buildMenuTree(menuSeed)
+            })
             const dictStore = useDictStore()
             await dictStore.initData()
             homePage.children = webRouter[0].children

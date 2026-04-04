@@ -99,12 +99,11 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
 
     // 检查VIP权限
     if app_type == "user" {
-        if let Some(allow_val) = allow {
-            if allow_val > 0 && user_vip < current_time {
+        if let Some(allow_val) = allow
+            && allow_val > 0 && user_vip < current_time {
                 res.render(Json(SignedApiResponse::<()>::error("请成为VIP后操作", 201, app_key)));
                 return;
             }
-        }
         
         // 检查积分消耗
         if fen > 0 && user_fen < fen as i64 {

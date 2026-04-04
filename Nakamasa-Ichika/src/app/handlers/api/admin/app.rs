@@ -85,18 +85,14 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     if let Ok(val) = row.try_get::<bool, _>(col_name) {
                         data.insert("login_prevent_brute_force".to_string(), serde_json::Value::Bool(val));
                     }
-                } else if col_name == "logon_open_wxconfig" {
+                } else if col_name == "logon_open_wxconfig" || col_name == "logon_open_qqconfig" {
                     if let Ok(val) = row.try_get::<Option<serde_json::Value>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.unwrap_or_else(|| serde_json::Value::Null));
-                    }
-                } else if col_name == "logon_open_qqconfig" {
-                    if let Ok(val) = row.try_get::<Option<serde_json::Value>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.unwrap_or_else(|| serde_json::Value::Null));
+                        data.insert(col_name.to_string(), val.unwrap_or(serde_json::Value::Null));
                     }
                 } else {
                     // 通用处理：尝试获取字符串值
                     if let Ok(val) = row.try_get::<Option<String>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.map(|v| serde_json::Value::String(v)).unwrap_or(serde_json::Value::Null));
+                        data.insert(col_name.to_string(), val.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
                     } else if let Ok(val) = row.try_get::<String, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::String(val));
                     } else if let Ok(val) = row.try_get::<Option<i64>, _>(col_name) {
@@ -104,7 +100,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     } else if let Ok(val) = row.try_get::<i64, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::Number(val.into()));
                     } else if let Ok(val) = row.try_get::<Option<bool>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.map(|v| serde_json::Value::Bool(v)).unwrap_or(serde_json::Value::Null));
+                        data.insert(col_name.to_string(), val.map(serde_json::Value::Bool).unwrap_or(serde_json::Value::Null));
                     } else if let Ok(val) = row.try_get::<bool, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::Bool(val));
                     }
@@ -188,7 +184,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 参数验证 - pg 必须是整数 1-11
     let page = match list_req.pg {
         Some(pg) => {
-            if pg >= 1 && pg <= 11 {
+            if (1..=11).contains(&pg) {
                 pg
             } else {
                 res.render(Json(ApiResponse::<()>::error("页面有误", 201)));
@@ -229,17 +225,16 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         let mut conditions = Vec::new();
 
         // app_type 条件
-        if let Some(app_type) = so.app_type {
-            if !app_type.is_empty() {
+        if let Some(app_type) = so.app_type
+            && !app_type.is_empty() {
                 conditions.push("app_type = ?");
                 params.push(app_type.clone());
                 count_params.push(app_type);
             }
-        }
 
         // keyword 条件: id = ? or app_name LIKE ?
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 conditions.push("(id = ? OR app_name LIKE ?)");
                 params.push(keyword.clone());
                 // 使用 StringBuilder 构建 LIKE 模式
@@ -252,7 +247,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 count_params.push(keyword);
                 count_params.push(like_pattern);
             }
-        }
 
         if !conditions.is_empty() {
             let condition_str = conditions.join(" AND ");
@@ -520,15 +514,13 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_key_bytes = md5_hex(seed.as_bytes());
     let app_key = md5_to_str(&app_key_bytes).to_string();
 
-    let data = vec![
-        ("app_name", add_req.app_name.clone()),
+    let data = [("app_name", add_req.app_name.clone()),
         ("app_key", app_key),
-        ("app_type", add_req.app_type.clone()),
-    ];
+        ("app_type", add_req.app_type.clone())];
 
     // 处理继承
-    if let Some(inherit_id) = add_req.app_inherit {
-        if inherit_id > 0 {
+    if let Some(inherit_id) = add_req.app_inherit
+        && inherit_id > 0 {
             let inherit_result = sqlx::query(
                 "SELECT * FROM u_app WHERE id = ?"
             )
@@ -551,7 +543,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }
             }
         }
-    }
 
     // 插入应用
     let insert_result = sqlx::query(

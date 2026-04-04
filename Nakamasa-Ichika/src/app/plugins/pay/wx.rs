@@ -54,7 +54,7 @@ impl WxPayPlugin {
 
         sorted_keys
             .iter()
-            .filter(|k| !params.get(**k).map_or(true, |v| v.is_empty()))
+            .filter(|k| !params.get(**k).is_none_or(|v| v.is_empty()))
             .filter(|k| **k != "sign")
             .map(|k| format!("{}={}", k, params.get(*k).unwrap()))
             .collect::<Vec<_>>()
@@ -388,25 +388,21 @@ impl PayPlugin for WxPayPlugin {
             // 构建验签参数（排除sign）
             let mut params = BTreeMap::new();
             for (k, v) in obj {
-                if k != "sign" {
-                    if let Some(s) = v.as_str() {
+                if k != "sign"
+                    && let Some(s) = v.as_str() {
                         params.insert(k.clone(), s.to_string());
                     }
-                }
             }
 
             // 验证签名
             if self.verify(&params, &sign) {
-                if let Some(out_trade_no) = obj.get("out_trade_no") {
-                    if let Some(result_code) = obj.get("result_code") {
-                        if let Some(return_code) = obj.get("return_code") {
-                            if return_code.as_str() == Some("SUCCESS") &&
+                if let Some(out_trade_no) = obj.get("out_trade_no")
+                    && let Some(result_code) = obj.get("result_code")
+                        && let Some(return_code) = obj.get("return_code")
+                            && return_code.as_str() == Some("SUCCESS") &&
                                result_code.as_str() == Some("SUCCESS") {
                                 return Ok(out_trade_no.as_str().unwrap_or("").to_string());
                             }
-                        }
-                    }
-                }
                 return Err("订单支付未成功".to_string());
             }
         }

@@ -184,7 +184,7 @@ pub fn url_safe_base64_encode(data: &[u8]) -> String {
 /// PHP: urlSafeBase64decode
 pub fn url_safe_base64_decode(data: &str) -> Result<Vec<u8>, String> {
     // 处理可能缺失的填充
-    let padded = if data.len() % 4 != 0 {
+    let padded = if !data.len().is_multiple_of(4) {
         let padding = 4 - (data.len() % 4);
         format!("{}{}", data, "=".repeat(padding))
     } else {

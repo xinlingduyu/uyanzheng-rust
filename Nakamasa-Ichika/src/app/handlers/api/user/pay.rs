@@ -92,8 +92,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             // 优先使用 acctno，其次 email，最后 phone
             account_owned = user_info.acctno.as_ref()
                 .or(user_info.email.as_ref())
-                .or(user_info.phone.as_ref())
-                .map(|s| s.clone())
+                .or(user_info.phone.as_ref()).cloned()
                 .unwrap_or_else(|| user_info.uid.to_string());
             &account_owned
         }
@@ -109,7 +108,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 验证 account 格式
     let mut validator = Validator::new();
-    validator.wordnum("account", &account, 5, 32);
+    validator.wordnum("account", account, 5, 32);
     validator.int("gid", pay_req.gid, 1, 10);
     
     if let Some(ref pay_type) = pay_req.pay_type {
@@ -128,9 +127,9 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let u_res = sqlx::query_as::<_, (u64, Option<u64>)>(
         "SELECT id, inviter_id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?"
     )
-    .bind(&account)
-    .bind(&account)
-    .bind(&account)
+    .bind(account)
+    .bind(account)
+    .bind(account)
     .bind(appid)
     .fetch_optional(app_state.get_db())
     .await;
@@ -208,14 +207,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .fetch_optional(app_state.get_db())
         .await;
 
-        if let Ok(Some((_agent_id, pay_divide))) = a_res {
-            if let Some(divide) = pay_divide {
-                if divide > 0.0 {
+        if let Ok(Some((_agent_id, pay_divide))) = a_res
+            && let Some(divide) = pay_divide
+                && divide > 0.0 {
                     order_data.insert("inviter_id", serde_json::json!(inv_uid));
                     order_data.insert("divide_money", serde_json::json!((money as f64 * divide / 100.0).round()));
                 }
-            }
-        }
     }
 
     // 一比一还原PHP: 代理商品检查

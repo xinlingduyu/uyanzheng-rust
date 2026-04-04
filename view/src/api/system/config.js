@@ -10,7 +10,7 @@ export default {
    */
   getConfigList(params) {
     return request({
-      url: '/core/config/index',
+      url: '/admin/config/index',
       method: 'get',
       params
     })
@@ -22,7 +22,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/config/destroy',
+      url: '/admin/config/destroy',
       method: 'delete',
       data
     })
@@ -34,7 +34,7 @@ export default {
    */
   save(data = {}) {
     return request({
-      url: '/core/config/save',
+      url: '/admin/config/save',
       method: 'post',
       data
     })
@@ -46,7 +46,7 @@ export default {
    */
   update(id, data = {}) {
     return request({
-      url: '/core/config/update?id=' + id,
+      url: '/admin/config/update?id=' + id,
       method: 'put',
       data
     })
@@ -58,7 +58,7 @@ export default {
    */
   updateByKeys(data) {
     return request({
-      url: '/core/config/updateByKeys',
+      url: '/admin/config/updateByKeys',
       method: 'post',
       data
     })
@@ -70,7 +70,7 @@ export default {
    */
   batchUpdate(data) {
     return request({
-      url: '/core/config/batchUpdate',
+      url: '/admin/config/batchUpdate',
       method: 'post',
       data
     })
@@ -82,7 +82,7 @@ export default {
    */
   getConfigGroupList(params = {}) {
     return request({
-      url: '/core/configGroup/index',
+      url: '/admin/configGroup/index',
       method: 'get',
       params
     })
@@ -94,7 +94,7 @@ export default {
    */
   saveConfigGroup(data = {}) {
     return request({
-      url: '/core/configGroup/save',
+      url: '/admin/configGroup/save',
       method: 'post',
       data
     })
@@ -106,7 +106,7 @@ export default {
    */
   updateConfigGroup(id, data = {}) {
     return request({
-      url: '/core/configGroup/update?id=' + id,
+      url: '/admin/configGroup/update?id=' + id,
       method: 'put',
       data
     })
@@ -118,7 +118,7 @@ export default {
    */
   deleteConfigGroup(data = {}) {
     return request({
-      url: '/core/configGroup/destroy',
+      url: '/admin/configGroup/destroy',
       method: 'delete',
       data
     })
@@ -130,7 +130,7 @@ export default {
    */
   testEmail(data = {}) {
     return request({
-      url: '/core/configGroup/email',
+      url: '/admin/configGroup/email',
       method: 'post',
       data
     })

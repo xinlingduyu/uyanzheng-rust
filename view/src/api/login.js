@@ -8,7 +8,7 @@ export default {
 	getCaptch() {
 		// return import.meta.env.VITE_APP_PROXY_PREFIX + '/core/captcha?' + Date.parse(new Date().toString())
 		return request({
-			url: '/core/captcha',
+			url: '/admin/captcha',
 			method: 'get',
 		})
 	},
@@ -20,7 +20,7 @@ export default {
 	 */
 	login(params = {}) {
 		return request({
-			url: '/api/admin/login',
+			url: '/admin/login',
 			method: 'post',
 			data: params,
 		})
@@ -33,20 +33,20 @@ export default {
 	 */
 	logout(params = {}) {
 		return request({
-			url: '/core/logout',
+			url: '/admin/logout',
 			method: 'post',
 			data: params,
 		})
 	},
 
 	/**
-	 * 获取登录用户信息
+	 * 获取登录用户信息（Token验证）
 	 * @param {object} params
 	 * @returns
 	 */
 	getInfo(params = {}) {
 		return request({
-			url: '/api/admin/system/user',
+			url: '/admin/admin/verify',
 			method: 'get',
 			data: params,
 		})

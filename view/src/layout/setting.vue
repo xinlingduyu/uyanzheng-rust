@@ -30,6 +30,9 @@
           {{ $t('sys.changeSkin') }}
         </a-button>
       </a-form-item>
+      <a-form-item v-if="appStore.skin === 'video'" :label="$t('sys.videoSound')" :help="$t('sys.videoSoundHelp')">
+        <a-switch v-model="form.videoSound" @change="handleVideoSound" />
+      </a-form-item>
       <a-form-item :label="$t('sys.layouts')" :help="$t('sys.layoutsHelp')">
         <a-select v-model="form.layout" @change="handleLayout">
           <a-option value="classic">{{ $t('sys.layout.classic') }}</a-option>
@@ -117,6 +120,7 @@ const form = reactive({
   waterContent: appStore.waterContent,
   ws: appStore.ws,
   roundOpen: appStore.roundOpen,
+  videoSound: appStore.videoSound,
 })
 
 const defaultColorList = reactive([
@@ -170,6 +174,7 @@ const handleSettingWaterContent = (val) => appStore.changeWaterContent(val)
 const handleSettingTag = (val) => appStore.toggleTag(val)
 const handleMenuCollapse = (val) => appStore.toggleMenu(val)
 const handleMenuWidth = (val) => appStore.changeMenuWidth(val)
+const handleVideoSound = (val) => appStore.toggleVideoSound(val)
 
 watch(
   () => appStore.menuCollapse,
@@ -192,6 +197,7 @@ const save = async (done) => {
     waterContent: appStore.waterContent,
     ws: appStore.ws,
     roundOpen: appStore.roundOpen,
+    videoSound: appStore.videoSound,
   }
 
   user.updateInfo({ id: userStore.user.id, backend_setting: data }).then((res) => {

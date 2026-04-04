@@ -95,19 +95,16 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     let ip_hash = md5_to_str(&ip_hash_bytes);
     let fail_ip_key = format!("fail_ip_{}", ip_hash);
     
-    if let Some(redis_pool) = app_state.redis_pool.as_ref() {
-        if let Ok(Some(fail_time_str)) = redis_util.get(redis_pool, &fail_ip_key).await {
-            if let Ok(fail_time) = fail_time_str.parse::<i64>() {
-                if fail_time > current_time {
+    if let Some(redis_pool) = app_state.redis_pool.as_ref()
+        && let Ok(Some(fail_time_str)) = redis_util.get(redis_pool, &fail_ip_key).await
+            && let Ok(fail_time) = fail_time_str.parse::<i64>()
+                && fail_time > current_time {
                     res.render(Json(SignedApiResponse::<()>::error(
                         format!("由于您操作失败次数过多，该功能已锁定，请{}秒后重试", fail_time - current_time), 
                         201, app_key
                     )));
                     return;
                 }
-            }
-        }
-    }
 
     // 根据应用类型查询卡密
     let kami_info = if app_info.app_type == "user" {
@@ -119,8 +116,8 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     match kami_info {
         Ok(Some(kami)) => {
             // 验证密码 - 使用优化的 MD5 计算
-            if let Some(ref pwd) = kami.password {
-                if !pwd.is_empty() {
+            if let Some(ref pwd) = kami.password
+                && !pwd.is_empty() {
                     let pwd_valid = topup_req.kami_pwd.as_ref()
                         .map(|p| {
                             let pwd_hash_bytes = md5_hex(p.as_bytes());
@@ -134,7 +131,6 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                         return;
                     }
                 }
-            }
 
             // 卡密版检查：除了设备增绑卡只能同类型的卡密才能充值
             if app_info.app_type != "user" && user_type == "kami" {
@@ -146,13 +142,12 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             }
 
             // 检查卡密状态
-            if let Some(ban_time) = kami.ban {
-                if ban_time > current_time {
+            if let Some(ban_time) = kami.ban
+                && ban_time > current_time {
                     let msg = kami.ban_msg.clone().unwrap_or_else(|| "卡密已被禁用".to_string());
                     res.render(Json(SignedApiResponse::<()>::error(msg, 143, app_key)));
                     return;
                 }
-            }
 
             // 检查是否已使用
             if kami.use_id.is_some() {
@@ -188,11 +183,11 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                     // 更新卡密使用状态
                     let cdk_update = if app_info.app_type == "user" {
                         sqlx::query("UPDATE u_cdk_user SET use_uid = ?, use_time = ?, use_ip = ? WHERE id = ? AND appid = ?")
-                            .bind(uid).bind(current_time).bind(&ip).bind(kami.id).bind(appid)
+                            .bind(uid).bind(current_time).bind(ip).bind(kami.id).bind(appid)
                             .execute(&mut *tx).await
                     } else {
                         sqlx::query("UPDATE u_cdk_kami SET use_id = ?, use_time = ?, use_ip = ? WHERE id = ? AND appid = ?")
-                            .bind(uid).bind(current_time).bind(&ip).bind(kami.id).bind(appid)
+                            .bind(uid).bind(current_time).bind(ip).bind(kami.id).bind(appid)
                             .execute(&mut *tx).await
                     };
 
@@ -209,7 +204,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
                             )
                             .bind(user_type).bind(uid).bind("kamiTopup")
-                            .bind(current_time).bind(&ip).bind(appid)
+                            .bind(current_time).bind(ip).bind(appid)
                             .execute(app_state.get_db()).await;
 
                             res.render(Json(SignedApiResponse::success(app_key, None::<()>)));

@@ -126,16 +126,14 @@ impl LruPolicy {
             let mut nodes = self.nodes.write().unwrap();
             
             // 从当前位置移除
-            if let Some(prev_idx) = node_prev {
-                if let Some(prev_node) = &mut nodes[prev_idx] {
+            if let Some(prev_idx) = node_prev
+                && let Some(prev_node) = &mut nodes[prev_idx] {
                     prev_node.next = node_next;
                 }
-            }
-            if let Some(next_idx) = node_next {
-                if let Some(next_node) = &mut nodes[next_idx] {
+            if let Some(next_idx) = node_next
+                && let Some(next_node) = &mut nodes[next_idx] {
                     next_node.prev = node_prev;
                 }
-            }
             
             // 如果是尾节点，更新尾指针
             if *tail == Some(idx) {
@@ -148,11 +146,10 @@ impl LruPolicy {
                 node.next = *head;
             }
             
-            if let Some(head_idx) = *head {
-                if let Some(head_node) = &mut nodes[head_idx] {
+            if let Some(head_idx) = *head
+                && let Some(head_node) = &mut nodes[head_idx] {
                     head_node.prev = Some(idx);
                 }
-            }
             *head = Some(idx);
             
             // 如果链表只有一个节点，尾指针也指向它
@@ -208,11 +205,10 @@ impl LruPolicy {
                 node.next = *head;
             }
             
-            if let Some(head_idx) = *head {
-                if let Some(head_node) = &mut nodes[head_idx] {
+            if let Some(head_idx) = *head
+                && let Some(head_node) = &mut nodes[head_idx] {
                     head_node.prev = Some(idx);
                 }
-            }
             
             *head = Some(idx);
             

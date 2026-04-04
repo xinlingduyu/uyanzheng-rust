@@ -115,11 +115,10 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     validator.wordnum("token", &fen_req.token, 32, 32);
     validator.int_u64("fenid", fen_req.fenid, 1, 99_999_999_999);
     // fenmark 是可选参数，只在有值时验证长度
-    if let Some(ref mark) = fen_req.fenmark {
-        if !mark.is_empty() {
+    if let Some(ref mark) = fen_req.fenmark
+        && !mark.is_empty() {
             validator.string("fenmark", mark, 1, 128);
         }
-    }
     
     if let Err(msg) = validator.validate() {
         res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));

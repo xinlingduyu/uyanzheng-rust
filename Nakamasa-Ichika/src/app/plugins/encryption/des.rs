@@ -21,16 +21,14 @@ impl DesEncryption {
     pub fn new(key: &str, iv: Option<&str>) -> Self {
         let mut key_arr = [0u8; 8];
         let key_bytes = key.as_bytes();
-        for i in 0..8.min(key_bytes.len()) {
-            key_arr[i] = key_bytes[i];
-        }
+        let copy_len = 8.min(key_bytes.len());
+        key_arr[..copy_len].copy_from_slice(&key_bytes[..copy_len]);
         
         let iv_arr = iv.map(|iv_str| {
             let mut arr = [0u8; 8];
             let iv_bytes = iv_str.as_bytes();
-            for i in 0..8.min(iv_bytes.len()) {
-                arr[i] = iv_bytes[i];
-            }
+            let copy_len = 8.min(iv_bytes.len());
+            arr[..copy_len].copy_from_slice(&iv_bytes[..copy_len]);
             arr
         });
         

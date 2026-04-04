@@ -99,6 +99,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let page = list_req.page.unwrap_or(1).max(1);
     let page_size = list_req.size.unwrap_or(10).max(1);
     let offset = (page - 1) * page_size;
+    
+    // 性能优化：在函数开头计算时间戳，避免重复调用
+    let now_ts = Utc::now().timestamp();
 
     let mut query = String::from(
         "SELECT K.*, G.name as Gname,
@@ -112,8 +115,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     if let Some(so) = list_req.so {
         // 添加时间范围
-        if let Some(add_time_range) = so.add_time {
-            if add_time_range.len() == 2 {
+        if let Some(add_time_range) = so.add_time
+            && add_time_range.len() == 2 {
                 let condition = " AND K.add_time >= ? AND K.add_time <= ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
@@ -125,11 +128,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     params.push((end + 86399).to_string());
                 }
             }
-        }
 
         // 使用时间范围
-        if let Some(use_time_range) = so.use_time {
-            if use_time_range.len() == 2 {
+        if let Some(use_time_range) = so.use_time
+            && use_time_range.len() == 2 {
                 let condition = " AND K.use_time >= ? AND K.use_time <= ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
@@ -140,55 +142,49 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     params.push((end + 86399).to_string());
                 }
             }
-        }
 
         // 添加角色
-        if let Some(add_role) = so.add_role {
-            if !add_role.is_empty() {
+        if let Some(add_role) = so.add_role
+            && !add_role.is_empty() {
                 let condition = " AND K.add_role = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(add_role);
             }
-        }
 
         // 状态
-        if let Some(state) = so.state {
-            if !state.is_empty() {
-                let now = Utc::now().timestamp();
+        if let Some(state) = so.state
+            && !state.is_empty() {
                 let condition = if state == "y" {
-                    format!(" AND (K.ban < {} OR K.ban IS NULL)", now)
+                    format!(" AND (K.ban < {} OR K.ban IS NULL)", now_ts)
                 } else {
-                    format!(" AND K.ban >= {}", now)
+                    format!(" AND K.ban >= {}", now_ts)
                 };
                 query.push_str(&condition);
                 count_query.push_str(&condition);
             }
-        }
 
         // 导出状态
-        if let Some(out_state) = so.out_state {
-            if !out_state.is_empty() {
+        if let Some(out_state) = so.out_state
+            && !out_state.is_empty() {
                 let condition = " AND K.out_state = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(out_state);
             }
-        }
 
         // 类型
-        if let Some(type_val) = so.type_val {
-            if !type_val.is_empty() {
+        if let Some(type_val) = so.type_val
+            && !type_val.is_empty() {
                 let condition = " AND K.type = ?";
                 query.push_str(condition);
                 count_query.push_str(condition);
                 params.push(type_val);
             }
-        }
 
         // 使用状态
-        if let Some(use_state) = so.use_state {
-            if !use_state.is_empty() {
+        if let Some(use_state) = so.use_state
+            && !use_state.is_empty() {
                 let condition = if use_state == "y" {
                     " AND K.use_time IS NOT NULL"
                 } else {
@@ -197,11 +193,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 query.push_str(condition);
                 count_query.push_str(condition);
             }
-        }
 
         // 关键词 - 使用OR条件，与PHP一致
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 let condition = " AND (K.cardNo = ? OR K.note = ? OR K.email = ? OR K.phone = ?)";
                 query.push_str(condition);
                 count_query.push_str(condition);
@@ -210,13 +205,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 params.push(keyword.clone());
                 params.push(keyword);
             }
-        }
     }
 
     // 查询总数
     let mut count_sql_query = sqlx::query(&count_query);
-    for i in 0..params.len() {
-        count_sql_query = count_sql_query.bind(&params[i]);
+    for param in &params {
+        count_sql_query = count_sql_query.bind(param);
     }
 
     let total: i64 = match count_sql_query.fetch_one(app_state.get_db()).await {
@@ -244,11 +238,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         Ok(rows) => {
             let mut list = Vec::new();
             for row in rows {
-                // 判断state状态
-                let now = Utc::now().timestamp();
+                // 判断state状态 - 使用已计算的 now_ts
                 let ban: Option<i64> = row.try_get("ban").ok();
                 let _state = if let Some(ban_time) = ban {
-                    if ban_time >= now { "n" } else { "y" }
+                    if ban_time >= now_ts { "n" } else { "y" }
                 } else {
                     "y"
                 };
@@ -698,21 +691,19 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         params.push(sn_max.to_string());
     }
 
-    if let Some(password) = edit_req.password {
-        if !password.is_empty() {
+    if let Some(password) = edit_req.password
+        && !password.is_empty() {
             updates.push("password = ?");
             let pwd_hash_bytes = md5_hex(password.as_bytes());
             params.push(md5_to_str(&pwd_hash_bytes).to_string());
         }
-    }
 
     if use_time.is_some() {
-        if cdk_type == "vip" {
-            if let Some(vip) = edit_req.vip {
+        if cdk_type == "vip"
+            && let Some(vip) = edit_req.vip {
                 updates.push("vip_exp = ?");
                 params.push(vip.to_string());
             }
-        }
 
         if cdk_type == "fen" || cdk_type == "addsn" {
             updates.push("val = ?");

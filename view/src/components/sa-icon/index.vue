@@ -17,11 +17,26 @@ const props = defineProps({
   size: { type: Number, default: 24 },
 })
 
+// 将 icon-xxx 格式转换为 IconXxx 格式
+const normalizeIconName = (icon) => {
+  if (!icon) return ''
+  // 如果已经是 IconXxx 格式，直接返回
+  if (icon.startsWith('Icon')) return icon
+  // 如果是 icon-xxx 格式，转换为 IconXxx
+  if (icon.startsWith('icon-')) {
+    return 'Icon' + icon.slice(5).split('-').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join('')
+  }
+  // 其他情况直接返回
+  return icon
+}
+
 watch(
   () => props.icon,
   (vl) => {
     if (vl) {
-      value.value = vl
+      value.value = normalizeIconName(vl)
     }
   },
   { immediate: true }

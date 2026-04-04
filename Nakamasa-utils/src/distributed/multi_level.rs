@@ -237,7 +237,7 @@ where
             let global_count = self.global_access_count.fetch_add(1, Ordering::Relaxed);
             
             // 采样率：每 100 次访问采样一次
-            if global_count % 100 == 0 {
+            if global_count.is_multiple_of(100) {
                 let count = {
                     let counts = self.access_counts.read();
                     if let Some(counter) = counts.get(key) {
@@ -259,12 +259,11 @@ where
         }
         
         // 1. 尝试从 L1 获取
-        if let Some(l1) = &self.l1 {
-            if let Some(entry) = l1.get(key) {
+        if let Some(l1) = &self.l1
+            && let Some(entry) = l1.get(key) {
                 self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
                 return Ok(Some(entry.value));
             }
-        }
         
         // 2. 尝试从 L2 获取
         if let Some(l2) = &self.l2 {
@@ -273,11 +272,10 @@ where
                 self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
                 
                 // 如果是热点数据，回填到 L1
-                if self.config.auto_promote_hot && self.hot_keys.read().contains(key) {
-                    if let Some(l1) = &self.l1 {
+                if self.config.auto_promote_hot && self.hot_keys.read().contains(key)
+                    && let Some(l1) = &self.l1 {
                         l1.set(key.clone(), CacheEntry::new(value.clone()));
                     }
-                }
                 
                 return Ok(Some(value));
             }
@@ -413,16 +411,16 @@ where
         }
         
         // 从 L2 获取未命中的
-        if !missed.is_empty() && self.l2.is_some() {
-            let l2 = self.l2.as_ref().unwrap();
-            for key in &missed {
-                let key_str = key.to_string();
-                if let Some(value) = l2.get::<V>(&key_str).await? {
-                    results.insert(key.clone(), value);
-                    self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
+        if !missed.is_empty()
+            && let Some(l2) = &self.l2 {
+                for key in &missed {
+                    let key_str = key.to_string();
+                    if let Some(value) = l2.get::<V>(&key_str).await? {
+                        results.insert(key.clone(), value);
+                        self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
+                    }
                 }
             }
-        }
         
         Ok(results)
     }

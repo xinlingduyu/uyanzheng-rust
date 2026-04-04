@@ -53,15 +53,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut query = String::from("SELECT id, user, notes, avatars, state, auth FROM u_admin WHERE id > 1");
     let mut params: Vec<String> = Vec::new();
 
-    if let Some(so) = list_req.so {
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+    if let Some(so) = list_req.so
+        && let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 query.push_str(" AND (user LIKE ? OR notes LIKE ?)");
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
-    }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
     params.push(page_size.to_string());
@@ -251,15 +249,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     ];
 
     // 如果提供了新密码，则更新密码
-    if let Some(password) = edit_req.password {
-        if !password.is_empty() {
+    if let Some(password) = edit_req.password
+        && !password.is_empty() {
             let app_conf = app_state.config();
             let adm_pwd_salt = app_conf.app().admin().keys();
             let password_hash = md5_concat_2(&password, adm_pwd_salt);
             updates.push("password = ?");
             params.push(password_hash);
         }
-    }
 
     let query = format!("UPDATE u_admin SET {} WHERE id = ?", updates.join(", "));
     

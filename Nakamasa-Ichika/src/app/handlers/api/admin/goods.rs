@@ -32,7 +32,7 @@ struct GoodsItem {
     money: f64,
     blurb: String,
     state: String,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,7 +57,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
@@ -84,22 +84,20 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut params: Vec<String> = vec![appid.to_string()];
     let mut count_params: Vec<String> = vec![appid.to_string()];
     
-    if let Some(so) = &list_req.so {
-        if let Some(keyword) = &so.keyword {
-            if !keyword.is_empty() {
+    if let Some(so) = &list_req.so
+        && let Some(keyword) = &so.keyword
+            && !keyword.is_empty() {
                 where_clause.push_str(" AND (name LIKE ? OR id = ?)");
                 params.push(format!("%{}%", keyword));
                 params.push(keyword.clone());
                 count_params.push(format!("%{}%", keyword));
                 count_params.push(keyword.clone());
             }
-        }
-    }
 
     let query = format!("SELECT id, name, type, val, money, IFNULL(blurb, '') as blurb, state, appid FROM u_goods {} ORDER BY id DESC LIMIT ? OFFSET ?", where_clause);
     let count_query = format!("SELECT COUNT(*) FROM u_goods {}", where_clause);
     
-    let mut sql_query = sqlx::query_as::<_, (u64, String, String, i64, f64, String, String, u64)>(&query);
+    let mut sql_query = sqlx::query_as::<_, (u64, String, String, i64, f64, String, String, i64)>(&query);
     for param in &params {
         sql_query = sql_query.bind(param);
     }
@@ -179,7 +177,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => match s.parse::<u64>() {
+            Ok(s) => match s.parse::<i64>() {
                 Ok(id) => id,
                 Err(_) => {
                     res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));

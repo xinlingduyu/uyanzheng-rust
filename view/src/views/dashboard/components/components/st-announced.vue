@@ -48,8 +48,13 @@ const viewDetail = async (record) => {
 }
 
 const getNoticeList = async () => {
-  const res = await commonApi.getNoticeList({ limit: 5, orderBy: 'id', orderType: 'desc' })
-  data.value = res.data.data
+  try {
+    const res = await commonApi.getNoticeList({ limit: 5, orderBy: 'id', orderType: 'desc' })
+    data.value = res.data || []
+  } catch (e) {
+    console.error('获取公告列表失败', e)
+    data.value = []
+  }
 }
 
 getNoticeList()

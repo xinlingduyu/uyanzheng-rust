@@ -90,9 +90,9 @@ struct VerItem {
     ver_off_msg: Option<String>,
     ver_url: Option<String>,
     ver_content: Option<String>,
-    mid: Option<u64>,
+    mid: Option<i64>,
     discard: bool,
-    appid: u64,
+    appid: i64,
     mi_name: Option<String>,
     mi_type: Option<String>,
 }
@@ -168,15 +168,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut query = "SELECT V.id, V.name, V.ver_key, V.ver_major, V.ver_minor, V.ver_patch, V.ver_state, V.ver_off_msg, V.ver_url, V.ver_content, V.mid, V.discard, V.appid, M.name as mname, M.type as mtype FROM u_app_ver AS V LEFT JOIN u_app_mi AS M ON (V.mid=M.id) WHERE V.appid = ?".to_string();
     let mut params: Vec<String> = vec![appid.to_string()];
 
-    if let Some(ref so) = list_req.so {
-        if let Some(ref keyword) = so.keyword {
-            if !keyword.is_empty() {
+    if let Some(ref so) = list_req.so
+        && let Some(ref keyword) = so.keyword
+            && !keyword.is_empty() {
                 query = format!("{} AND (V.name LIKE ? OR V.ver_key LIKE ?)", query);
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
-    }
 
     query = format!("{} ORDER BY V.id DESC LIMIT ? OFFSET ?", query);
     params.push(page_size.to_string());
@@ -231,7 +229,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 #[derive(Debug, Deserialize)]
 struct AddRequest {
     #[serde(default)]
-    mid: Option<u64>,
+    mid: Option<i64>,
     name: String,
     ver_key: String,
     ver_major: i32,
@@ -272,11 +270,10 @@ impl AddRequest {
         if !["on", "off"].contains(&self.ver_state.as_str()) {
             return Err("版本状态必须是on或off".to_string());
         }
-        if let Some(ref url) = self.ver_url {
-            if !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
+        if let Some(ref url) = self.ver_url
+            && !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
                 return Err("版本URL必须以http://或https://开头".to_string());
             }
-        }
         Ok(())
     }
 }
@@ -375,7 +372,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 struct EditRequest {
     id: u64,
     #[serde(default)]
-    mid: Option<u64>,
+    mid: Option<i64>,
     name: String,
     ver_key: String,
     ver_major: i32,
@@ -416,11 +413,10 @@ impl EditRequest {
         if !["on", "off"].contains(&self.ver_state.as_str()) {
             return Err("版本状态必须是on或off".to_string());
         }
-        if let Some(ref url) = self.ver_url {
-            if !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
+        if let Some(ref url) = self.ver_url
+            && !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
                 return Err("版本URL必须以http://或https://开头".to_string());
             }
-        }
         Ok(())
     }
 }

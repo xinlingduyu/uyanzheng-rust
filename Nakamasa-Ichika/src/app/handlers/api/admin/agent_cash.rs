@@ -84,14 +84,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             params.push((state - 1).to_string());
         }
 
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 query.push_str(" AND (id = ? OR name LIKE ? OR account LIKE ?)");
                 params.push(keyword.clone());
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
     }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");

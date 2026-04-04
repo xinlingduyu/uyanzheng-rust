@@ -7,7 +7,7 @@ export default {
    */
   getPageList(params = {}) {
     return request({
-      url: '/core/dept/index',
+      url: '/admin/dept/index',
       method: 'get',
       params
     })
@@ -19,7 +19,7 @@ export default {
    */
   getLeaderList(params = {}) {
     return request({
-      url: '/core/dept/leaders',
+      url: '/admin/dept/leaders',
       method: 'get',
       params
     })
@@ -31,7 +31,7 @@ export default {
    */
   addLeader(data = {}) {
     return request({
-      url: '/core/dept/addLeader',
+      url: '/admin/dept/addLeader',
       method: 'post',
       data
     })
@@ -43,7 +43,7 @@ export default {
    */
   delLeader(data = {}) {
     return request({
-      url: '/core/dept/delLeader',
+      url: '/admin/dept/delLeader',
       method: 'delete',
       data
     })
@@ -55,7 +55,7 @@ export default {
    */
   tree() {
     return request({
-      url: '/core/dept/index?tree=true',
+      url: '/admin/dept/index?tree=true',
       method: 'get'
     })
   },
@@ -66,7 +66,7 @@ export default {
    */
   save(params = {}) {
     return request({
-      url: '/core/dept/save',
+      url: '/admin/dept/save',
       method: 'post',
       data: params
     })
@@ -78,7 +78,7 @@ export default {
    */
   destroy(data) {
     return request({
-      url: '/core/dept/destroy',
+      url: '/admin/dept/destroy',
       method: 'delete',
       data
     })
@@ -90,7 +90,7 @@ export default {
    */
   update(id, params = {}) {
     return request({
-      url: '/core/dept/update?id=' + id,
+      url: '/admin/dept/update?id=' + id,
       method: 'put',
       data: params
     })
@@ -102,7 +102,7 @@ export default {
    */
   changeStatus(data = {}) {
     return request({
-      url: '/core/dept/changeStatus',
+      url: '/admin/dept/changeStatus',
       method: 'post',
       data
     })

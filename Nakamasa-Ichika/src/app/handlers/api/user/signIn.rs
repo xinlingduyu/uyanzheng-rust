@@ -52,14 +52,14 @@ async fn get_diary_award_config(app_state: &Arc<AppState>, appid: u64) -> DiaryA
 
     match result {
         Ok(Some(row)) => {
-            let config = DiaryAwardConfig {
-                diary_award: row.0.clone().unwrap_or_else(|| "fen".to_string()),
-                diary_award_val: row.1.unwrap_or(0),
-            };
+            
             
             // 存入缓存（不完整，只存需要的数据）
             // 实际使用时可以存完整的 AppConfigCache
-            config
+            DiaryAwardConfig {
+                diary_award: row.0.clone().unwrap_or_else(|| "fen".to_string()),
+                diary_award_val: row.1.unwrap_or(0),
+            }
         }
         _ => DiaryAwardConfig {
             diary_award: "fen".to_string(),
@@ -159,7 +159,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind("signIn")
     .bind("y")
     .bind(current_time)
-    .bind(&ip)
+    .bind(ip)
     .bind(appid)
     .execute(app_state.get_db())
     .await;

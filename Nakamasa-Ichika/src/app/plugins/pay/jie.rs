@@ -183,8 +183,8 @@ impl PayPlugin for JiePayPlugin {
             Ok(response) => {
                 // 解析响应
                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&response) {
-                    if let Some(code) = result.get("code").and_then(|c| c.as_i64()) {
-                        if code == 1 || code == 200 {
+                    if let Some(code) = result.get("code").and_then(|c| c.as_i64())
+                        && (code == 1 || code == 200) {
                             // 获取支付URL
                             if let Some(pay_url) = result.get("url").and_then(|u| u.as_str()) {
                                 return Ok(PayResult {
@@ -195,7 +195,6 @@ impl PayPlugin for JiePayPlugin {
                                 });
                             }
                         }
-                    }
                     // 返回错误信息
                     let msg = result.get("msg")
                         .and_then(|m| m.as_str())
@@ -242,11 +241,10 @@ impl PayPlugin for JiePayPlugin {
         let mut map = BTreeMap::new();
         if let Some(obj) = data.as_object() {
             for (k, v) in obj {
-                if k != "sign" {
-                    if let Some(s) = v.as_str() {
+                if k != "sign"
+                    && let Some(s) = v.as_str() {
                         map.insert(k.clone(), s.to_string());
                     }
-                }
             }
         }
 

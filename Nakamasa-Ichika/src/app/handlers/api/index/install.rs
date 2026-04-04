@@ -89,21 +89,19 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator.wordnum("admin_authcode", &install_req.admin_authcode, 16, 32);
     validator.sameone("install_type", &install_req.install_type, vec!["new", "upgrade"]);
     
-    if install_req.install_type == "upgrade" {
-        if let Some(ref upgrade_ver) = install_req.install_upgrade {
+    if install_req.install_type == "upgrade"
+        && let Some(ref upgrade_ver) = install_req.install_upgrade {
             let version_re = regex::Regex::new(r"^\d+\.\d+(\.\d+)?$").unwrap();
             if !version_re.is_match(upgrade_ver) {
                 res.render(Json(ApiResponse::<()>::error("升级版本格式有误", 201)));
                 return;
             }
         }
-    }
     
-    if install_req.install_type == "upgrade" {
-        if let Some(ref adm_pwd) = install_req.adm_pwd {
+    if install_req.install_type == "upgrade"
+        && let Some(ref adm_pwd) = install_req.adm_pwd {
             validator.wordnum("adm_pwd", adm_pwd, 32, 32);
         }
-    }
 
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));

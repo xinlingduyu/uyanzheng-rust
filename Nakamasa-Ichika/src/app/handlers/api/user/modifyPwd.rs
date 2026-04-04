@@ -96,14 +96,14 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
     // 更新密码 - 根据用户类型选择表
     let result = if user_type == "kami" {
         sqlx::query("UPDATE u_cdk_kami SET password = ? WHERE id = ? AND appid = ?")
-            .bind(&new_hash)
+            .bind(new_hash)
             .bind(uid as i64)
             .bind(appid as i64)
             .execute(app_state.get_db())
             .await
     } else {
         sqlx::query("UPDATE u_user SET password = ? WHERE id = ? AND appid = ?")
-            .bind(&new_hash)
+            .bind(new_hash)
             .bind(uid as i64)
             .bind(appid as i64)
             .execute(app_state.get_db())

@@ -403,20 +403,18 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut params = Vec::new();
 
     if let Some(so) = list_req.so {
-        if let Some(log_type) = so.log_type {
-            if !log_type.is_empty() {
+        if let Some(log_type) = so.log_type
+            && !log_type.is_empty() {
                 conditions.push("LOG.type = ?");
                 params.push(log_type);
             }
-        }
 
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 conditions.push("(LOG.type LIKE ? OR LOG.ip LIKE ?)");
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
     }
 
     if !conditions.is_empty() {
@@ -491,10 +489,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 count_sql = count_sql.bind(param);
             }
 
-            let total = match count_sql.fetch_one(app_state.get_db()).await {
-                Ok(t) => t,
-                Err(_) => 0,
-            };
+            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
 
             let response = LogsListResponse {
                 list,
@@ -581,35 +576,31 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
     let mut params: Vec<String> = Vec::new();
 
     if let Some(so) = list_req.so {
-        if let Some(log_type) = so.log_type {
-            if !log_type.is_empty() {
+        if let Some(log_type) = so.log_type
+            && !log_type.is_empty() {
                 conditions.push("LOG.type = ?");
                 params.push(log_type);
             }
-        }
 
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 conditions.push("(U.acctno LIKE ? OR LOG.type LIKE ?)");
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
 
-        if let Some(appid) = so.appid {
-            if appid > 0 {
+        if let Some(appid) = so.appid
+            && appid > 0 {
                 conditions.push("LOG.appid = ?");
                 params.push(appid.to_string());
             }
-        }
 
-        if let Some(time_range) = so.time {
-            if time_range.len() == 2 {
+        if let Some(time_range) = so.time
+            && time_range.len() == 2 {
                 conditions.push("LOG.time >= ? AND LOG.time <= ?");
                 params.push(time_range[0].to_string());
                 params.push(time_range[1].to_string());
             }
-        }
     }
 
     if !conditions.is_empty() {
@@ -670,10 +661,7 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
                 count_sql = count_sql.bind(param);
             }
 
-            let total = match count_sql.fetch_one(app_state.get_db()).await {
-                Ok(t) => t,
-                Err(_) => 0,
-            };
+            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
 
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 
@@ -722,35 +710,31 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let mut params: Vec<String> = Vec::new();
 
     if let Some(so) = list_req.so {
-        if let Some(log_type) = so.log_type {
-            if !log_type.is_empty() {
+        if let Some(log_type) = so.log_type
+            && !log_type.is_empty() {
                 conditions.push("LOG.type = ?");
                 params.push(log_type);
             }
-        }
 
-        if let Some(keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(keyword) = so.keyword
+            && !keyword.is_empty() {
                 conditions.push("(A.notes LIKE ? OR LOG.type LIKE ?)");
                 params.push(format!("%{}%", keyword));
                 params.push(format!("%{}%", keyword));
             }
-        }
 
-        if let Some(appid) = so.appid {
-            if appid > 0 {
+        if let Some(appid) = so.appid
+            && appid > 0 {
                 conditions.push("LOG.appid = ?");
                 params.push(appid.to_string());
             }
-        }
 
-        if let Some(time_range) = so.time {
-            if time_range.len() == 2 {
+        if let Some(time_range) = so.time
+            && time_range.len() == 2 {
                 conditions.push("LOG.time >= ? AND LOG.time <= ?");
                 params.push(time_range[0].to_string());
                 params.push(time_range[1].to_string());
             }
-        }
     }
 
     if !conditions.is_empty() {
@@ -811,10 +795,7 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 count_sql = count_sql.bind(param);
             }
 
-            let total = match count_sql.fetch_one(app_state.get_db()).await {
-                Ok(t) => t,
-                Err(_) => 0,
-            };
+            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
 
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 

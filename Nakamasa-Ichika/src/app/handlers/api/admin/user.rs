@@ -168,7 +168,7 @@ struct UserItem {
     sn_max: i64,
     ban: Option<i64>,
     ban_msg: Option<String>,
-    appid: u64,
+    appid: i64,
     last_login_info: Option<LastLoginInfo>,
     online: i64,
 }
@@ -242,8 +242,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let page = list_req.page.unwrap_or(1).max(1) as u32;
-    let size = list_req.size.unwrap_or(10) as u32;
+    let page = list_req.page.unwrap_or(1).max(1);
+    let size = list_req.size.unwrap_or(10);
     let offset = (page - 1) * size;
 
     let now = Utc::now().timestamp();
@@ -267,9 +267,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
 
         // ug 过滤: 1=普通用户(vip < time or vip IS NULL), 2=VIP用户(vip > time), 3=永久VIP(vip >= 9999999999)
-        if let Some(ref ug_str) = so.ug {
-            if !ug_str.is_empty() {
-                if let Ok(ug) = ug_str.parse::<i32>() {
+        if let Some(ref ug_str) = so.ug
+            && !ug_str.is_empty()
+                && let Ok(ug) = ug_str.parse::<i32>() {
                     if ug == 1 {
                         where_conditions.push("(vip < ? OR vip IS NULL)".to_string());
                         where_params_i64.push(now);
@@ -281,8 +281,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                         where_params_i64.push(9999999999);
                     }
                 }
-            }
-        }
 
         // keyword 搜索: 根据 keywordType 搜索不同字段
         if !so.keyword.is_empty() {
@@ -390,12 +388,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 let sn_list_json = sn_list.and_then(|s| serde_json::from_str(&s).ok());
 
                 let user_item = UserItem {
-                    id: id,
+                    id,
                     email: row.try_get("email").ok(),
                     phone: row.try_get("phone").ok(),
                     acctno: row.try_get("acctno").unwrap_or_else(|_| String::new()),
                     nickname: row.try_get("nickname").ok(),
-                    avatars: avatars,
+                    avatars,
                     password: row.try_get("password").unwrap_or_else(|_| String::new()),
                     inviter_id: row.try_get("inviter_id").ok(),
                     vip: row.try_get("vip").ok(),
@@ -735,11 +733,10 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .int_u64("id", edit_req.id, 1, 9999999999);
 
     // password: 可选，如果不为空则验证
-    if let Some(ref pwd) = edit_req.password {
-        if !pwd.is_empty() {
+    if let Some(ref pwd) = edit_req.password
+        && !pwd.is_empty() {
             validator.password("password", pwd, 5, 18);
         }
-    }
 
     // vip: 可选
     if let Some(vip) = edit_req.vip {
@@ -762,11 +759,10 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // ban_msg: 可选，如果不为空则验证
-    if let Some(ref ban_msg) = edit_req.ban_msg {
-        if !ban_msg.is_empty() {
+    if let Some(ref ban_msg) = edit_req.ban_msg
+        && !ban_msg.is_empty() {
             validator.string("ban_msg", ban_msg, 2, 255);
         }
-    }
 
     if let Err(msg) = validator.validate() {
         tracing::error!("参数验证失败: {}", msg);
@@ -825,11 +821,11 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // fen: 默认0
     let new_fen = edit_req.fen.unwrap_or(0);
-    update_sql.push_str(&format!("fen = ?, "));
+    update_sql.push_str("fen = ?, ");
 
     // sn_max: 默认0
     let new_sn_max = edit_req.sn_max.unwrap_or(0);
-    update_sql.push_str(&format!("sn_max = ?, "));
+    update_sql.push_str("sn_max = ?, ");
 
     // ban: 直接赋值
     let new_ban = edit_req.ban;
@@ -841,13 +837,12 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // password: 可选
     let mut password_hash_opt: Option<String> = None;
-    if let Some(ref pwd) = edit_req.password {
-        if !pwd.is_empty() {
+    if let Some(ref pwd) = edit_req.password
+        && !pwd.is_empty() {
             let hash_bytes = md5_hex(pwd.as_bytes());
             password_hash_opt = Some(md5_to_str(&hash_bytes).to_string());
             update_sql.push_str("password = ?, ");
         }
-    }
 
     // 移除最后的", "
 
@@ -1051,7 +1046,7 @@ struct UserInfo {
     sn_max: i64,
     ban: Option<i64>,
     ban_msg: Option<String>,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1067,7 +1062,7 @@ struct LogItem {
     ip: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     ip_address: Option<String>,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -1164,7 +1159,7 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 查询日志: where ug = ? and uid = ? and appid = ? ORDER BY id DESC LIMIT 8
-    let log_result = sqlx::query_as::<_, (i64, String, i64, String, Option<String>, i64, String, u64)>(
+    let log_result = sqlx::query_as::<_, (i64, String, i64, String, Option<String>, i64, String, i64)>(
         "SELECT id, ug, uid, type, asset_changes, time, ip, appid FROM u_logs WHERE ug = ? AND uid = ? AND appid = ? ORDER BY id DESC LIMIT 8"
     )
     .bind("user")
@@ -1215,18 +1210,16 @@ pub async fn unbind_sn(_req: &mut Request, _depot: &mut Depot, res: &mut Respons
 /// 获取客户端IP
 fn get_client_ip(req: &Request) -> String {
     // 尝试从Header获取真实IP
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP") {
-        if let Ok(ip) = x_real_ip.to_str() {
+    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
+        && let Ok(ip) = x_real_ip.to_str() {
             return ip.to_string();
         }
-    }
     
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For") {
-        if let Ok(ip) = x_forwarded_for.to_str() {
+    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
+        && let Ok(ip) = x_forwarded_for.to_str() {
             // 取第一个IP
             return ip.split(',').next().unwrap_or("").trim().to_string();
         }
-    }
 
     // TODO: 获取连接的真实IP
     "127.0.0.1".to_string()

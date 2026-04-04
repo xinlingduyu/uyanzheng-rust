@@ -166,18 +166,17 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let vcnum = sqlx::query_as::<_, (i64,)>(
         "SELECT COUNT(*) FROM u_vcode WHERE ip = ? AND time BETWEEN ? AND ?"
     )
-    .bind(&ip)
+    .bind(ip)
     .bind(current_time - 3600)  // timeRange() - 当前小时开始
     .bind(current_time)          // timeRange(0,1) - 当前小时结束
     .fetch_one(app_state.get_db())
     .await;
 
-    if let Ok(count) = vcnum {
-        if count.0 >= 10 {
+    if let Ok(count) = vcnum
+        && count.0 >= 10 {
             res.render(Json(SignedApiResponse::<()>::error("验证码获取频繁", 117, app_key)));
             return;
         }
-    }
 
     // 检查同一账号120秒内是否已获取 - 一比一还原PHP
     // PHP: $vcRes = $this->db->where('eorp = ? and time > ?',[$_POST['account'],time()-120])->fetch();
@@ -214,7 +213,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(&code_req.code_type)
     .bind(&code)
     .bind(current_time)
-    .bind(&ip)
+    .bind(ip)
     .bind(appid)
     .execute(&mut *tx)
     .await;
@@ -374,7 +373,7 @@ async fn send_sms(
             // PHP: 发送短信
             sms_plugin.send(phone, code, vc_time).map(|result| {
                 if result.success { Ok(()) } else { Err(result.message) }
-            }).map_err(|e| e)?
+            })?
         }
         "ali" => {
             let mut sms_plugin = AliSmsPlugin::new();
@@ -383,7 +382,7 @@ async fn send_sms(
             
             sms_plugin.send(phone, code, vc_time).map(|result| {
                 if result.success { Ok(()) } else { Err(result.message) }
-            }).map_err(|e| e)?
+            })?
         }
         "tencent" => {
             let mut sms_plugin = TencentSmsPlugin::new();
@@ -392,8 +391,8 @@ async fn send_sms(
             
             sms_plugin.send(phone, code, vc_time).map(|result| {
                 if result.success { Ok(()) } else { Err(result.message) }
-            }).map_err(|e| e)?
+            })?
         }
-        _ => return Err("不支持的短信类型".to_string())
+        _ => Err("不支持的短信类型".to_string())
     }
 }

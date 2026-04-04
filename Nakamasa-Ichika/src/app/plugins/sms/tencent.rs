@@ -161,7 +161,9 @@ impl SmsPlugin for TencentSmsPlugin {
         });
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        let result = tokio::task::block_in_place(|| {
+        
+
+        tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(60))
@@ -223,8 +225,6 @@ impl SmsPlugin for TencentSmsPlugin {
                     }
                 }
             })
-        });
-
-        result
+        })
     }
 }

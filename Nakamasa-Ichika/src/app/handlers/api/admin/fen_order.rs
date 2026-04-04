@@ -115,13 +115,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             event_filter = true;
             event_id_value = Some(event_id);
         }
-        if let Some(ref keyword) = so.keyword {
-            if !keyword.is_empty() {
+        if let Some(ref keyword) = so.keyword
+            && !keyword.is_empty() {
                 keyword_filter = true;
                 keyword_value = keyword.clone();
                 keyword_type = so.keyword_type.clone().unwrap_or_default();
             }
-        }
     }
 
     let where_clause = where_conditions.join(" AND ");
@@ -165,11 +164,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             );
             
             let mut count_q = sqlx::query_scalar(&count_query).bind(appid);
-            if event_filter {
-                if let Some(event_id) = event_id_value {
+            if event_filter
+                && let Some(event_id) = event_id_value {
                     count_q = count_q.bind(event_id);
                 }
-            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     count_q = count_q.bind(pattern).bind(pattern);
@@ -194,11 +192,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             );
             
             let mut list_q = sqlx::query_as::<_, (i64, i64, i64, String, i64, Option<String>, i64, Option<String>)>(&list_query).bind(appid);
-            if event_filter {
-                if let Some(event_id) = event_id_value {
+            if event_filter
+                && let Some(event_id) = event_id_value {
                     list_q = list_q.bind(event_id);
                 }
-            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     list_q = list_q.bind(pattern).bind(pattern);
@@ -269,11 +266,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             );
             
             let mut count_q = sqlx::query_scalar(&count_query).bind(appid);
-            if event_filter {
-                if let Some(event_id) = event_id_value {
+            if event_filter
+                && let Some(event_id) = event_id_value {
                     count_q = count_q.bind(event_id);
                 }
-            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     count_q = count_q.bind(pattern).bind(pattern);
@@ -298,11 +294,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             );
             
             let mut list_q = sqlx::query_as::<_, (i64, i64, i64, String, i64, Option<String>, i64, Option<String>)>(&list_query).bind(appid);
-            if event_filter {
-                if let Some(event_id) = event_id_value {
+            if event_filter
+                && let Some(event_id) = event_id_value {
                     list_q = list_q.bind(event_id);
                 }
-            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     list_q = list_q.bind(pattern).bind(pattern);

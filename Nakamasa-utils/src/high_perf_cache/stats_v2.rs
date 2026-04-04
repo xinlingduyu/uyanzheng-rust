@@ -81,7 +81,7 @@ impl SamplingCounter {
             );
 
             // 自适应调整
-            if self.config.adaptive && total % self.config.adjust_interval == 0 {
+            if self.config.adaptive && total.is_multiple_of(self.config.adjust_interval) {
                 self.adjust_sample_rate(total);
             }
 
@@ -412,11 +412,10 @@ impl LatencyTracker {
         }
 
         // 采样记录到分位数估计器
-        if self.sampler.should_sample() {
-            if let Ok(mut q) = self.quantiles.write() {
+        if self.sampler.should_sample()
+            && let Ok(mut q) = self.quantiles.write() {
                 q.observe(ns as f64);
             }
-        }
     }
 
     /// 获取统计
