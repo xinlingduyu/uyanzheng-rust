@@ -154,6 +154,7 @@ export function unbindSn(id, udid) {
 // 默认导出所有方法
 export default {
   list,
+  getList,
   get,
   add,
   edit,

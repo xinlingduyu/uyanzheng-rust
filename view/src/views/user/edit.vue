@@ -19,7 +19,7 @@
               <!-- 头像 -->
               <a-avatar :size="48">
                 <img v-if="state.form.avatars" :src="state.form.avatars" alt="avatar" />
-                <img v-else alt="avatar" src="@/assets/images/user.png" />
+                <icon-user v-else />
               </a-avatar>
               <!-- 用户信息 -->
               <div class="md:ml-3">
