@@ -135,9 +135,12 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/logs/list").hoop(AdminAuth::new()).post(logs::get_list))
         .push(Router::with_path("/logs/list/user").hoop(AdminAuth::new()).post(logs::get_list_user))
         .push(Router::with_path("/logs/list/admin").hoop(AdminAuth::new()).post(logs::get_list_admin))
+        .push(Router::with_path("/logs/type").hoop(AdminAuth::new()).get(logs::get_type))
         .push(Router::with_path("/logs/type/user").hoop(AdminAuth::new()).get(logs::get_type_user))
         .push(Router::with_path("/logs/type/admin").hoop(AdminAuth::new()).get(logs::get_type_admin))
         .push(Router::with_path("/logs/del").hoop(AdminAuth::new()).post(logs::del))
+        .push(Router::with_path("/logs/delall").hoop(AdminAuth::new()).post(logs::del_all))
+        .push(Router::with_path("/logs/clean").hoop(AdminAuth::new()).post(logs::clean))
         // Fen Order - 需要认证
         .push(Router::with_path("/fenOrder/list").hoop(AdminAuth::new()).post(fen_order::get_list))
         .push(Router::with_path("/fenOrder/edit").hoop(AdminAuth::new()).post(fen_order::edit))
@@ -163,10 +166,16 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/set/list").hoop(AdminAuth::new()).post(set::get_list))
         .push(Router::with_path("/set/edit").hoop(AdminAuth::new()).post(set::edit))
         // Ver - 需要认证
+        .push(Router::with_path("/ver/get").hoop(AdminAuth::new()).post(ver::get_list))
         .push(Router::with_path("/ver/list").hoop(AdminAuth::new()).post(ver::get_list))
+        .push(Router::with_path("/ver/submit").hoop(AdminAuth::new()).post(ver::submit))
         .push(Router::with_path("/ver/add").hoop(AdminAuth::new()).post(ver::add))
         .push(Router::with_path("/ver/edit").hoop(AdminAuth::new()).post(ver::edit))
         .push(Router::with_path("/ver/del").hoop(AdminAuth::new()).post(ver::del))
+        .push(Router::with_path("/ver/delall").hoop(AdminAuth::new()).post(ver::del_all))
+        .push(Router::with_path("/ver/discard").hoop(AdminAuth::new()).post(ver::discard))
+        .push(Router::with_path("/ver/milist").hoop(AdminAuth::new()).get(ver::get_milist))
+        .push(Router::with_path("/ver/group").hoop(AdminAuth::new()).get(ver::get_group))
         // Extend - 需要认证
         .push(Router::with_path("/extend/list").hoop(AdminAuth::new()).post(extend::get_list))
         .push(Router::with_path("/extend/add").hoop(AdminAuth::new()).post(extend::add))
@@ -184,6 +193,7 @@ pub fn admin_routes() -> Router {
         // Encryption - 需要认证
         .push(Router::with_path("/encryption/plug").hoop(AdminAuth::new()).get(encryption::get_plug))
         .push(Router::with_path("/encryption/list").hoop(AdminAuth::new()).post(encryption::get_list))
+        .push(Router::with_path("/encryption/submit").hoop(AdminAuth::new()).post(encryption::submit))
         .push(Router::with_path("/encryption/add").hoop(AdminAuth::new()).post(encryption::add))
         .push(Router::with_path("/encryption/edit").hoop(AdminAuth::new()).post(encryption::edit))
         .push(Router::with_path("/encryption/editSign").hoop(AdminAuth::new()).post(encryption::edit_sign))

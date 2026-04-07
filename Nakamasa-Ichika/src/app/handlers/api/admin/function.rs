@@ -312,10 +312,12 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(Some(row)) => {
+            // 将代码进行 Base64 编码，避免传输过程中的编码问题
+            let encoded_code = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &row.2);
             let detail = FunctionDetail {
                 id: row.0,
                 name: row.1,
-                code: row.2,
+                code: encoded_code,
                 notes: row.3,
                 allow: row.4.unwrap_or(0),
                 fen: row.5.unwrap_or(0),

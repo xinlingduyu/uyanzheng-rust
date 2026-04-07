@@ -601,14 +601,17 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let now = Utc::now().timestamp();
     let mut success = false;
 
+    // 注意：前端已将时间转换为秒数
+    let val_seconds = award_req.val;
+
     if award_req.object == "all" {
         // 奖励所有人
         if award_req.award_type == "fen" {
-            // 奖励积分: SET fen = ?
+            // 奖励积分: 累加 fen = fen + val
             let result = sqlx::query(
-                "UPDATE u_user SET fen = ? WHERE fen < 9999999999 AND appid = ?"
+                "UPDATE u_user SET fen = fen + ? WHERE fen < 9999999999 AND appid = ?"
             )
-            .bind(award_req.val)
+            .bind(val_seconds)
             .bind(&appid)
             .execute(app_state.get_db())
             .await;
@@ -616,22 +619,22 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 success = r.rows_affected() > 0;
             }
         } else {
-            // 奖励VIP: 先把VIP奖励了，再奖励普通用户
-            // res1: SET vip = ? WHERE vip < 9999999999 and vip > ?
+            // 奖励VIP：累加 vip = vip + val，保护永久会员
+            // 1. 对已有VIP的用户累加（排除永久会员和已过期用户）
             let res1 = sqlx::query(
-                "UPDATE u_user SET vip = ? WHERE vip < 9999999999 AND vip > ? AND appid = ?"
+                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?"
             )
-            .bind(award_req.val)
+            .bind(val_seconds)
             .bind(now)
             .bind(&appid)
             .execute(app_state.get_db())
             .await;
 
-            // res2: UPDATE vip = time+val WHERE (vip IS NULL or vip < ?)
+            // 2. 对VIP已过期或为空的用户，设置为当前时间+奖励时间
             let res2 = sqlx::query(
-                "UPDATE u_user SET vip = ? WHERE (vip IS NULL OR vip < ?) AND appid = ?"
+                "UPDATE u_user SET vip = ? WHERE (vip IS NULL OR vip <= ?) AND vip < 9999999999 AND appid = ?"
             )
-            .bind(now + award_req.val)
+            .bind(now + val_seconds)
             .bind(now)
             .bind(&appid)
             .execute(app_state.get_db())
@@ -642,11 +645,11 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     } else {
         // 奖励会员(vip用户)
         if award_req.award_type == "fen" {
-            // 奖励积分: SET fen = ? WHERE fen < 9999999999 and vip < 9999999999 and vip > ?
+            // 奖励积分: 累加 fen = fen + val
             let result = sqlx::query(
-                "UPDATE u_user SET fen = ? WHERE fen < 9999999999 AND vip < 9999999999 AND vip > ? AND appid = ?"
+                "UPDATE u_user SET fen = fen + ? WHERE fen < 9999999999 AND vip > ? AND vip < 9999999999 AND appid = ?"
             )
-            .bind(award_req.val)
+            .bind(val_seconds)
             .bind(now)
             .bind(&appid)
             .execute(app_state.get_db())
@@ -655,11 +658,11 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 success = r.rows_affected() > 0;
             }
         } else {
-            // 奖励VIP: SET vip = ? WHERE vip < 9999999999 and vip > ?
+            // 奖励VIP: 累加 vip = vip + val，保护永久会员
             let result = sqlx::query(
-                "UPDATE u_user SET vip = ? WHERE vip < 9999999999 AND vip > ? AND appid = ?"
+                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?"
             )
-            .bind(award_req.val)
+            .bind(val_seconds)
             .bind(now)
             .bind(&appid)
             .execute(app_state.get_db())
@@ -693,9 +696,72 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 res.render(Json(ApiResponse::<()>::error("奖励执行失败", 201)));
             }
         }
+/// 辅助函数：反序列化时支持字符串或整数类型（转为字符串）
+fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    
+    struct StringOrIntVisitor;
+    
+    impl<'de> Visitor<'de> for StringOrIntVisitor {
+        type Value = Option<String>;
+        
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a string, an integer, or null")
+        }
+        
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value.to_string()))
+            }
+        }
+        
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+        
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+        
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+        
+        fn visit_unit<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+    }
+    
+    deserializer.deserialize_any(StringOrIntVisitor)
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 struct EditUserRequest {
     id: u64,
+    #[serde(default, deserialize_with = "deserialize_string_or_int")]
+    phone: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_string_or_int")]
+    email: Option<String>,
     #[serde(default)]
     password: Option<String>,
     #[serde(default)]
@@ -736,6 +802,18 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if let Some(ref pwd) = edit_req.password
         && !pwd.is_empty() {
             validator.password("password", pwd, 5, 18);
+        }
+
+    // phone: 可选，如果不为空则验证手机号格式
+    if let Some(ref phone) = edit_req.phone
+        && !phone.is_empty() {
+            validator.string("phone", phone, 11, 11);
+        }
+
+    // email: 可选，如果不为空则验证邮箱格式
+    if let Some(ref email) = edit_req.email
+        && !email.is_empty() {
+            validator.string("email", email, 5, 100);
         }
 
     // vip: 可选
@@ -815,6 +893,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 构建更新数据
     let mut update_sql = String::new();
 
+    // phone: 可选，直接赋值
+    let new_phone = edit_req.phone.clone();
+    update_sql.push_str(&format!("phone = {}{}, ", if new_phone.is_some() { "?" } else { "NULL" }, if new_phone.is_some() { "" } else { "" }));
+
+    // email: 可选，直接赋值
+    let new_email = edit_req.email.clone();
+    update_sql.push_str(&format!("email = {}{}, ", if new_email.is_some() { "?" } else { "NULL" }, if new_email.is_some() { "" } else { "" }));
+
     // vip: !empty($_POST['vip'])?$_POST['vip']:NULL
     let new_vip = edit_req.vip;
     update_sql.push_str(&format!("vip = {}{}, ", if new_vip.is_some() { "?" } else { "NULL" }, if new_vip.is_some() { "" } else { "" }));
@@ -857,18 +943,24 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     
 
         // 打印 SQL 和参数用于调试
-
         tracing::debug!("user/edit SQL: {}", query);
-
-        tracing::debug!("user/edit 参数: vip={:?}, fen={}, sn_max={}, ban={:?}, ban_msg={:?}, password_hash={:?}, id={}", 
-
-            new_vip, new_fen, new_sn_max, new_ban, new_ban_msg, password_hash_opt, edit_req.id);
+        tracing::debug!("user/edit 参数: phone={:?}, email={:?}, vip={:?}, fen={}, sn_max={}, ban={:?}, ban_msg={:?}, password_hash={:?}, id={}", 
+            new_phone, new_email, new_vip, new_fen, new_sn_max, new_ban, new_ban_msg, password_hash_opt, edit_req.id);
 
     
 
         let mut sql_query = sqlx::query(&query);
 
     // 按顺序绑定参数
+    // phone
+    if let Some(ref phone_val) = new_phone {
+        sql_query = sql_query.bind(phone_val);
+    }
+    // email
+    if let Some(ref email_val) = new_email {
+        sql_query = sql_query.bind(email_val);
+    }
+    // vip
     if let Some(vip_val) = new_vip {
         sql_query = sql_query.bind(vip_val);
     }

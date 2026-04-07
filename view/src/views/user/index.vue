@@ -32,76 +32,78 @@
       </div>
     </div>
 
-    <!-- 搜索栏 -->
-    <div class="search-card">
-      <div class="search-row">
-        <div class="search-input-group">
-          <a-select v-model="searchForm.keywordType" class="search-type">
-            <a-option value="id">用户ID</a-option>
-            <a-option value="acctno">账号</a-option>
-            <a-option value="phone">手机号</a-option>
-            <a-option value="email">邮箱</a-option>
-            <a-option value="name">昵称</a-option>
-            <a-option value="reg_ip">IP</a-option>
-            <a-option value="reg_sn">机器码</a-option>
-          </a-select>
-          <a-input v-model="searchForm.keyword" :placeholder="keywordPlaceholder" allow-clear class="search-input" @press-enter="handleSearch">
-            <template #prefix><IconSearch /></template>
-          </a-input>
+    <!-- 主内容区 -->
+    <div class="main-content">
+      <div class="content-wrapper">
+        <!-- 顶部操作和搜索 -->
+        <div class="header-row">
+          <!-- 左侧操作按钮 -->
+          <div class="header-left">
+            <a-button type="primary" class="mb-5" @click="handleAdd">
+              <template #icon><IconPlus /></template>
+              添加用户
+            </a-button>
+            <a-button class="mb-5 ml-2" @click="handleAward">
+              <template #icon><sa-icon icon="mdi:gift" :size="18" /></template>
+              发送奖励
+            </a-button>
+          </div>
+          <!-- 右侧搜索表单 -->
+          <div class="header-right">
+            <a-form :model="searchForm" class="search-form" auto-label-width>
+              <a-form-item field="status" label="状态" hide-label class="w-auto">
+                <a-select v-model="searchForm.status" placeholder="全部状态" allow-clear class="filter-select" @change="handleSearch">
+                  <a-option value="y">正常</a-option>
+                  <a-option value="n">禁用</a-option>
+                </a-select>
+              </a-form-item>
+              <a-form-item field="ug" label="用户" hide-label class="w-auto">
+                <a-select v-model="searchForm.ug" placeholder="全部用户" allow-clear class="filter-select" @change="handleSearch">
+                  <a-option value="1">普通用户</a-option>
+                  <a-option value="2">会员用户</a-option>
+                  <a-option value="3">永久会员</a-option>
+                </a-select>
+              </a-form-item>
+              <a-form-item field="keyword" label="搜索" hide-label class="w-auto">
+                <div class="keyword-group">
+                  <a-select v-model="searchForm.keywordType" class="keyword-type-select">
+                    <a-option value="id">用户ID</a-option>
+                    <a-option value="acctno">账号</a-option>
+                    <a-option value="phone">手机号</a-option>
+                    <a-option value="email">邮箱</a-option>
+                    <a-option value="name">昵称</a-option>
+                    <a-option value="reg_ip">IP</a-option>
+                    <a-option value="reg_sn">机器码</a-option>
+                  </a-select>
+                  <a-input-search
+                    v-model="searchForm.keyword"
+                    :placeholder="keywordPlaceholder"
+                    :loading="searchLoading"
+                    allow-clear
+                    class="keyword-input"
+                    @search="handleSearch"
+                    @press-enter="handleSearch"
+                    @clear="handleSearch"
+                  />
+                </div>
+              </a-form-item>
+            </a-form>
+          </div>
         </div>
-        <div class="search-filters">
-          <a-select v-model="searchForm.status" placeholder="状态" allow-clear class="filter-select" @change="handleSearch">
-            <a-option value="">全部状态</a-option>
-            <a-option value="n">已禁用</a-option>
-          </a-select>
-          <a-select v-model="searchForm.ug" placeholder="等级" allow-clear class="filter-select" @change="handleSearch">
-            <a-option value="">全部等级</a-option>
-            <a-option value="1">普通用户</a-option>
-            <a-option value="2">VIP会员</a-option>
-            <a-option value="3">永久会员</a-option>
-          </a-select>
-          <a-button type="primary" @click="handleSearch">
-            <template #icon><IconSearch /></template>
-            搜索
-          </a-button>
-        </div>
-      </div>
-    </div>
 
-    <!-- 操作栏 -->
-    <div class="action-bar">
-      <div class="action-left">
-        <a-button type="primary" @click="handleAdd">
-          <template #icon><IconPlus /></template>
-          添加用户
-        </a-button>
-        <a-button @click="handleAward">
-          <template #icon><sa-icon icon="mdi:gift" :size="18" /></template>
-          发送奖励
-        </a-button>
-      </div>
-      <div class="action-right">
-        <a-button v-if="selectedKeys.length > 0" status="danger" @click="handleBatchDelete">
-          <template #icon><IconDelete /></template>
-          删除选中 ({{ selectedKeys.length }})
-        </a-button>
-      </div>
-    </div>
-
-    <!-- 数据表格 -->
-    <div class="table-card">
-      <a-table
-        :columns="columns"
-        :data="tableData"
-        :loading="loading"
-        :pagination="false"
-        :row-selection="rowSelection"
-        v-model:selectedKeys="selectedKeys"
-        row-key="id"
-        :bordered="false"
-        class="user-table"
-      >
-        <template #id="{ record }">
+        <!-- 数据表格 -->
+        <div class="table-card">
+              <a-table
+                :columns="columns"
+                :data="tableData"
+                :loading="loading"
+                :pagination="false"
+                :row-selection="{ type: 'checkbox', showCheckedAll: true, onlyCurrent: true, selectedKeys: selectedKeys }"
+                v-model:selectedKeys="selectedKeys"
+                row-key="id"
+                :bordered="false"
+                class="user-table"
+              >        <template #id="{ record }">
           <span class="user-id">#{{ record.id }}</span>
         </template>
         <template #account="{ record }">
@@ -119,17 +121,9 @@
           </div>
         </template>
         <template #vip="{ record }">
-          <div class="vip-cell">
-            <a-tag v-if="record.ug === 3 || record.vip >= 9999999999" color="gold" size="small">
-              <template #icon><sa-icon icon="mdi:crown" :size="14" /></template>
-              永久
-            </a-tag>
-            <a-tag v-else-if="record.vip > now && record.ug === 2" color="arcoblue" size="small">
-              <template #icon><IconStar /></template>
-              VIP
-            </a-tag>
-            <span v-else class="vip-none">未开通</span>
-          </div>
+          <p :class="{ 'text-red-500': record.vip > now }">
+            {{ record.vip >= 9999999999 ? '永久会员' : record.vip ? formatTime(record.vip) : '未开通' }}
+          </p>
         </template>
         <template #fen="{ record }">
           <span class="fen-value">{{ record.fen || 0 }}</span>
@@ -166,22 +160,31 @@
         </template>
       </a-table>
 
-      <!-- 分页 -->
-      <div class="pagination-bar">
-        <span class="pagination-info">
-          共 <strong>{{ pagination.total }}</strong> 条记录
-        </span>
-        <a-pagination
-          v-model:current="pagination.current"
-          v-model:page-size="pagination.pageSize"
-          :total="pagination.total"
-          show-total
-          show-jumper
-          show-page-size
-          :page-size-options="[10, 20, 50, 100]"
-          @change="handlePageChange"
-          @page-size-change="handlePageSizeChange"
-        />
+        <!-- 分页 -->
+        <div class="pagination-bar">
+          <div class="pagination-left">
+            <a-button v-if="selectedKeys.length > 0" status="danger" :loading="batchDeleteLoading" @click="handleBatchDelete">
+              <template #icon><IconDelete /></template>
+              删除
+            </a-button>
+            <span v-if="selectedKeys.length > 0" class="selected-info">当前选中的 {{ selectedKeys.length }} 条数据</span>
+            <span v-else class="pagination-info">当前第 {{ pagination.current }} 页 共 {{ Math.ceil(pagination.total / pagination.pageSize) || 1 }} 页 {{ pagination.total }} 条结果</span>
+          </div>
+          <div class="pagination-right">
+            <a-pagination
+              v-model:current="pagination.current"
+              v-model:page-size="pagination.pageSize"
+              :total="pagination.total"
+              show-total
+              show-jumper
+              show-page-size
+              :page-size-options="[10, 20, 50, 100]"
+              @change="handlePageChange"
+              @page-size-change="handlePageSizeChange"
+            />
+          </div>
+        </div>
+      </div>
       </div>
     </div>
 
@@ -294,17 +297,19 @@ const keywordPlaceholder = computed(() => keywordPlaceholderMap[searchForm.keywo
 
 const tableData = ref([])
 const loading = ref(false)
+const searchLoading = ref(false)
 const pagination = reactive({ current: 1, pageSize: 20, total: 0 })
 
 const stats = computed(() => {
   const total = pagination.total
   const active = tableData.value.filter(u => u.online).length
-  const vip = tableData.value.filter(u => u.ug >= 2 || u.vip > now).length
+  const vip = tableData.value.filter(u => u.vip > now).length
   const banned = tableData.value.filter(u => u.ban > now).length
   return { total, active, vip, banned }
 })
 
 const selectedKeys = ref([])
+const batchDeleteLoading = ref(false)
 const rowSelection = reactive({ type: 'checkbox', showCheckedAll: true, onlyCurrent: true })
 
 const addModalVisible = ref(false)
@@ -331,6 +336,21 @@ const formatTime = (timestamp) => {
   return dayjs.unix(timestamp).format('MM-DD HH:mm')
 }
 
+/**
+ * 将时间值转换为秒数
+ * @param {number} val - 时间值
+ * @param {string} type - 时间单位: 's'秒, 'i'分, 'h'时, 'd'天
+ * @returns {number} 秒数
+ */
+const toSeconds = (val, type) => {
+  switch (type) {
+    case 'd': return val * 24 * 60 * 60  // 天转秒
+    case 'h': return val * 60 * 60       // 时转秒
+    case 'i': return val * 60            // 分转秒
+    default: return val                   // 秒不变
+  }
+}
+
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
   let password = ''
@@ -351,18 +371,26 @@ const loadData = async () => {
       page: pagination.current,
       size: pagination.pageSize
     })
+    loading.value = false
+    searchLoading.value = false
     if (res.code === 200) {
       tableData.value = res.data.list || []
       pagination.total = res.data.dataTotal || 0
+    } else {
+      Message.error(res.msg)
     }
   } catch (e) {
-    Message.error('加载数据失败')
-  } finally {
     loading.value = false
+    searchLoading.value = false
+    Message.error('出错了：' + e)
   }
 }
 
-const handleSearch = () => { pagination.current = 1; loadData() }
+const handleSearch = () => { 
+  searchLoading.value = true
+  pagination.current = 1
+  loadData() 
+}
 const handlePageChange = (page) => { pagination.current = page; loadData() }
 const handlePageSizeChange = (size) => { pagination.pageSize = size; pagination.current = 1; loadData() }
 
@@ -414,17 +442,20 @@ const handleDelete = async (record) => {
 }
 
 const handleBatchDelete = async () => {
+  batchDeleteLoading.value = true
   try {
     const res = await userApi.delAll(selectedKeys.value)
+    batchDeleteLoading.value = false
     if (res.code === 200) {
-      Message.success('删除成功')
+      Message.success(res.msg || '删除成功')
       selectedKeys.value = []
       loadData()
     } else {
       Message.error(res.msg || '删除失败')
     }
   } catch (e) {
-    Message.error('删除失败')
+    batchDeleteLoading.value = false
+    Message.error('出错了：' + e)
   }
 }
 
@@ -443,7 +474,13 @@ const handleAwardSubmit = async () => {
   }
   awardLoading.value = true
   try {
-    const res = await userApi.award(awardForm)
+    // 复制表单数据
+    const data = { ...awardForm }
+    // 如果是会员奖励，需要将时间值转换为秒数
+    if (data.type === 'vip') {
+      data.val = toSeconds(data.val, data.vipType)
+    }
+    const res = await userApi.award(data)
     awardLoading.value = false
     if (res.code === 200) {
       Message.success('奖励发送成功')
@@ -527,66 +564,106 @@ export default { name: 'UserList' }
   color: var(--color-text-3);
 }
 
-/* 搜索卡片 */
-.search-card {
-  background: var(--color-bg-2);
+/* 主内容区 */
+.main-content {
+  background: rgba(255, 255, 255, 0.3);
   border-radius: 12px;
-  padding: 16px 20px;
-  margin-bottom: 16px;
+  padding: 20px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.search-row {
+body[arco-theme='dark'] .main-content {
+  background: rgba(30, 30, 30, 0.3);
+}
+
+.content-wrapper {
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.header-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 20px;
 }
 
-.search-input-group {
+.header-left {
+  width: 100%;
+}
+
+.header-right {
+  width: 100%;
+}
+
+.search-form {
   display: flex;
-  gap: 0;
-  flex: 1;
-  max-width: 450px;
-}
-
-.search-type {
-  width: 100px;
-}
-
-.search-type :deep(.arco-select-view) {
-  border-radius: 8px 0 0 8px;
-  border-right: none;
-}
-
-.search-input {
-  flex: 1;
-}
-
-.search-input :deep(.arco-input-wrapper) {
-  border-radius: 0 8px 8px 0;
-}
-
-.search-filters {
-  display: flex;
+  flex-direction: row;
   gap: 12px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.search-form :deep(.arco-form-item) {
+  margin-bottom: 0;
+  margin-right: 0;
+}
+
+.search-form :deep(.arco-form-item-wrapper-col) {
+  flex: 1;
 }
 
 .filter-select {
   width: 120px;
 }
 
-/* 操作栏 */
-.action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+.filter-select :deep(.arco-select-view) {
+  height: 32px;
+  font-size: 14px;
 }
 
-.action-left, .action-right {
+/* 关键词搜索组 */
+.search-form :deep(.arco-form-item:last-child) {
   display: flex;
-  gap: 12px;
+  align-items: center;
+}
+
+.search-form :deep(.arco-form-item:last-child .arco-form-item-wrapper-col) {
+  display: flex;
+  align-items: center;
+}
+
+.keyword-group {
+  display: flex;
+  align-items: center;
+}
+
+.keyword-type-select {
+  width: 100px;
+}
+
+.keyword-type-select :deep(.arco-select-view) {
+  height: 32px;
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+  font-size: 14px;
+}
+
+.keyword-input {
+  width: 200px;
+  flex: 1;
+}
+
+.keyword-input :deep(.arco-input-wrapper) {
+  height: 32px;
+  border-radius: 0 6px 6px 0;
+  font-size: 14px;
+}
+
+.keyword-input :deep(.arco-input) {
+  font-size: 14px;
 }
 
 /* 表格卡片 */
@@ -761,13 +838,25 @@ export default { name: 'UserList' }
   border-top: 1px solid var(--color-border-1);
 }
 
-.pagination-info {
+.pagination-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pagination-right {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.selected-info {
   font-size: 13px;
   color: var(--color-text-3);
 }
 
-.pagination-info strong {
-  color: var(--color-text-1);
+.pagination-info {
+  font-size: 13px;
+  color: var(--color-text-3);
 }
 
 /* 弹窗 */
@@ -818,26 +907,78 @@ export default { name: 'UserList' }
     grid-template-columns: 1fr;
   }
 
-  .search-row {
+  .header-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 16px;
   }
 
-  .search-input-group {
-    max-width: none;
-  }
-
-  .search-filters {
+  .header-left {
+    display: flex;
     flex-wrap: wrap;
+    gap: 8px;
   }
 
-  .action-bar {
+  .header-left .arco-btn {
+    margin-bottom: 0 !important;
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .header-right {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .header-right::-webkit-scrollbar {
+    display: none;
+  }
+
+  .search-form {
+    flex-direction: row;
+    gap: 10px;
+    width: max-content;
+    min-width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .search-form :deep(.arco-form-item) {
+    width: auto;
+    flex-shrink: 0;
+  }
+
+  .filter-select {
+    width: 100px;
+  }
+
+  .keyword-group {
+    width: auto;
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .keyword-type-select {
+    width: 85px;
+    min-width: 85px;
+  }
+
+  .keyword-input {
+    width: 140px;
+    min-width: 140px;
+  }
+
+  .pagination-bar {
     flex-direction: column;
     gap: 12px;
+    text-align: center;
   }
 
-  .action-left, .action-right {
+  .pagination-left, .pagination-right {
     width: 100%;
+    justify-content: center;
   }
 }
 </style>

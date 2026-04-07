@@ -584,5 +584,112 @@ pub async fn edit_sign(req: &mut Request, depot: &mut Depot, res: &mut Response)
     }
 }
 
+/// 统一的提交接口（添加或编辑）
+#[derive(Debug, Deserialize)]
+struct SubmitRequest {
+    #[serde(default)]
+    id: Option<u64>,
+    name: String,
+    #[serde(rename = "type")]
+    enc_type: String,
+    config: Option<serde_json::Value>,
+    time: i64,
+    sign: String,
+    #[serde(default = "default_all")]
+    all: String,
+}
+
+#[handler]
+pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let submit_req = match req.parse_json::<SubmitRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let appid: Option<i64> = if submit_req.all == "y" {
+        None
+    } else {
+        match req.headers().get("appid") {
+            Some(h) => match h.to_str() {
+                Ok(s) => match s.parse::<i64>() {
+                    Ok(id) => Some(id),
+                    Err(_) => {
+                        res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                        return;
+                    }
+                },
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            None => {
+                res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+                return;
+            }
+        }
+    };
+
+    let config_str = serde_json::to_string(&submit_req.config.unwrap_or(serde_json::json!({}))).unwrap_or_else(|_| "{}".to_string());
+
+    if let Some(id) = submit_req.id {
+        // 编辑模式
+        let result = sqlx::query(
+            "UPDATE u_app_mi SET name = ?, type = ?, config = ?, time = ?, sign = ?, appid = ? WHERE id = ?"
+        )
+        .bind(&submit_req.name)
+        .bind(&submit_req.enc_type)
+        .bind(&config_str)
+        .bind(submit_req.time)
+        .bind(&submit_req.sign)
+        .bind(appid)
+        .bind(id)
+        .execute(app_state.get_db())
+        .await;
+
+        match result {
+            Ok(r) => {
+                if r.rows_affected() > 0 {
+                    res.render(Json(ApiResponse::success_msg("编辑成功")));
+                } else {
+                    res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
+                }
+            }
+            Err(e) => {
+                tracing::error!("编辑失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
+            }
+        }
+    } else {
+        // 添加模式
+        let result = sqlx::query(
+            "INSERT INTO u_app_mi (name, type, config, time, sign, appid) VALUES (?, ?, ?, ?, ?, ?)"
+        )
+        .bind(&submit_req.name)
+        .bind(&submit_req.enc_type)
+        .bind(&config_str)
+        .bind(submit_req.time)
+        .bind(&submit_req.sign)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
+
+        match result {
+            Ok(_) => {
+                res.render(Json(ApiResponse::success_msg("添加成功")));
+            }
+            Err(e) => {
+                tracing::error!("添加失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("添加失败", 201)));
+            }
+        }
+    }
+}
+
 use std::sync::Arc;
 use crate::core::app_state::AppState;

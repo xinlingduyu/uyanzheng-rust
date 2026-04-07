@@ -2,132 +2,53 @@ import { request } from '@/utils/request.js'
 
 /**
  * 日志管理 API
- * 后端请求格式:
- * - 总列表: { pg, size, so: { type, keyword } }
- * - 用户日志: { page, size, so: { time, type, keyword, appid } }
- * - 管理员日志: { page, size, so: { time, type, keyword, appid } }
- * 响应格式: { code, msg, data: { list, currentPage, pageTotal, dataTotal } }
  */
 export default {
   /**
-   * 获取日志列表（总览）
-   * @param {Object} params - 查询参数
-   * @param {number} params.pg - 页码
-   * @param {number} params.size - 每页数量
-   * @param {Object} params.so - 搜索条件
-   * @param {string} params.so.type - 日志类型
-   * @param {string} params.so.keyword - 搜索关键词
+   * 获取日志列表
+   * @param {number} page - 页码
+   * @param {number} size - 每页数量
+   * @param {Object} form - 搜索条件 { type, keyword }
+   * @param {string} logType - 日志类型 (user, admin)
    */
-  getList(params = {}) {
-    const backendParams = {
-      pg: params.pg || params.page || 1,
-      size: params.size || params.page_size || 20
-    }
-    
-    const so = {}
-    if (params.type) so.type = params.type
-    if (params.keyword) so.keyword = params.keyword
-    
-    if (Object.keys(so).length > 0) {
-      backendParams.so = so
-    }
+  getList(page = 1, size = 10, form = {}, logType = 'user') {
+    // 根据日志类型选择不同的 API
+    const url = logType === 'user' 
+      ? '/admin/logs/list/user' 
+      : '/admin/logs/list/admin'
     
     return request({
-      url: '/admin/logs/list',
+      url,
       method: 'post',
-      data: backendParams
+      data: { 
+        page, 
+        size, 
+        so: {
+          type: form.type,
+          keyword: form.keyword
+        }
+      }
     })
   },
 
   /**
-   * 获取用户日志
-   * @param {Object} params - 查询参数
-   * @param {number} params.page - 页码
-   * @param {number} params.size - 每页数量
-   * @param {Object} params.so - 搜索条件
-   * @param {Array} params.so.time - 时间范围 [start, end]
-   * @param {string} params.so.type - 日志类型
-   * @param {string} params.so.keyword - 搜索关键词
-   * @param {number} params.so.appid - 应用ID
+   * 获取日志类型
+   * @param {string} logType - 日志类型 (user, admin)
    */
-  getUserLogs(params = {}) {
-    const backendParams = {
-      page: params.page || 1,
-      size: params.size || params.page_size || 20
-    }
-    
-    const so = {}
-    if (params.time || params.dateRange) {
-      so.time = params.time || params.dateRange
-    }
-    if (params.type) so.type = params.type
-    if (params.keyword) so.keyword = params.keyword
-    if (params.appid) so.appid = params.appid
-    
-    if (Object.keys(so).length > 0) {
-      backendParams.so = so
-    }
+  getType(logType = 'user') {
+    const url = logType === 'user'
+      ? '/admin/logs/type/user'
+      : '/admin/logs/type/admin'
     
     return request({
-      url: '/admin/logs/list/user',
-      method: 'post',
-      data: backendParams
-    })
-  },
-
-  /**
-   * 获取管理员日志
-   * @param {Object} params - 查询参数 (同 getUserLogs)
-   */
-  getAdminLogs(params = {}) {
-    const backendParams = {
-      page: params.page || 1,
-      size: params.size || params.page_size || 20
-    }
-    
-    const so = {}
-    if (params.time || params.dateRange) {
-      so.time = params.time || params.dateRange
-    }
-    if (params.type) so.type = params.type
-    if (params.keyword) so.keyword = params.keyword
-    if (params.appid) so.appid = params.appid
-    
-    if (Object.keys(so).length > 0) {
-      backendParams.so = so
-    }
-    
-    return request({
-      url: '/admin/logs/list/admin',
-      method: 'post',
-      data: backendParams
-    })
-  },
-
-  /**
-   * 获取用户日志类型
-   * 返回: { label, value }[] 或映射对象
-   */
-  getUserLogTypes() {
-    return request({
-      url: '/admin/logs/type/user',
+      url,
       method: 'get'
     })
   },
 
   /**
-   * 获取管理员日志类型
-   * 返回: { label, value }[] 或映射对象
-   */
-  getAdminLogTypes() {
-    return request({
-      url: '/admin/logs/type/admin',
-      method: 'get'
-    })
-  },
-
-  /**
-   * 删除日志
+   * 删除单条日志
+   * @param {number} id - 日志ID
    */
   del(id) {
     return request({
@@ -138,10 +59,21 @@ export default {
   },
 
   /**
+   * 批量删除日志
+   * @param {Array} ids - 日志ID数组
+   */
+  delAll(ids) {
+    return request({
+      url: '/admin/logs/delall',
+      method: 'post',
+      data: { ids }
+    })
+  },
+
+  /**
    * 清理日志
    * @param {Object} params - 清理参数
-   * @param {string} params.type - 日志类型
-   * @param {Array} params.time - 时间范围
+   * @param {number} params.time - 时间天数 (7, 15, 30, 90)
    */
   clean(params = {}) {
     return request({
@@ -149,5 +81,33 @@ export default {
       method: 'post',
       data: params
     })
+  },
+
+  /**
+   * 获取用户日志列表
+   */
+  getUserLogs(params = {}) {
+    return this.getList(params.page || 1, params.size || 10, params.so || {}, 'user')
+  },
+
+  /**
+   * 获取管理员日志列表
+   */
+  getAdminLogs(params = {}) {
+    return this.getList(params.page || 1, params.size || 10, params.so || {}, 'admin')
+  },
+
+  /**
+   * 获取用户日志类型
+   */
+  getUserLogTypes() {
+    return this.getType('user')
+  },
+
+  /**
+   * 获取管理员日志类型
+   */
+  getAdminLogTypes() {
+    return this.getType('admin')
   }
 }

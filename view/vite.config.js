@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import { visualizer } from 'rollup-plugin-visualizer'
 import basicSsl from '@vitejs/plugin-basic-ssl'
+
 export default ({ mode }) => {
   const env = loadEnv(mode, process.cwd())
   const proxyPrefix = env.VITE_APP_PROXY_PREFIX

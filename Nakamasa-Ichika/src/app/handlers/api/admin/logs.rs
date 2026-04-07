@@ -47,28 +47,32 @@ struct UserSearchOptions {
     appid: Option<i64>,
 }
 
+/// 统一的日志项
 #[derive(Debug, Serialize)]
 struct LogItem {
     id: i64,
-    app_name: Option<String>,
+    ug: String,
+    uid: i64,
     #[serde(rename = "type")]
     log_type: String,
-    ug: String,
-    user: Option<String>,
-    asset_changes: Option<serde_json::Value>,
-    toug: Option<String>,
-    touser: Option<String>,
-    time: String,
-    ip: Option<String>,
-    state: bool,
+    details: Option<serde_json::Value>,
+    time: i64,
+    ip: String,
+    ip_address: Option<String>,
+    appid: Option<i64>,
+    username: Option<String>,
 }
 
+/// 统一的日志列表响应
 #[derive(Debug, Serialize)]
 struct LogsListResponse {
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: i64,
     list: Vec<LogItem>,
-    total: i64,
-    pg: u32,
-    size: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
 }
 
 /// 用户日志项
@@ -393,7 +397,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let offset = (page - 1) * page_size;
 
     let mut query = String::from(
-        "SELECT LOG.id, LOG.ug, LOG.uid, LOG.toug, LOG.touid, LOG.type, LOG.asset_changes, LOG.state, LOG.time, LOG.ip, 
+        "SELECT LOG.id, LOG.ug, LOG.uid, LOG.type, LOG.details, LOG.time, LOG.ip, LOG.ip_address,
          A.app_type, A.app_name
          FROM u_logs AS LOG 
          LEFT JOIN u_app AS A ON (LOG.appid = A.id)"
@@ -440,37 +444,33 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             for row in rows {
                 let ug: String = row.try_get("ug").unwrap_or_default();
                 let uid: i64 = row.try_get("uid").unwrap_or(0);
-                let toug_option: Option<String> = row.try_get("toug").ok();
-                let touid_option: Option<i64> = row.try_get("touid").ok();
                 let log_type: String = row.try_get("type").unwrap_or_default();
-                let asset_changes: Option<String> = row.try_get("asset_changes").ok();
+                let details: Option<String> = row.try_get("details").ok();
                 let time: i64 = row.try_get("time").unwrap_or(0);
+                let ip: String = row.try_get("ip").unwrap_or_default();
+                let ip_address: Option<String> = row.try_get("ip_address").ok();
+                let appid: Option<i64> = row.try_get("appid").ok().or_else(|| {
+                    // 尝试从 app_type 获取 appid
+                    row.try_get("appid").ok()
+                });
                 let app_type: Option<String> = row.try_get("app_type").ok();
 
                 let username = get_username(&ug, uid, app_type.as_deref(), app_state.get_db()).await;
-                let tousername = if let (Some(toug), Some(touid)) = (toug_option.clone(), touid_option) {
-                    get_tousername(&toug, touid, app_state.get_db()).await
-                } else {
-                    None
-                };
 
-                let asset_changes_json = asset_changes
+                let details_json = details
                     .and_then(|s| serde_json::from_str(&s).ok());
 
                 list.push(LogItem {
                     id: row.try_get("id").unwrap_or(0),
-                    app_name: row.try_get("app_name").ok(),
-                    log_type: get_log_type_display(&ug, &log_type),
-                    ug: get_ug_display(&ug).to_string(),
-                    user: username,
-                    asset_changes: asset_changes_json,
-                    toug: toug_option.map(|t| get_ug_display(&t).to_string()),
-                    touser: tousername,
-                    time: chrono::DateTime::from_timestamp(time, 0)
-                        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                        .unwrap_or_default(),
-                    ip: row.try_get("ip").ok(),
-                    state: row.try_get("state").unwrap_or(false),
+                    ug,
+                    uid,
+                    log_type,
+                    details: details_json,
+                    time,
+                    ip,
+                    ip_address,
+                    appid,
+                    username,
                 });
             }
 
@@ -490,12 +490,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             }
 
             let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
+            let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 
             let response = LogsListResponse {
+                current_page: page,
+                data_total: total,
                 list,
-                total,
-                pg: page,
-                size: page_size,
+                page_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));
@@ -811,6 +812,99 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
             res.render(Json(ApiResponse::<()>::error("列表获取失败", 201)));
+        }
+    }
+}
+
+/// 批量删除日志
+#[handler]
+pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let post_data: serde_json::Value = match req.parse_json().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let ids: Vec<i64> = match post_data.get("ids") {
+        Some(v) if v.is_array() => {
+            v.as_array()
+                .unwrap()
+                .iter()
+                .filter_map(|id| id.as_i64())
+                .collect()
+        }
+        _ => {
+            res.render(Json(ApiResponse::<()>::error("参数格式有误", 201)));
+            return;
+        }
+    };
+
+    if ids.is_empty() {
+        res.render(Json(ApiResponse::<()>::error("请选择要删除的日志", 201)));
+        return;
+    }
+
+    // 构建 IN 查询
+    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query_str = format!("DELETE FROM u_logs WHERE id IN ({})", placeholders);
+
+    let mut query = sqlx::query(&query_str);
+    for id in &ids {
+        query = query.bind(id);
+    }
+
+    let result = query.execute(app_state.get_db()).await;
+
+    match result {
+        Ok(r) => {
+            let msg = format!("成功删除 {} 条日志", r.rows_affected());
+            res.render(Json(ApiResponse::success_msg(msg)));
+        }
+        Err(e) => {
+            tracing::error!("批量删除失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("批量删除失败", 201)));
+        }
+    }
+}
+
+/// 清理日志（按时间清理）
+#[handler]
+pub async fn clean(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let post_data: serde_json::Value = match req.parse_json().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    // 获取清理天数，默认清理7天前的日志
+    let days = post_data.get("time")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(7);
+
+    // 计算截止时间戳（当前时间 - days 天）
+    let cutoff_time = chrono::Utc::now().timestamp() - (days * 86400);
+
+    let result = sqlx::query("DELETE FROM u_logs WHERE time < ?")
+        .bind(cutoff_time)
+        .execute(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(r) => {
+            let msg = format!("成功清理 {} 条日志", r.rows_affected());
+            res.render(Json(ApiResponse::success_msg(msg)));
+        }
+        Err(e) => {
+            tracing::error!("清理日志失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("清理日志失败", 201)));
         }
     }
 }

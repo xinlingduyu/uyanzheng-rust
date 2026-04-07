@@ -292,3 +292,4 @@ cd view && npm run preview   # 预览构建结果
 2. **GeoIP**: 需要放置 `GeoLite2-City.mmdb` 文件在项目根目录
 3. **HTTPS**: 前端开发服务器默认启用 HTTPS（自签名证书）
 4. **代理配置**: 前端通过 Vite proxy 代理到后端 API
+5. **疑问**: 如果有不了解的调用提问工具进行提问

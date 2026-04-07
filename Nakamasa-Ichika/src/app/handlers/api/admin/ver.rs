@@ -75,6 +75,8 @@ struct GetListRequest {
 #[derive(Debug, Deserialize)]
 struct SearchOptions {
     #[serde(default)]
+    ver_key: Option<String>,
+    #[serde(default)]
     keyword: Option<String>,
 }
 
@@ -521,6 +523,265 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Err(e) => {
             tracing::error!("删除失败: {}", e);
             res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DelAllRequest {
+    ids: Vec<u64>,
+}
+
+#[handler]
+pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let del_req = match req.parse_json::<DelAllRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    if del_req.ids.is_empty() {
+        res.render(Json(ApiResponse::<()>::error("请选择要删除的数据", 201)));
+        return;
+    }
+
+    // 构建 IN 查询
+    let placeholders: Vec<&str> = del_req.ids.iter().map(|_| "?").collect();
+    let query_str = format!("DELETE FROM u_app_ver WHERE id IN ({})", placeholders.join(","));
+    
+    let mut query = sqlx::query(&query_str);
+    for id in &del_req.ids {
+        query = query.bind(id);
+    }
+    
+    let result = query.execute(app_state.get_db()).await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                res.render(Json(ApiResponse::success_msg("删除成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("批量删除失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("批量删除失败", 201)));
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct DiscardRequest {
+    id: u64,
+    discard: bool,
+}
+
+#[handler]
+pub async fn discard(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let discard_req = match req.parse_json::<DiscardRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let result = sqlx::query("UPDATE u_app_ver SET discard = ? WHERE id = ?")
+        .bind(discard_req.discard)
+        .bind(discard_req.id)
+        .execute(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                res.render(Json(ApiResponse::success_msg("操作成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("操作失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("弃用操作失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("操作失败", 201)));
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct MiItem {
+    id: u64,
+    name: String,
+    #[serde(rename = "type")]
+    mi_type: String,
+}
+
+#[handler]
+pub async fn get_milist(depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let result = sqlx::query_as::<_, (u64, String, String)>("SELECT id, name, type FROM u_app_mi")
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            let list: Vec<MiItem> = rows.into_iter().map(|row| MiItem {
+                id: row.0,
+                name: row.1,
+                mi_type: row.2,
+            }).collect();
+            res.render(Json(ApiResponse::success("成功", Some(list))));
+        }
+        Err(e) => {
+            tracing::error!("获取加密方案列表失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("获取失败", 201)));
+        }
+    }
+}
+
+/// 统一的提交接口（添加或编辑）
+/// 如果有 id 则编辑，否则添加
+#[derive(Debug, Deserialize)]
+struct SubmitRequest {
+    #[serde(default)]
+    id: Option<u64>,
+    #[serde(default)]
+    mid: Option<i64>,
+    name: String,
+    ver_key: String,
+    ver_major: i32,
+    ver_minor: i32,
+    ver_patch: i32,
+    #[serde(default)]
+    ver_url: Option<String>,
+    #[serde(default)]
+    ver_content: Option<String>,
+    ver_state: String,
+    #[serde(default)]
+    ver_off_msg: Option<String>,
+    #[serde(default)]
+    discard: Option<bool>,
+}
+
+#[handler]
+pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    let submit_req = match req.parse_json::<SubmitRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let appid = match req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
+                }
+            },
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                return;
+            }
+        },
+        None => {
+            res.render(Json(ApiResponse::<()>::error("APPID不能为空", 201)));
+            return;
+        }
+    };
+
+    if let Some(id) = submit_req.id {
+        // 编辑模式
+        let update_query = "UPDATE u_app_ver SET mid = ?, name = ?, ver_key = ?, ver_major = ?, ver_minor = ?, ver_patch = ?, ver_url = ?, ver_content = ?, ver_state = ?, ver_off_msg = ?, discard = ? WHERE id = ?";
+        
+        let result = sqlx::query(update_query)
+            .bind(submit_req.mid)
+            .bind(&submit_req.name)
+            .bind(&submit_req.ver_key)
+            .bind(submit_req.ver_major)
+            .bind(submit_req.ver_minor)
+            .bind(submit_req.ver_patch)
+            .bind(&submit_req.ver_url)
+            .bind(&submit_req.ver_content)
+            .bind(&submit_req.ver_state)
+            .bind(&submit_req.ver_off_msg)
+            .bind(submit_req.discard.unwrap_or(false))
+            .bind(id)
+            .execute(app_state.get_db())
+            .await;
+
+        match result {
+            Ok(_) => {
+                res.render(Json(ApiResponse::success_msg("编辑成功")));
+            }
+            Err(e) => {
+                tracing::error!("编辑失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
+            }
+        }
+    } else {
+        // 添加模式 - 检查版本是否已存在
+        let check_query = "SELECT id FROM u_app_ver WHERE ver_key = ? AND ver_major = ? AND ver_minor = ? AND ver_patch = ? AND appid = ?";
+        let check_result = sqlx::query_as::<_, (u64,)>(check_query)
+            .bind(&submit_req.ver_key)
+            .bind(submit_req.ver_major)
+            .bind(submit_req.ver_minor)
+            .bind(submit_req.ver_patch)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
+
+        match check_result {
+            Ok(Some(_)) => {
+                res.render(Json(ApiResponse::<()>::error("版本号已存在", 201)));
+                return;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!("数据库查询失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("数据库查询失败", 201)));
+                return;
+            }
+        }
+
+        let insert_query = "INSERT INTO u_app_ver (mid, name, ver_key, ver_major, ver_minor, ver_patch, ver_url, ver_content, ver_state, ver_off_msg, discard, appid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        let result = sqlx::query(insert_query)
+            .bind(submit_req.mid)
+            .bind(&submit_req.name)
+            .bind(&submit_req.ver_key)
+            .bind(submit_req.ver_major)
+            .bind(submit_req.ver_minor)
+            .bind(submit_req.ver_patch)
+            .bind(&submit_req.ver_url)
+            .bind(&submit_req.ver_content)
+            .bind(&submit_req.ver_state)
+            .bind(&submit_req.ver_off_msg)
+            .bind(submit_req.discard.unwrap_or(false))
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await;
+
+        match result {
+            Ok(_) => {
+                res.render(Json(ApiResponse::success_msg("添加成功")));
+            }
+            Err(e) => {
+                tracing::error!("添加失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("添加失败", 201)));
+            }
         }
     }
 }
