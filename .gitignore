@@ -72,3 +72,11 @@ GeoLite2-City.mmdb
 # Node.js
 test/node_modules/
 node_modules/
+
+# AI助手配置文件和文档 - 不上传到GitHub
+CLAUDE.md
+AGENTS.md
+QWEN.md
+agent.md
+.claude/
+.qwen/
