@@ -17,7 +17,7 @@ use std::sync::Arc;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
 use crate::core::app_state::FenEventCache;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::FenRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -90,11 +90,11 @@ async fn get_fen_event(app_state: &Arc<AppState>, fenid: u64, appid: u64) -> Opt
 pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
+    // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -103,7 +103,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     let fen_req = match req.parse_json::<FenRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -121,7 +121,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -129,7 +129,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -146,14 +146,14 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     let fen_event = match get_fen_event(app_state, fen_req.fenid, appid).await {
         Some(event) => event,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("积分事件不存在", 146, app_key)));
+            render_error(res, "积分事件不存在", 146, app_key);
             return;
         }
     };
 
     // PHP: 检查积分事件状态
     if fen_event.state != "on" {
-        res.render(Json(SignedApiResponse::<()>::error("积分事件已关闭", 201, app_key)));
+        render_error(res, "积分事件已关闭", 201, app_key);
         return;
     }
 
@@ -169,7 +169,8 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
             &fen_req, 
             current_time, 
             ip,
-            app_key
+            app_key,
+            app_info.mi.as_ref()
         ).await;
     } else if user_type == "kami" {
         // 卡密用户积分验证
@@ -181,10 +182,11 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
             &fen_req, 
             current_time, 
             ip,
-            app_key
+            app_key,
+            app_info.mi.as_ref()
         ).await;
     } else {
-        res.render(Json(SignedApiResponse::<()>::error("用户类型错误", 201, app_key)));
+        render_error(res, "用户类型错误", 201, app_key);
     }
 }
 
@@ -199,6 +201,7 @@ async fn handle_user_fen_verify(
     current_time: i64,
     ip: &str,
     app_key: &str,
+    enc_info: Option<&crate::app::middleware::app_context::EncryptionInfo>,
 ) {
     let uid = user_info.uid;
     let appid = user_info.appid;
@@ -212,7 +215,7 @@ async fn handle_user_fen_verify(
     // }
     // VIP免费检查
     if fen_event.vip_free == "y" && user_vip > current_time {
-        res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+        render_success_with_msg(res, "验证成功", app_key);
         return;
     }
 
@@ -226,7 +229,7 @@ async fn handle_user_fen_verify(
     if fen_event.vip > 0 {
         // 永久VIP不能兑换
         if user_vip >= 9_999_999_999 {
-            res.render(Json(SignedApiResponse::<()>::error("永久VIP不能兑换", 199, app_key)));
+            render_error(res, "永久VIP不能兑换", 199, app_key);
             return;
         }
         
@@ -234,7 +237,7 @@ async fn handle_user_fen_verify(
         if let Some(mark) = fo_mark {
             let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
             if exists {
-                res.render(Json(SignedApiResponse::<()>::error("已经兑换过一次了", 147, app_key)));
+                render_error(res, "已经兑换过一次了", 147, app_key);
                 return;
             }
         }
@@ -243,7 +246,7 @@ async fn handle_user_fen_verify(
         if let Some(mark) = fo_mark {
             let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
             if exists {
-                res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+                render_success_with_msg(res, "验证成功", app_key);
                 return;
             }
         }
@@ -252,7 +255,7 @@ async fn handle_user_fen_verify(
     // PHP: if($this->user['fen'] < $fenRes['fen'])$this->out->e(201,'积分余额不足');
     // 检查积分余额
     if user_fen < fen_event.fen {
-        res.render(Json(SignedApiResponse::<()>::error("积分余额不足", 201, app_key)));
+        render_error(res, "积分余额不足", 201, app_key);
         return;
     }
 
@@ -274,7 +277,7 @@ async fn handle_user_fen_verify(
     .await;
 
     if insert_result.is_err() {
-        res.render(Json(SignedApiResponse::<()>::error("验证失败，请重试", 201, app_key)));
+        render_error(res, "验证失败，请重试", 201, app_key);
         return;
     }
 
@@ -334,11 +337,11 @@ async fn handle_user_fen_verify(
             .execute(app_state.get_db())
             .await;
 
-            res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+            render_success_with_msg(res, "验证成功", app_key);
         }
         Err(e) => {
             tracing::error!("更新用户积分失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("验证失败", 201, app_key)));
+            render_error(res, "验证失败", 201, app_key);
         }
     }
 }
@@ -354,6 +357,7 @@ async fn handle_kami_fen_verify(
     current_time: i64,
     ip: &str,
     app_key: &str,
+    _enc_info: Option<&crate::app::middleware::app_context::EncryptionInfo>,
 ) {
     let uid = user_info.uid;
     let appid = user_info.appid;
@@ -362,7 +366,7 @@ async fn handle_kami_fen_verify(
     // PHP: if($this->user['type'] != 'fen')$this->out->e(201,'非积分卡不可操作');
     // 只支持积分卡
     if user_info.kami_type.as_deref() != Some("fen") {
-        res.render(Json(SignedApiResponse::<()>::error("非积分卡不可操作", 201, app_key)));
+        render_error(res, "非积分卡不可操作", 201, app_key);
         return;
     }
 
@@ -377,7 +381,7 @@ async fn handle_kami_fen_verify(
     if let Some(mark) = fo_mark {
         let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
         if exists {
-            res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+            render_success_with_msg(res, "验证成功", app_key);
             return;
         }
     }
@@ -385,7 +389,7 @@ async fn handle_kami_fen_verify(
     // PHP: if($this->user['val'] < $fenRes['fen'])$this->out->e(201,'积分余额不足');
     // 检查积分余额
     if user_val < fen_event.fen {
-        res.render(Json(SignedApiResponse::<()>::error("积分余额不足", 201, app_key)));
+        render_error(res, "积分余额不足", 201, app_key);
         return;
     }
 
@@ -407,7 +411,7 @@ async fn handle_kami_fen_verify(
     .await;
 
     if insert_result.is_err() {
-        res.render(Json(SignedApiResponse::<()>::error("验证失败，请重试", 201, app_key)));
+        render_error(res, "验证失败，请重试", 201, app_key);
         return;
     }
 
@@ -438,11 +442,11 @@ async fn handle_kami_fen_verify(
             .execute(app_state.get_db())
             .await;
 
-            res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+            render_success_with_msg(res, "验证成功", app_key);
         }
         Err(e) => {
             tracing::error!("更新卡密积分失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("验证失败", 201, app_key)));
+            render_error(res, "验证失败", 201, app_key);
         }
     }
 }

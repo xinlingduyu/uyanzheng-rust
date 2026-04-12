@@ -10,7 +10,7 @@ use serde::Deserialize;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::middleware::app_context::AppInfo;
 
@@ -28,7 +28,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -41,7 +41,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let logout_req = match req.parse_json::<LogoutRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -51,7 +51,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         let mut validator = Validator::new();
         validator.wordnum("TOKEN", &logout_req.token, 32, 32);
         if validator.validate().is_err() {
-            res.render(Json(SignedApiResponse::<()>::error("TOKEN有误", 201, app_key)));
+            render_error(res, "TOKEN有误", 201, app_key);
             return;
         }
     }
@@ -59,7 +59,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Redis未初始化", 201, app_key)));
+            render_error(res, "Redis未初始化", 201, app_key);
             return;
         }
     };
@@ -76,12 +76,12 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let token_str = match app_state.redis_util.get(redis_pool, &token_key).await {
         Ok(Some(data)) => data,
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("Token不存在", 128, app_key)));
+            render_error(res, "Token不存在", 128, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("Redis查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("服务器错误", 201, app_key)));
+            render_error(res, "服务器错误", 201, app_key);
             return;
         }
     };
@@ -90,7 +90,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let token_data: serde_json::Value = match serde_json::from_str(&token_str) {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("Token格式错误", 128, app_key)));
+            render_error(res, "Token格式错误", 128, app_key);
             return;
         }
     };
@@ -98,7 +98,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let uid = match token_data.get("uid").and_then(|v| v.as_i64()) {
         Some(id) => id,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Token数据错误", 128, app_key)));
+            render_error(res, "Token数据错误", 128, app_key);
             return;
         }
     };
@@ -106,7 +106,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let udid = match token_data.get("udid").and_then(|v| v.as_str()) {
         Some(u) => u,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Token数据错误", 128, app_key)));
+            render_error(res, "Token数据错误", 128, app_key);
             return;
         }
     };
@@ -122,5 +122,5 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     
     let _ = app_state.redis_util.del(redis_pool, &online_key).await;
 
-    res.render(Json(SignedApiResponse::success_msg(app_key)));
+    render_success_msg(res, app_key);
 }

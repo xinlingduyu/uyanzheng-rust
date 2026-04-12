@@ -89,7 +89,7 @@ struct FenEventListItem {
     vip: Option<i64>,
     vip_free: String,
     state: String,
-    appid: u64,
+    appid: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -180,7 +180,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
     
     // 查询数据
-    let mut data_sql = sqlx::query_as::<_, (u64, String, i64, Option<i64>, String, u64, String)>(&data_query);
+    let mut data_sql = sqlx::query_as::<_, (u64, String, i64, Option<i64>, String, i64, String)>(&data_query);
     for param in &params {
         data_sql = data_sql.bind(param);
     }

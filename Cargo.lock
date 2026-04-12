@@ -24,6 +24,7 @@ dependencies = [
  "hex",
  "hmac",
  "hostname",
+ "http-body-util",
  "lettre",
  "md5",
  "mime_guess",

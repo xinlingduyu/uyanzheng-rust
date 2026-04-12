@@ -16,7 +16,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::ModifyPicRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -26,26 +26,28 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 用于签名
-    let (app_key, app_type) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.app_type.as_str()),
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = &app_info.app_key;
+    let app_type = app_info.app_type.as_str();
     
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 检查应用类型
     if app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
     let modify_req = match req.parse_json::<ModifyPicRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -58,7 +60,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     validator.string("file", &modify_req.file, 1, 255);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -66,7 +68,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -112,14 +114,14 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
             .await;
 
             tracing::info!("用户 {} 修改头像成功: {}", uid, avatars);
-            res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+            render_success(res, app_key, None::<()>, app_info.mi.as_ref());
         }
         Ok(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("头像修改失败", 201, app_key)));
+            render_error(res, "头像修改失败", 201, app_key);
         }
         Err(e) => {
             tracing::error!("更新头像失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
         }
     }
 }

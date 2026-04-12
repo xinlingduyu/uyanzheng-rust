@@ -19,7 +19,7 @@ use chrono::Utc;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
 use crate::core::app_state::AppConfigCache;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::SignInRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -72,19 +72,21 @@ async fn get_diary_award_config(app_state: &Arc<AppState>, appid: u64) -> DiaryA
 pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和 app_type（零拷贝）
-    let (app_key, app_type) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.app_type.as_str()),
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = app_info.app_key.as_str();
+    let app_type = app_info.app_type.as_str();
     
     let sign_req = match req.parse_json::<SignInRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -94,7 +96,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator.wordnum("token", &sign_req.token, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -102,7 +104,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -116,13 +118,13 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 只支持用户版应用
     if app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
     // 卡密用户不支持签到
     if user_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("卡密用户不支持签到", 201, app_key)));
+        render_error(res, "卡密用户不支持签到", 201, app_key);
         return;
     }
 
@@ -142,7 +144,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .await;
 
     if let Ok(Some(_)) = s_res {
-        res.render(Json(SignedApiResponse::<()>::error("今日已经签到过了", 134, app_key)));
+        render_error(res, "今日已经签到过了", 134, app_key);
         return;
     }
 
@@ -187,7 +189,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     "vip" => {
                         // 检查永久VIP
                         if user_vip == 9999999999 {
-                            res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                            render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                             return;
                         }
                         
@@ -221,12 +223,12 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
 
             // PHP: $this->out->e(200,"签到成功");
-            res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+            render_success(res, app_key, None::<()>, app_info.mi.as_ref());
         }
         Err(e) => {
             tracing::error!("签到失败: {}", e);
             // PHP: $this->out->e(201,"签到失败");
-            res.render(Json(SignedApiResponse::<()>::error("签到失败", 201, app_key)));
+            render_error(res, "签到失败", 201, app_key);
         }
     }
 }

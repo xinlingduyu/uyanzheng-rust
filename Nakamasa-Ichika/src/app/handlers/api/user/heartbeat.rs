@@ -18,7 +18,7 @@ use serde::Deserialize;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::middleware::app_context::AppInfo;
 
@@ -44,7 +44,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -57,7 +57,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let heartbeat_req = match req.parse_json::<HeartbeatRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -68,7 +68,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
         let mut validator = Validator::new();
         validator.wordnum("TOKEN", &heartbeat_req.token, 32, 32);
         if validator.validate().is_err() {
-            res.render(Json(SignedApiResponse::<()>::error("TOKEN有误", 201, app_key)));
+            render_error(res, "TOKEN有误", 201, app_key);
             return;
         }
     }
@@ -78,7 +78,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // 检查登录状态
     if app_info.logon_state == "off" {
         let msg = app_info.logon_off_msg.clone().unwrap_or_else(|| "登录功能已关闭".to_string());
-        res.render(Json(SignedApiResponse::<()>::error(msg, 103, app_key)));
+        render_error(res, msg, 103, app_key);
         return;
     }
 
@@ -86,7 +86,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Redis未初始化", 201, app_key)));
+            render_error(res, "Redis未初始化", 201, app_key);
             return;
         }
     };
@@ -115,12 +115,12 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
                     tracing::warn!("[心跳] 找到 {} 个匹配前缀的key", keys.len());
                 }
             }
-            res.render(Json(SignedApiResponse::<()>::error("Token不存在", 128, app_key)));
+            render_error(res, "Token不存在", 128, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("[心跳] Redis查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("服务器错误", 201, app_key)));
+            render_error(res, "服务器错误", 201, app_key);
             return;
         }
     };
@@ -139,13 +139,13 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     if !set_result {
         // PHP: if(!$res)$this->out->e(201,'心跳失败，token记录失败');
-        res.render(Json(SignedApiResponse::<()>::error("心跳失败，token记录失败", 201, app_key)));
+        render_error(res, "心跳失败，token记录失败", 201, app_key);
         return;
     }
 
     // PHP: $this->out->e(200);
     // API文档要求返回code=1000表示成功，无data字段
-    res.render(Json(SignedApiResponse::success_msg(app_key)));
+    render_success_msg(res, app_key);
 }
 
 /// 保存token - 一比一还原PHP的__setToken方法

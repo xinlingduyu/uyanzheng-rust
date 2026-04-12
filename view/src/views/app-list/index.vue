@@ -47,7 +47,7 @@
           <template #title>
             <div class="flex items-center gap-3">
               <a-avatar :size="40" class="bg-gradient-to-br from-blue-500 to-purple-600">
-                <img v-if="app.app_logo" :src="app.app_logo" :alt="app.app_name" />
+                <img v-if="app.app_logo" :src="tool.attachUrl(app.app_logo)" :alt="app.app_name" />
                 <icon-apps v-else />
               </a-avatar>
               <div class="flex-1 min-w-0">
@@ -157,8 +157,10 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { Message, Modal } from '@arco-design/web-vue'
 import appApi from '@/api/system/app'
+import { useUserStore } from '@/store'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 // 加载状态
 const loading = ref(false)
@@ -289,16 +291,15 @@ const handleAddConfirm = async () => {
 
 // 进入应用
 const handleEnterApp = (app) => {
-  // 保存当前选择的应用信息
-  localStorage.setItem('currentApp', JSON.stringify({
+  // 使用 userStore 设置当前应用（会自动刷新路由）
+  userStore.setCurrentApp({
     id: app.id,
     name: app.app_name,
-    type: app.app_type,
+    app_type: app.app_type,
     logo: app.app_logo
-  }))
-  localStorage.setItem('currentAppId', app.id)
+  })
   
-  // 跳转到管理后台
+  // 跳转到仪表盘
   router.push('/dashboard')
 }
 
@@ -306,14 +307,13 @@ const handleEnterApp = (app) => {
 const handleAction = async (action, app) => {
   switch (action) {
     case 'edit':
-      // 进入应用编辑
-      localStorage.setItem('currentApp', JSON.stringify({
+      // 使用 userStore 设置当前应用
+      userStore.setCurrentApp({
         id: app.id,
         name: app.app_name,
-        type: app.app_type,
+        app_type: app.app_type,
         logo: app.app_logo
-      }))
-      localStorage.setItem('currentAppId', app.id)
+      })
       router.push('/app/info')
       break
     case 'copy':

@@ -16,7 +16,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::SetAcctnoRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -26,19 +26,21 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和 app_type（零拷贝）
-    let (app_key, app_type) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.app_type.as_str()),
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = app_info.app_key.as_str();
+    let app_type = app_info.app_type.as_str();
     
     let set_req = match req.parse_json::<SetAcctnoRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -51,14 +53,14 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
         .wordnum("acctno", &set_req.acctno, 5, 12);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 只支持用户版应用
     if app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -66,7 +68,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -79,7 +81,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     // PHP: if(!empty($this->user['acctno']))$this->out->e(123);
     // 检查用户是否已设置账号
     if user_info.acctno.is_some() && !user_info.acctno.as_ref().unwrap().is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("已设置账号", 123, app_key)));
+        render_error(res, "已设置账号", 123, app_key);
         return;
     }
 
@@ -96,7 +98,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     .await;
 
     if let Ok(Some(_)) = acctno_check {
-        res.render(Json(SignedApiResponse::<()>::error("账号已存在", 120, app_key)));
+        render_error(res, "账号已存在", 120, app_key);
         return;
     }
 
@@ -130,15 +132,15 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .await;
 
                 // PHP: $this->out->e(200,"设置成功");
-                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
                 // PHP: if(!$res)$this->out->e(201,"设置失败");
-                res.render(Json(SignedApiResponse::<()>::error("设置失败", 201, app_key)));
+                render_error(res, "设置失败", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("设置账号失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("设置失败", 201, app_key)));
+            render_error(res, "设置失败", 201, app_key);
         }
     }
 }

@@ -4,20 +4,40 @@
     <a-tabs v-model:active-key="activeTab">
       <a-tab-pane key="event" title="积分事件">
         <a-card class="mb-4" :bordered="false">
-          <a-button type="primary" @click="handleAddEvent">
-            <template #icon><icon-plus /></template>
-            添加事件
-          </a-button>
+          <a-space>
+            <a-button type="primary" @click="handleAddEvent">
+              <template #icon><icon-plus /></template>
+              创建事件
+            </a-button>
+            <a-button status="danger" :disabled="selectedKeys.length === 0" @click="handleDeleteEventBatch">
+              批量删除
+            </a-button>
+          </a-space>
         </a-card>
         <a-card :bordered="false">
-          <a-table :columns="eventColumns" :data="eventData" :loading="eventLoading" row-key="id">
-            <template #type="{ record }">
-              <a-tag :color="record.type === 1 ? 'green' : 'red'">
-                {{ record.type === 1 ? '增加' : '消耗' }}
-              </a-tag>
+          <a-table 
+            :columns="eventColumns" 
+            :data="eventData" 
+            :loading="eventLoading" 
+            :pagination="eventPagination"
+            row-key="id"
+            :row-selection="rowSelection"
+            @page-change="onEventPageChange"
+          >
+            <template #vip="{ record }">
+              <span>{{ formatVip(record.vip) }}</span>
             </template>
-            <template #status="{ record }">
-              <a-switch v-model="record.status" :checked-value="1" :unchecked-value="0" @change="handleEventStatusChange(record)" />
+            <template #vip_free="{ record }">
+              <div style="display: flex; justify-content: center; align-items: center;">
+                <span v-if="record.vip_free === 'y'" style="color: #52c41a; font-size: 16px;">✓</span>
+                <span v-else style="color: #f5222d; font-size: 16px;">×</span>
+              </div>
+            </template>
+            <template #state="{ record }">
+              <a-switch 
+                :model-value="record.state === 'on'" 
+                @change="(val) => handleEventStateChange(record, val)"
+              />
             </template>
             <template #actions="{ record }">
               <a-space>
@@ -33,7 +53,14 @@
 
       <a-tab-pane key="order" title="积分订单">
         <a-card :bordered="false">
-          <a-table :columns="orderColumns" :data="orderData" :loading="orderLoading" :pagination="orderPagination" row-key="id" @page-change="handleOrderPageChange">
+          <a-table 
+            :columns="orderColumns" 
+            :data="orderData" 
+            :loading="orderLoading" 
+            :pagination="orderPagination" 
+            row-key="id" 
+            @page-change="onOrderPageChange"
+          >
             <template #type="{ record }">
               <a-tag :color="record.type === 1 ? 'green' : 'red'">
                 {{ record.type === 1 ? '收入' : '支出' }}
@@ -50,28 +77,84 @@
     </a-tabs>
 
     <!-- 事件编辑弹窗 -->
-    <a-modal v-model:visible="eventModalVisible" :title="eventModalTitle" :width="520" @ok="handleEventSubmit">
-      <a-form ref="eventFormRef" :model="eventForm" :rules="eventRules" layout="vertical">
-        <a-form-item field="name" label="事件名称" required>
-          <a-input v-model="eventForm.name" placeholder="请输入事件名称" />
+    <a-modal 
+      v-model:visible="eventModalVisible" 
+      :title="eventModalTitle" 
+      :width="480"
+      :footer="false"
+      :mask-closable="false"
+      title-align="start"
+    >
+      <a-form 
+        ref="eventFormRef" 
+        :model="eventForm" 
+        :rules="eventRules" 
+        layout="horizontal"
+        :auto-label-width="true"
+        @submit="handleEventSubmit"
+      >
+        <a-form-item field="name" label="事件名称">
+          <a-input v-model="eventForm.name" placeholder="如：付费点播" />
         </a-form-item>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item field="type" label="类型">
-              <a-select v-model="eventForm.type">
-                <a-option :value="1">增加积分</a-option>
-                <a-option :value="2">消耗积分</a-option>
+        
+        <a-form-item field="type" label="事件类型">
+          <a-radio-group v-model="eventForm.type" :disabled="eventForm.typeDisabled">
+            <a-radio value="fen">消耗积分</a-radio>
+            <a-radio value="vip">兑换会员</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        
+        <a-form-item field="fen" label="消耗积分">
+          <a-input-number 
+            v-model="eventForm.fen" 
+            :min="1" 
+            placeholder="100"
+            style="width: 100%" 
+          >
+            <template #append>
+              <span>积分</span>
+            </template>
+          </a-input-number>
+        </a-form-item>
+        
+        <!-- 兑换会员时显示会员值输入 -->
+        <a-form-item v-if="eventForm.type === 'vip'" field="vip" label="会员值">
+          <a-input-number 
+            v-model="eventForm.vip" 
+            :min="1" 
+            placeholder="600"
+            style="width: 100%" 
+          >
+            <template #append>
+              <a-select v-model="eventForm.vipType" style="width: 65px">
+                <a-option value="s">秒</a-option>
+                <a-option value="i">分</a-option>
+                <a-option value="h">时</a-option>
+                <a-option value="d">天</a-option>
               </a-select>
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item field="amount" label="积分数量">
-              <a-input-number v-model="eventForm.amount" :min="0" style="width: 100%" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item field="description" label="描述">
-          <a-textarea v-model="eventForm.description" placeholder="请输入描述" />
+            </template>
+          </a-input-number>
+        </a-form-item>
+        
+        <!-- 消耗积分时显示会员免费选项 -->
+        <a-form-item v-if="eventForm.type === 'fen'" field="vip_free" label="会员免费">
+          <a-radio-group v-model="eventForm.vip_free">
+            <a-radio value="y">是</a-radio>
+            <a-radio value="n">否</a-radio>
+          </a-radio-group>
+        </a-form-item>
+        
+        <a-form-item>
+          <a-space direction="vertical" fill>
+            <a-button 
+              type="primary" 
+              html-type="submit" 
+              :loading="eventForm.btnLoading" 
+              long
+            >
+              提交
+            </a-button>
+          </a-space>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -89,25 +172,71 @@ const activeTab = ref('event')
 const eventData = ref([])
 const eventLoading = ref(false)
 const eventModalVisible = ref(false)
-const eventModalTitle = computed(() => eventForm.id ? '编辑事件' : '添加事件')
 const eventFormRef = ref(null)
-const eventForm = reactive({ id: '', name: '', type: 1, amount: 0, description: '' })
-const eventRules = { name: [{ required: true, message: '请输入事件名称' }] }
+const selectedKeys = ref([])
+
+// 表单数据
+const eventForm = reactive({ 
+  id: null, 
+  name: '', 
+  type: 'fen',
+  fen: 1, 
+  vip: null,
+  vipType: 'd',
+  vip_free: 'n',
+  typeDisabled: false,
+  btnLoading: false
+})
+
+const eventRules = {
+  name: [
+    { required: true, message: '请输入事件名称' },
+    { minLength: 2, message: '事件名称至少2个字符' },
+    { maxLength: 125, message: '事件名称最多125个字符' }
+  ],
+  fen: [
+    { required: true, message: '请输入消耗积分' }
+  ]
+}
+
+const eventPagination = computed(() => ({
+  current: eventPage.current,
+  pageSize: eventPage.size,
+  total: eventPage.total,
+  showTotal: true
+}))
+
+const eventPage = reactive({ current: 1, size: 20, total: 0 })
+
+const rowSelection = computed(() => ({
+  type: 'checkbox',
+  showCheckedAll: true,
+  selectedRowKeys: selectedKeys.value
+}))
 
 const eventColumns = [
   { title: 'ID', dataIndex: 'id', width: 80 },
   { title: '事件名称', dataIndex: 'name' },
-  { title: '类型', dataIndex: 'type', slotName: 'type' },
-  { title: '积分数量', dataIndex: 'amount' },
-  { title: '描述', dataIndex: 'description' },
-  { title: '状态', dataIndex: 'status', slotName: 'status', width: 80 },
+  { title: '消耗积分', dataIndex: 'fen', width: 100 },
+  { title: '兑换会员', dataIndex: 'vip', slotName: 'vip', width: 120 },
+  { title: '会员免费', dataIndex: 'vip_free', slotName: 'vip_free', width: 100 },
+  { title: '状态', dataIndex: 'state', slotName: 'state', width: 80 },
   { title: '操作', slotName: 'actions', width: 120 }
 ]
+
+const eventModalTitle = computed(() => eventForm.id ? '编辑事件' : '创建事件')
 
 // 积分订单
 const orderData = ref([])
 const orderLoading = ref(false)
-const orderPagination = reactive({ current: 1, pageSize: 20, total: 0, showTotal: true })
+const orderPage = reactive({ current: 1, size: 20, total: 0 })
+
+const orderPagination = computed(() => ({
+  current: orderPage.current,
+  pageSize: orderPage.size,
+  total: orderPage.total,
+  showTotal: true
+}))
 
 const orderColumns = [
   { title: 'ID', dataIndex: 'id', width: 80 },
@@ -119,67 +248,207 @@ const orderColumns = [
   { title: '时间', dataIndex: 'create_time', width: 160 }
 ]
 
-const loadEventData = async () => {
+// 格式化会员值显示
+function formatVip(vip) {
+  if (!vip) return '-'
+  // 假设后端返回的是秒数，转换为可读格式
+  if (vip >= 86400) {
+    return Math.floor(vip / 86400) + '天'
+  } else if (vip >= 3600) {
+    return Math.floor(vip / 3600) + '小时'
+  } else if (vip >= 60) {
+    return Math.floor(vip / 60) + '分钟'
+  }
+  return vip + '秒'
+}
+
+// 将会员值转换为秒
+function vipToSeconds(value, type) {
+  if (!value) return 0
+  switch (type) {
+    case 's': return value
+    case 'i': return value * 60
+    case 'h': return value * 3600
+    case 'd': return value * 86400
+    default: return value
+  }
+}
+
+// 加载事件列表
+async function loadEventData() {
   eventLoading.value = true
   try {
-    const res = await fenApi.getEventList({ page: 1, size: 100 })
+    const res = await fenApi.getEventList({ 
+      page: eventPage.current, 
+      size: eventPage.size 
+    })
     if (res.code === 200) {
-      // 后端返回格式: { list, currentPage, pageTotal, dataTotal }
       eventData.value = res.data.list || []
+      eventPage.total = res.data.dataTotal || 0
     }
   } finally {
     eventLoading.value = false
   }
 }
 
-const loadOrderData = async () => {
+// 加载订单列表
+async function loadOrderData() {
   orderLoading.value = true
   try {
-    const res = await fenApi.getOrderList({ page: orderPagination.current, size: orderPagination.pageSize })
+    const res = await fenApi.getOrderList({ 
+      page: orderPage.current, 
+      size: orderPage.size 
+    })
     if (res.code === 200) {
-      // 后端返回格式: { list, currentPage, pageTotal, dataTotal }
       orderData.value = res.data.list || []
-      orderPagination.total = res.data.dataTotal || 0
+      orderPage.total = res.data.dataTotal || 0
     }
   } finally {
     orderLoading.value = false
   }
 }
 
-const handleAddEvent = () => {
-  Object.assign(eventForm, { id: '', name: '', type: 1, amount: 0, description: '' })
+function resetEventForm() {
+  eventForm.id = null
+  eventForm.name = ''
+  eventForm.type = 'fen'
+  eventForm.fen = 1
+  eventForm.vip = null
+  eventForm.vipType = 'd'
+  eventForm.vip_free = 'n'
+  eventForm.typeDisabled = false
+  eventForm.btnLoading = false
+}
+
+function handleAddEvent() {
+  resetEventForm()
   eventModalVisible.value = true
 }
 
-const handleEditEvent = (record) => { Object.assign(eventForm, record); eventModalVisible.value = true }
+function handleEditEvent(record) {
+  eventForm.id = record.id
+  eventForm.name = record.name
+  eventForm.fen = record.fen
+  eventForm.vip_free = record.vip_free || 'n'
+  eventForm.typeDisabled = false
+  eventForm.btnLoading = false
+  
+  // 根据 vip 值判断类型
+  if (record.vip && record.vip > 0) {
+    eventForm.type = 'vip'
+    eventForm.vip = record.vip
+    eventForm.vipType = 'd'
+  } else {
+    eventForm.type = 'fen'
+    eventForm.vip = null
+  }
+  
+  eventModalVisible.value = true
+}
 
-const handleEventSubmit = async () => {
-  const valid = await eventFormRef.value?.validate()
-  if (valid) return
+async function handleEventSubmit() {
   try {
+    const valid = await eventFormRef.value?.validate()
+    if (valid) return
+    
+    eventForm.btnLoading = true
+    
+    const submitData = {
+      name: eventForm.name,
+      fen: eventForm.fen,
+      vip_free: eventForm.vip_free
+    }
+    
+    // 根据类型处理 vip 字段
+    if (eventForm.type === 'vip' && eventForm.vip) {
+      submitData.vip = String(vipToSeconds(eventForm.vip, eventForm.vipType))
+    }
+    
+    if (eventForm.id) {
+      submitData.id = eventForm.id
+    }
+    
     const api = eventForm.id ? fenApi.editEvent : fenApi.addEvent
-    const res = await api(eventForm)
-    if (res.code === 200) { Message.success('操作成功'); eventModalVisible.value = false; loadEventData() }
-  } catch (e) { Message.error('操作失败') }
+    const res = await api(submitData)
+    
+    if (res.code === 200) {
+      Message.success('操作成功')
+      eventModalVisible.value = false
+      resetEventForm()
+      loadEventData()
+    } else {
+      Message.error(res.msg || '操作失败')
+    }
+  } catch (e) {
+    Message.error('操作失败：' + (e.message || e))
+  } finally {
+    eventForm.btnLoading = false
+  }
 }
 
-const handleEventStatusChange = async (record) => {
+async function handleEventStateChange(record, val) {
+  const oldState = record.state
+  const newState = val ? 'on' : 'off'
   try {
-    await fenApi.editEventState({ id: record.id, status: record.status })
-    Message.success('状态更新成功')
-  } catch (e) { record.status = record.status === 1 ? 0 : 1; Message.error('操作失败') }
+    const res = await fenApi.editEventState({ id: record.id, state: newState })
+    if (res.code === 200) {
+      Message.success('状态更新成功')
+      record.state = newState
+    } else {
+      // 恢复原状态
+      record.state = oldState
+      Message.error(res.msg || '操作失败')
+    }
+  } catch (e) {
+    record.state = oldState
+    Message.error('出错了：' + (e.message || e))
+  }
 }
 
-const handleDeleteEvent = async (record) => {
+async function handleDeleteEvent(record) {
   try {
     const res = await fenApi.delEvent(record.id)
-    if (res.code === 200) { Message.success('删除成功'); loadEventData() }
-  } catch (e) { Message.error('删除失败') }
+    if (res.code === 200) {
+      Message.success('删除成功')
+      loadEventData()
+    } else {
+      Message.error(res.msg || '删除失败')
+    }
+  } catch (e) {
+    Message.error('删除失败')
+  }
 }
 
-const handleOrderPageChange = (page) => { orderPagination.current = page; loadOrderData() }
+async function handleDeleteEventBatch() {
+  if (selectedKeys.value.length === 0) return
+  try {
+    const res = await fenApi.delEventAll(selectedKeys.value)
+    if (res.code === 200) {
+      Message.success('批量删除成功')
+      selectedKeys.value = []
+      loadEventData()
+    } else {
+      Message.error(res.msg || '删除失败')
+    }
+  } catch (e) {
+    Message.error('删除失败')
+  }
+}
 
-onMounted(() => { loadEventData(); loadOrderData() })
+function onEventPageChange(page) {
+  eventPage.current = page
+  loadEventData()
+}
+
+function onOrderPageChange(page) {
+  orderPage.current = page
+  loadOrderData()
+}
+
+onMounted(() => {
+  loadEventData()
+  loadOrderData()
+})
 </script>
 
 <script>
@@ -188,4 +457,5 @@ export default { name: 'FenManagement' }
 
 <style scoped>
 .fen-management { padding: 16px; }
+.mb-4 { margin-bottom: 16px; }
 </style>

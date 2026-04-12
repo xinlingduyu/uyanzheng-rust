@@ -4,7 +4,7 @@ use salvo::prelude::*;
 use std::sync::Arc;
 
 use crate::core::AppState;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
@@ -31,13 +31,20 @@ const MAX_SECOND: i64 = 2_592_000;
 pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
     
     let ban_req = match req.parse_json::<BanRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -47,7 +54,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     validator.wordnum("token", &ban_req.token, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -59,7 +66,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -110,14 +117,14 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .execute(app_state.get_db())
             .await;
 
-            res.render(Json(SignedApiResponse::success_msg(app_key)));
+            render_success_msg(res, app_key);
         }
         Ok(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("禁用失败", 201, app_key)));
+            render_error(res, "禁用失败", 201, app_key);
         }
         Err(e) => {
             tracing::error!("更新用户禁用状态失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("禁用失败", 201, app_key)));
+            render_error(res, "禁用失败", 201, app_key);
         }
     }
 }

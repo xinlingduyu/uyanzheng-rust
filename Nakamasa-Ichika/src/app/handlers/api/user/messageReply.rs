@@ -8,7 +8,7 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use crate::core::AppState;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::MessageReplyRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -18,13 +18,20 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（避免 clone）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
     
     let reply_req = match req.parse_json::<MessageReplyRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -37,7 +44,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
         .string("content", &reply_req.content, 4, 255);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -45,7 +52,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -65,7 +72,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
     match m_res {
         Ok(Some((state,))) => {
             if state == 2 {
-                res.render(Json(SignedApiResponse::<()>::error("您已关闭该留言，若问题为解决，请创建新的留言", 201, app_key)));
+                render_error(res, "您已关闭该留言，若问题为解决，请创建新的留言", 201, app_key);
                 return;
             }
 
@@ -101,23 +108,23 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
                         .bind(current_time).bind(reply_req.mid)
                         .execute(app_state.get_db()).await;
 
-                        res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                        render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                     } else {
-                        res.render(Json(SignedApiResponse::<()>::error("回复失败", 201, app_key)));
+                        render_error(res, "回复失败", 201, app_key);
                     }
                 }
                 Err(e) => {
                     tracing::error!("回复失败: {}", e);
-                    res.render(Json(SignedApiResponse::<()>::error("回复失败", 201, app_key)));
+                    render_error(res, "回复失败", 201, app_key);
                 }
             }
         }
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("回复留言不存在", 201, app_key)));
+            render_error(res, "回复留言不存在", 201, app_key);
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
         }
     }
 }

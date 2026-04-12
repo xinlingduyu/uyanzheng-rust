@@ -12,7 +12,7 @@
 use salvo::prelude::*;
 use chrono::Utc;
 
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::VipRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -20,20 +20,21 @@ use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    // 获取 app_key 用于签名（零拷贝）
-    let app_key = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.app_key.as_str(),
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = &app_info.app_key;
 
     // 解析请求参数
     let vip_req = match req.parse_json::<VipRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -43,7 +44,7 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
     validator.wordnum("token", &vip_req.token, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -51,7 +52,7 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -69,21 +70,21 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
         // 普通用户检查vip字段
         let vip_time = user_info.vip.unwrap_or(0);
         if vip_time < current_time {
-            res.render(Json(SignedApiResponse::<()>::error("验证失败", 201, app_key)));
+            render_error(res, "验证失败", 201, app_key);
             return;
         }
     } else if user_type == "kami" {
         // 卡密用户检查vip_exp字段 - 一比一还原PHP
         let vip_exp_time = user_info.vip_exp.unwrap_or(0);
         if vip_exp_time < current_time {
-            res.render(Json(SignedApiResponse::<()>::error("验证失败", 201, app_key)));
+            render_error(res, "验证失败", 201, app_key);
             return;
         }
     } else {
-        res.render(Json(SignedApiResponse::<()>::error("用户类型错误", 201, app_key)));
+        render_error(res, "用户类型错误", 201, app_key);
         return;
     }
     
     // PHP: $this->out->e(200,'验证成功');
-    res.render(Json(SignedApiResponse::success_with_msg("验证成功", app_key)));
+    render_success_with_msg(res, "验证成功", app_key);
 }

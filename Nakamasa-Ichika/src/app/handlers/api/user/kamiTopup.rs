@@ -10,7 +10,7 @@ use std::sync::Arc;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::KamiTopupRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -36,13 +36,20 @@ const PERMANENT_VIP: i64 = 9_999_999_999;
 pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（避免 clone）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
     
     let topup_req = match req.parse_json::<KamiTopupRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -58,7 +65,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -66,16 +73,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
-            return;
-        }
-    };
-
-    // 获取应用信息（避免 clone）
-    let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info,
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -99,10 +97,10 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
         && let Ok(Some(fail_time_str)) = redis_util.get(redis_pool, &fail_ip_key).await
             && let Ok(fail_time) = fail_time_str.parse::<i64>()
                 && fail_time > current_time {
-                    res.render(Json(SignedApiResponse::<()>::error(
+                    render_error(res, 
                         format!("由于您操作失败次数过多，该功能已锁定，请{}秒后重试", fail_time - current_time), 
                         201, app_key
-                    )));
+                    );
                     return;
                 }
 
@@ -127,7 +125,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                     
                     if !pwd_valid {
                         increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-                        res.render(Json(SignedApiResponse::<()>::error("未填写卡密密码或卡密密码有误", 140, app_key)));
+                        render_error(res, "未填写卡密密码或卡密密码有误", 140, app_key);
                         return;
                     }
                 }
@@ -136,7 +134,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             if app_info.app_type != "user" && user_type == "kami" {
                 let user_kami_type = get_user_kami_type(app_state.get_db(), uid, appid).await;
                 if kami.kami_type != "addsn" && kami.kami_type != user_kami_type {
-                    res.render(Json(SignedApiResponse::<()>::error("卡密类型不匹配", 145, app_key)));
+                    render_error(res, "卡密类型不匹配", 145, app_key);
                     return;
                 }
             }
@@ -145,13 +143,13 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             if let Some(ban_time) = kami.ban
                 && ban_time > current_time {
                     let msg = kami.ban_msg.clone().unwrap_or_else(|| "卡密已被禁用".to_string());
-                    res.render(Json(SignedApiResponse::<()>::error(msg, 143, app_key)));
+                    render_error(res, msg, 143, app_key);
                     return;
                 }
 
             // 检查是否已使用
             if kami.use_id.is_some() {
-                res.render(Json(SignedApiResponse::<()>::error("卡密已被使用", 141, app_key)));
+                render_error(res, "卡密已被使用", 141, app_key);
                 return;
             }
 
@@ -166,7 +164,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                 Ok(tx) => tx,
                 Err(e) => {
                     tracing::error!("开启事务失败: {}", e);
-                    res.render(Json(SignedApiResponse::<()>::error("充值失败", 201, app_key)));
+                    render_error(res, "充值失败", 201, app_key);
                     return;
                 }
             };
@@ -195,7 +193,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                         Ok(_) => {
                             if let Err(e) = tx.commit().await {
                                 tracing::error!("事务提交失败: {}", e);
-                                res.render(Json(SignedApiResponse::<()>::error("充值失败", 201, app_key)));
+                                render_error(res, "充值失败", 201, app_key);
                                 return;
                             }
 
@@ -207,28 +205,28 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                             .bind(current_time).bind(ip).bind(appid)
                             .execute(app_state.get_db()).await;
 
-                            res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                            render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                         }
                         Err(e) => {
                             tracing::error!("更新卡密状态失败: {}", e);
                             let _ = tx.rollback().await;
-                            res.render(Json(SignedApiResponse::<()>::error("充值失败", 201, app_key)));
+                            render_error(res, "充值失败", 201, app_key);
                         }
                     }
                 }
                 Err(msg) => {
                     let _ = tx.rollback().await;
-                    res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+                    render_error(res, msg, 201, app_key);
                 }
             }
         }
         Ok(None) => {
             increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-            res.render(Json(SignedApiResponse::<()>::error("充值卡密不存在", 140, app_key)));
+            render_error(res, "充值卡密不存在", 140, app_key);
         }
         Err(e) => {
             tracing::error!("查询卡密失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
         }
     }
 }

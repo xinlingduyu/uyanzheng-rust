@@ -17,7 +17,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::SetEmailRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -27,19 +27,21 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和 vc_time（零拷贝）
-    let (app_key, vc_time) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.vc_time),
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = app_info.app_key.as_str();
+    let vc_time = app_info.vc_time;
     
     let set_req = match req.parse_json::<SetEmailRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -54,7 +56,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .int("code", set_req.code as i64, 4, 6);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -62,7 +64,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -78,7 +80,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: if(!empty($this->user['email']))$this->out->e(124);
     // 检查用户是否已绑定邮箱
     if user_info.email.is_some() && !user_info.email.as_ref().unwrap().is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("已绑定邮箱", 124, app_key)));
+        render_error(res, "已绑定邮箱", 124, app_key);
         return;
     }
 
@@ -100,13 +102,13 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     match verify_result {
         Ok(result) => {
             if result.rows_affected() < 1 {
-                res.render(Json(SignedApiResponse::<()>::error("验证码不正确", 119, app_key)));
+                render_error(res, "验证码不正确", 119, app_key);
                 return;
             }
         }
         Err(e) => {
             tracing::error!("验证码验证失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     }
@@ -123,7 +125,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     .await;
 
     if let Ok(Some(_)) = email_check {
-        res.render(Json(SignedApiResponse::<()>::error("该邮箱已被绑定", 120, app_key)));
+        render_error(res, "该邮箱已被绑定", 120, app_key);
         return;
     }
 
@@ -157,15 +159,15 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
                 .await;
 
                 // PHP: $this->out->e(200,"绑定成功");
-                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
                 // PHP: if(!$res)$this->out->e(201,"绑定失败");
-                res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+                render_error(res, "绑定失败", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("绑定邮箱失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+            render_error(res, "绑定失败", 201, app_key);
         }
     }
 }

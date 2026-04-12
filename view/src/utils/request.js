@@ -165,20 +165,56 @@ function createRequest(service, externalService) {
     const env = import.meta.env
     const token = tool.local.get(env.VITE_APP_TOKEN_PREFIX)
     const setting = tool.local.get('setting')
-    // 兼容两种存储方式：currentApp对象 或 currentAppId字符串
+    
+    // 获取 appid：支持多种存储格式
+    let appid = ''
     const currentApp = tool.local.get('currentApp')
     const currentAppId = tool.local.get('currentAppId')
+    
+    // 优先从 currentApp.id 获取
+    if (currentApp && typeof currentApp === 'object' && currentApp.id) {
+      appid = currentApp.id
+    }
+    // 兼容：currentApp 可能是双重编码的字符串
+    else if (currentApp && typeof currentApp === 'string') {
+      try {
+        const parsed = JSON.parse(currentApp)
+        if (parsed && parsed.id) {
+          appid = parsed.id
+        }
+      } catch (e) {}
+    }
+    // 从 currentAppId 获取
+    if (!appid && currentAppId) {
+      appid = currentAppId
+    }
+    
+    // 确保 appid 是字符串
+    if (appid !== '') {
+      appid = String(appid)
+    }
 
+    // 获取 Content-Type，支持显式设置 undefined 来跳过默认值
+    const contentType = get(config, 'headers.Content-Type')
+    const shouldSetContentType = contentType !== undefined && contentType !== null
+    
     const configDefault = {
       headers: {
         Token: formatToken(token),
         'Accept-Language': setting?.language || 'zh_CN',
-        'Content-Type': get(config, 'headers.Content-Type', 'application/json;charset=UTF-8'),
-        appid: currentApp?.id || currentAppId || '',
+        appid: appid,
         ...config.headers
       },
       timeout: 10000,
       data: {}
+    }
+    
+    // 只有在需要时才设置默认的 Content-Type
+    if (shouldSetContentType) {
+      configDefault.headers['Content-Type'] = contentType
+    } else if (!config.headers?.hasOwnProperty('Content-Type')) {
+      // 如果没有显式设置，使用默认值
+      configDefault.headers['Content-Type'] = 'application/json;charset=UTF-8'
     }
 
     delete config.headers

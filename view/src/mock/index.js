@@ -52,6 +52,9 @@ const menuSeed = [
   // 留言管理 - 直接显示
   { id: '14', parent_id: '0', name: 'messageList', path: '/message/list', component: 'message/index', icon: 'icon-message', type: 'C', sort: 130, status: 1, meta: { title: '留言管理', icon: 'icon-message', type: 'C' } },
   
+  // 发信控制 - 直接显示
+  { id: '14-1', parent_id: '0', name: 'sendControl', path: '/message/send', component: 'message/send', icon: 'icon-email', type: 'C', sort: 135, status: 1, meta: { title: '发信控制', icon: 'icon-email', type: 'C' } },
+  
   // 积分管理 - 直接显示
   { id: '15', parent_id: '0', name: 'fenIndex', path: '/fen/index', component: 'fen/index', icon: 'icon-star', type: 'C', sort: 140, status: 1, meta: { title: '积分管理', icon: 'icon-star', type: 'C' } },
   

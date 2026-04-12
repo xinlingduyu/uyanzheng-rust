@@ -2,17 +2,7 @@ import { request } from '@/utils/request.js'
 
 export default {
   /**
-   * 获取发送配置
-   */
-  get() {
-    return request({
-      url: '/admin/send',
-      method: 'get'
-    })
-  },
-
-  /**
-   * 获取发送信息
+   * 获取发送配置信息
    */
   getInfo() {
     return request({

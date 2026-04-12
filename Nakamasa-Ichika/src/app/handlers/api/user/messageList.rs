@@ -7,7 +7,7 @@ use salvo::prelude::*;
 use std::sync::Arc;
 
 use crate::core::AppState;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::MessageListRequest;
 use crate::app::models::responses::{MessageItem, MessageListResponse};
@@ -20,13 +20,20 @@ const PAGE_SIZE: u32 = 10;
 pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
     
     let list_req = match req.parse_json::<MessageListRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -36,7 +43,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     validator.wordnum("token", &list_req.token, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -44,7 +51,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -68,7 +75,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         Ok(row) => row.0 as u32,
         Err(e) => {
             tracing::error!("获取留言总数失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("获取失败", 201, app_key)));
+            render_error(res, "获取失败", 201, app_key);
             return;
         }
     };
@@ -97,11 +104,11 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 pageTotal: page_total,
             };
             
-            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+            render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Err(e) => {
             tracing::error!("获取留言列表失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("获取失败", 201, app_key)));
+            render_error(res, "获取失败", 201, app_key);
         }
     }
 }

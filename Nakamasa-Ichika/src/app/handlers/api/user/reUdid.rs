@@ -15,7 +15,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::ReUdidRequest;
 use crate::app::models::common::DeviceInfo;
@@ -26,19 +26,23 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和解绑配置（零拷贝）
-    let (app_key, logon_sn_num, logon_sn_unbdeVal, logon_sn_unbdeType) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.logon_sn_num, info.logon_sn_unbdeVal, &info.logon_sn_unbdeType),
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = &app_info.app_key;
+    let logon_sn_num = app_info.logon_sn_num;
+    let logon_sn_unbdeVal = app_info.logon_sn_unbdeVal;
+    let logon_sn_unbdeType = &app_info.logon_sn_unbdeType;
     
     let re_req = match req.parse_json::<ReUdidRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -51,7 +55,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .reg("udid", &re_req.udid, "[a-zA-Z0-9_-]+");
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -59,7 +63,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -99,7 +103,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // PHP: if(!$find)$this->out->e(201,'解绑设备不存在');
     if !found {
-        res.render(Json(SignedApiResponse::<()>::error("解绑设备不存在", 201, app_key)));
+        render_error(res, "解绑设备不存在", 201, app_key);
         return;
     }
 
@@ -137,7 +141,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 // PHP: if($this->user['vip'] < time())$this->out->e(170);
                 let user_vip = user_info.vip.unwrap_or(0);
                 if user_vip < current_time {
-                    res.render(Json(SignedApiResponse::<()>::error("VIP到期无法解绑", 170, app_key)));
+                    render_error(res, "VIP到期无法解绑", 170, app_key);
                     return;
                 }
                 // PHP: if($this->user['vip'] < 9999999999){
@@ -150,7 +154,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 // 卡密用户VIP消耗
                 let user_vip_exp = user_info.vip_exp.unwrap_or(0);
                 if user_vip_exp < current_time {
-                    res.render(Json(SignedApiResponse::<()>::error("VIP到期无法解绑", 170, app_key)));
+                    render_error(res, "VIP到期无法解绑", 170, app_key);
                     return;
                 }
                 if user_vip_exp < 9999999999 {
@@ -162,7 +166,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if user_type == "user" {
                 // PHP: if($this->user['fen'] < $this->app['logon_sn_unbdeVal'])$this->out->e(171);
                 if user_info.fen < logon_sn_unbdeVal as i64 {
-                    res.render(Json(SignedApiResponse::<()>::error("积分余额不足", 171, app_key)));
+                    render_error(res, "积分余额不足", 171, app_key);
                     return;
                 }
                 update_data["fen"] = serde_json::json!(user_info.fen - logon_sn_unbdeVal as i64);
@@ -170,7 +174,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 // 卡密用户积分消耗
                 let user_val = user_info.val.unwrap_or(0);
                 if user_val < logon_sn_unbdeVal as i64 {
-                    res.render(Json(SignedApiResponse::<()>::error("积分余额不足", 171, app_key)));
+                    render_error(res, "积分余额不足", 171, app_key);
                     return;
                 }
                 update_data["val"] = serde_json::json!(user_val - logon_sn_unbdeVal as i64);
@@ -219,14 +223,14 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .execute(app_state.get_db())
                 .await;
 
-                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
-                res.render(Json(SignedApiResponse::<()>::error("解绑失败", 201, app_key)));
+                render_error(res, "解绑失败", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("解绑设备失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("解绑失败", 201, app_key)));
+            render_error(res, "解绑失败", 201, app_key);
         }
     }
 }

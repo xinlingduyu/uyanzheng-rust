@@ -18,7 +18,7 @@ use rand::Rng;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::WxLogonRequest;
 use crate::app::middleware::app_context::AppInfo;
@@ -40,13 +40,20 @@ struct WxLogonInfo {
 pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = app_info.app_key.as_str();
     
     let wx_req = match req.parse_json::<WxLogonRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -57,22 +64,13 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // invid 是可选的
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
-    // 获取应用信息
-    let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.clone(),
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, app_key)));
-            return;
-        }
-    };
-
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -80,7 +78,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let wx_config_str = match &app_info.logon_open_wxconfig {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("微信登录未配置", 201, app_key)));
+            render_error(res, "微信登录未配置", 201, app_key);
             return;
         }
     };
@@ -89,7 +87,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let wx_config: serde_json::Value = match serde_json::from_str(wx_config_str) {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("微信登录配置有误", 201, app_key)));
+            render_error(res, "微信登录配置有误", 201, app_key);
             return;
         }
     };
@@ -101,19 +99,19 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // PHP: if($wxConfig['state'] != 'on')$this->out->e(201,'微信登录未开启');
     if state_config != "on" {
-        res.render(Json(SignedApiResponse::<()>::error("微信登录未开启", 201, app_key)));
+        render_error(res, "微信登录未开启", 201, app_key);
         return;
     }
 
     // PHP: if(empty($wxConfig['appID']))$this->out->e(201,'微信登录appID未配置');
     if app_id.is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("微信登录appID未配置", 201, app_key)));
+        render_error(res, "微信登录appID未配置", 201, app_key);
         return;
     }
 
     // PHP: if(empty($wxConfig['appSecret']))$this->out->e(201,'微信登录appSecret未配置');
     if app_secret.is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("微信登录appSecret未配置", 201, app_key)));
+        render_error(res, "微信登录appSecret未配置", 201, app_key);
         return;
     }
 
@@ -149,7 +147,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Redis未初始化", 201, app_key)));
+            render_error(res, "Redis未初始化", 201, app_key);
             return;
         }
     };
@@ -157,14 +155,14 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let info_json = match serde_json::to_string(&wxlogon_info) {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("数据序列化失败", 201, app_key)));
+            render_error(res, "数据序列化失败", 201, app_key);
             return;
         }
     };
     
     if let Err(e) = redis_util.setex(redis_pool, &redis_key, 600, &info_json).await {
         tracing::error!("Redis存储失败: {}", e);
-        res.render(Json(SignedApiResponse::<()>::error("存储登录信息失败", 201, app_key)));
+        render_error(res, "存储登录信息失败", 201, app_key);
         return;
     }
 
@@ -179,10 +177,10 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     );
 
     // PHP: $this->out->setData(['url'=>$wxurl,'uuid'=>$state])->e(200,'获取成功');
-    res.render(Json(SignedApiResponse::success(app_key, Some(json!({
+    render_success(res, app_key, Some(json!({
         "url": wx_url,
         "uuid": state
-    })))));
+    })), app_info.mi.as_ref());
 }
 
 /// 获取客户端IP

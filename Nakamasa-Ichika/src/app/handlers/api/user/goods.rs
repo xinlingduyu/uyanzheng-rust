@@ -12,7 +12,7 @@ use salvo::prelude::*;
 use std::sync::Arc;
 
 use crate::core::AppState;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::models::requests::GoodsRequest;
 use crate::app::models::responses::{GoodsItem, GoodsListResponse};
 use crate::app::middleware::app_context::AppInfo;
@@ -28,7 +28,7 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息获取失败", 201, "")));
+            render_error(res, "应用信息获取失败", 201, "");
             return;
         }
     };
@@ -36,14 +36,14 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 一比一还原PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
     let goods_req = match req.parse_json::<GoodsRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -66,7 +66,7 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(row) => row.0 as u32,
         Err(e) => {
             tracing::error!("获取商品总数失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("获取失败", 201, app_key)));
+            render_error(res, "获取失败", 201, app_key);
             return;
         }
     };
@@ -97,11 +97,11 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 pageTotal: page_total,
             };
             
-            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+            render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Err(e) => {
             tracing::error!("获取商品列表失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("获取失败", 201, app_key)));
+            render_error(res, "获取失败", 201, app_key);
         }
     }
 }

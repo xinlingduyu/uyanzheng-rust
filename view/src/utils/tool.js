@@ -468,16 +468,26 @@ tool.getRequestParams = (url) => {
 
 tool.attachUrl = (path) => {
   if (!path) return ''
-  // 已经是完整URL则直接返回
+  // 已经是完整URL
   if (path.startsWith('http://') || path.startsWith('https://')) {
+    // 如果当前页面是 HTTPS，将 HTTP URL 替换为 HTTPS（避免混合内容错误）
+    if (window.location.protocol === 'https:' && path.startsWith('http://')) {
+      return path.replace('http://', 'https://')
+    }
     return path
   }
-  // 后端返回的相对路径，需要拼接后端地址
+  // 确保路径以/开头
+  const normalizedPath = path.startsWith('/') ? path : '/' + path
+  
+  // 静态资源路径（/upload/）直接使用 BASE_URL，不经过 API 代理
+  if (normalizedPath.startsWith('/upload/')) {
+    return import.meta.env.VITE_APP_BASE_URL + normalizedPath
+  }
+  
+  // 其他路径根据代理配置处理
   const baseUrl = import.meta.env.VITE_APP_OPEN_PROXY === 'true' 
     ? import.meta.env.VITE_APP_PROXY_PREFIX 
     : import.meta.env.VITE_APP_BASE_URL
-  // 确保路径以/开头
-  const normalizedPath = path.startsWith('/') ? path : '/' + path
   return baseUrl + normalizedPath
 }
 

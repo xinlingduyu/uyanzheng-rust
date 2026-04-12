@@ -14,7 +14,7 @@ use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::zero_copy::StringBuilder;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::{LoginRequest, KamiLoginRequest};
 use crate::app::models::responses::{UserInfo, LoginResponse, IpLocation};
@@ -166,7 +166,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -174,11 +174,24 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let appid = app_info.id;
     let app_type = &app_info.app_type;
 
-    let login_req = match req.parse_json::<LoginRequest>().await {
-        Ok(data) => data,
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
-            return;
+    // 优先从 depot 获取解密后的数据（加密请求场景）
+    // 如果没有，再从 request body 解析（非加密请求场景）
+    let login_req = if let Ok(decrypted_json) = depot.get::<String>("decrypted_json") {
+        match serde_json::from_str::<LoginRequest>(decrypted_json) {
+            Ok(data) => data,
+            Err(e) => {
+                tracing::debug!("解密数据解析失败: {}", e);
+                render_error(res, "参数解析失败", 201, app_key);
+                return;
+            }
+        }
+    } else {
+        match req.parse_json::<LoginRequest>().await {
+            Ok(data) => data,
+            Err(_) => {
+                render_error(res, "参数解析失败", 201, app_key);
+                return;
+            }
         }
     };
 
@@ -196,7 +209,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .udid("udid", &login_req.udid, 1, 128);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -204,7 +217,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let logon_config = match get_logon_config(app_state.get_db(), appid).await {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("应用配置不存在", 201, app_key)));
+            render_error(res, "应用配置不存在", 201, app_key);
             return;
         }
     };
@@ -212,7 +225,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 检查登录状态
     if logon_config.logon_state == "off" {
         let msg = logon_config.logon_off_msg.clone().unwrap_or_else(|| "登录功能已关闭".to_string());
-        res.render(Json(SignedApiResponse::<()>::error(msg, 103, app_key)));
+        render_error(res, msg, 103, app_key);
         return;
     }
     
@@ -225,10 +238,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let ip_hash = md5_to_str(&ip_hash_bytes);
     
     if let Some(remain) = check_ip_locked(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await {
-        res.render(Json(SignedApiResponse::<()>::error(
-            format!("由于您登录失败次数过多，账号已锁定，请{}秒后重试", remain), 
-            201, app_key
-        )));
+        render_error(res, format!("由于您登录失败次数过多，账号已锁定，请{}秒后重试", remain), 201, app_key);
         return;
     }
     
@@ -288,7 +298,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if let Some(ban_time) = ban
                 && ban_time > current_time {
                     let msg = ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
-                    res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
+                    render_error(res, msg, 127, app_key);
                     return;
                 }
 
@@ -371,15 +381,15 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 token, state: token_state.to_string(), info, ip_location,
             };
 
-            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+            render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Ok(None) => {
             increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-            res.render(Json(SignedApiResponse::<()>::error("账号密码有误", 126, app_key)));
+            render_error(res, "账号密码有误", 126, app_key);
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
         }
     }
 }
@@ -455,7 +465,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -465,7 +475,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     let kami_req = match req.parse_json::<KamiLoginRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -479,7 +489,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -487,14 +497,14 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     let logon_config = match get_logon_config(app_state.get_db(), appid).await {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("应用配置不存在", 201, app_key)));
+            render_error(res, "应用配置不存在", 201, app_key);
             return;
         }
     };
 
     if logon_config.logon_state == "off" {
         let msg = logon_config.logon_off_msg.clone().unwrap_or_else(|| "登录功能已关闭".to_string());
-        res.render(Json(SignedApiResponse::<()>::error(msg, 103, app_key)));
+        render_error(res, msg, 103, app_key);
         return;
     }
 
@@ -510,10 +520,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     let ip_hash = md5_to_str(&ip_hash_bytes);
     
     if let Some(remain) = check_ip_locked(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await {
-        res.render(Json(SignedApiResponse::<()>::error(
-            format!("由于您登录失败次数过多，账号已锁定，请{}秒后重试", remain), 
-            201, app_key
-        )));
+        render_error(res, format!("由于您登录失败次数过多，账号已锁定，请{}秒后重试", remain), 201, app_key);
         return;
     }
     
@@ -541,14 +548,14 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                         .unwrap_or(false);
                     if !pwd_valid {
                         increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-                        res.render(Json(SignedApiResponse::<()>::error("登录卡密密码有误", 126, app_key)));
+                        render_error(res, "登录卡密密码有误", 126, app_key);
                         return;
                     }
                 }
             
             // 检查卡密类型
             if kami_type == "addsn" {
-                res.render(Json(SignedApiResponse::<()>::error("该卡密类型不可登录", 144, app_key)));
+                render_error(res, "该卡密类型不可登录", 144, app_key);
                 return;
             }
             
@@ -556,13 +563,13 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             if let Some(ban_time) = ban
                 && ban_time > current_time {
                     let msg = ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
-                    res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
+                    render_error(res, msg, 127, app_key);
                     return;
                 }
             
             // 检查是否已被使用（对冲使用）
             if use_id.is_some() {
-                res.render(Json(SignedApiResponse::<()>::error("被对冲使用的卡密不允许登录", 141, app_key)));
+                render_error(res, "被对冲使用的卡密不允许登录", 141, app_key);
                 return;
             }
 
@@ -571,12 +578,12 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                 if kami_type == "vip" {
                     if let Some(vip_time) = kami_vip
                         && vip_time > 0 && vip_time < current_time {
-                            res.render(Json(SignedApiResponse::<()>::error("您的卡密已到期", 201, app_key)));
+                            render_error(res, "您的卡密已到期", 201, app_key);
                             return;
                         }
                 } else if let Some(fen_val) = kami_fen
                     && fen_val < 1 {
-                        res.render(Json(SignedApiResponse::<()>::error("您的积分已耗尽", 201, app_key)));
+                        render_error(res, "您的积分已耗尽", 201, app_key);
                         return;
                     }
             }
@@ -662,15 +669,15 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                 });
             }
 
-            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+            render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Ok(None) => {
             increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-            res.render(Json(SignedApiResponse::<()>::error("卡密账号有误", 126, app_key)));
+            render_error(res, "卡密账号有误", 126, app_key);
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
         }
     }
 }

@@ -1,5 +1,6 @@
 use serde::Serialize;
 use std::borrow::Cow;
+use salvo::prelude::Json;
 use crate::app::plugins::encryption::{EncryptionConfig, Encryption, create_encryption};
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
@@ -351,4 +352,90 @@ impl<'a> ApiResponseBuilder<'a> {
 pub enum ResponseType<T: Serialize> {
     Signed(SignedApiResponse<T>),
     Encrypted(EncryptedApiResponse),
+}
+
+// ============================================================================
+// 智能响应渲染函数
+// ============================================================================
+
+use crate::app::middleware::app_context::EncryptionInfo;
+use salvo::http::response::Response;
+
+/// 智能渲染成功响应
+/// 
+/// 根据 APP 版本的加密配置自动选择加密或非加密响应：
+/// - 如果 `enc_info` 为 `Some` 且有数据，则加密响应
+/// - 否则返回普通签名响应
+/// 
+/// # 参数
+/// - `res`: Salvo Response 对象
+/// - `app_key`: 应用密钥
+/// - `data`: 响应数据
+/// - `enc_info`: 加密配置信息（来自 AppInfo.mi）
+/// 
+/// # 示例
+/// ```ignore
+/// let app_info = depot.get::<AppInfo>("app_info")?;
+/// render_success(res, &app_info.app_key, Some(response), app_info.mi.as_ref());
+/// ```
+#[inline]
+pub fn render_success<T: Serialize + Send>(
+    res: &mut Response,
+    app_key: &str,
+    data: Option<T>,
+    enc_info: Option<&EncryptionInfo>,
+) {
+    if let Some(enc) = enc_info {
+        // 版本配置了加密，且可能有数据 -> 加密响应
+        let enc_config = EncryptionConfig::from_json_value(&enc.config, &enc.enc_type);
+        res.render(Json(EncryptedApiResponse::success(app_key, data, &enc_config)));
+    } else {
+        // 无加密配置 -> 普通签名响应
+        res.render(Json(SignedApiResponse::success(app_key, data)));
+    }
+}
+
+/// 智能渲染成功响应（无数据，仅消息）
+/// 
+/// 用于不需要返回数据的成功响应，始终使用签名响应
+#[inline]
+pub fn render_success_msg(res: &mut Response, app_key: &str) {
+    res.render(Json(SignedApiResponse::success_msg(app_key)));
+}
+
+/// 强制不加密的渲染成功响应
+/// 
+/// 用于白名单接口（如 upload），无论是否配置加密都使用普通签名响应
+#[inline]
+pub fn render_success_no_encrypt<T: Serialize + Send>(
+    res: &mut Response,
+    app_key: &str,
+    data: Option<T>,
+) {
+    res.render(Json(SignedApiResponse::success(app_key, data)));
+}
+
+/// 智能渲染成功响应（自定义消息）
+#[inline]
+pub fn render_success_with_msg(res: &mut Response, msg: impl Into<Cow<'static, str>>, app_key: &str) {
+    res.render(Json(SignedApiResponse::success_with_msg(msg, app_key)));
+}
+
+/// 智能渲染成功响应（带数据和消息）
+#[inline]
+pub fn render_success_msg_data<T: Serialize + Send>(
+    res: &mut Response,
+    app_key: &str,
+    data: Option<T>,
+    msg: String,
+) {
+    res.render(Json(SignedApiResponse::success_msg_data(app_key, data, msg)));
+}
+
+/// 智能渲染错误响应
+/// 
+/// 错误响应始终不加密（因为没有数据）
+#[inline]
+pub fn render_error(res: &mut Response, msg: impl Into<Cow<'static, str>>, code: i32, app_key: &str) {
+    res.render(Json(SignedApiResponse::<()>::error(msg, code, app_key)));
 }

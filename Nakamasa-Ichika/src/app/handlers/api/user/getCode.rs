@@ -17,7 +17,7 @@ use std::fmt::Write;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::plugins::sms::{SmsPlugin, JieSmsPlugin, AliSmsPlugin, TencentSmsPlugin};
 use crate::app::plugins::mailer::{MailerPlugin, SmtpMailer, MailerConfig};
@@ -94,7 +94,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -103,7 +103,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let code_req = match req.parse_json::<GetCodeRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -122,26 +122,26 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 验证类型 - 一比一还原PHP
     // type: reg(注册), repwd(重置密码), ubind(绑定账号), resn(设备换绑), reEmail(解绑邮箱), rePhone(解绑手机)
     if !VALID_CODE_TYPES.contains(&code_req.code_type.as_str()) {
-        res.render(Json(SignedApiResponse::<()>::error("验证码类型有误", 201, app_key)));
+        render_error(res, "验证码类型有误", 201, app_key);
         return;
     }
 
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
     // 如果是注册类型验证码，检查应用类型 - 一比一还原PHP
     // PHP: if($this->app['app_type'] != 'user' && $_POST['type'] =='reg')$this->out->e(115,'当前应用不支持获取注册类型验证码');
     if code_req.code_type == "reg" && app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持获取注册类型验证码", 115, app_key)));
+        render_error(res, "当前应用不支持获取注册类型验证码", 115, app_key);
         return;
     }
 
     let appid = match depot.get::<u64>("app_appid") {
         Ok(id) => *id,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("APPID不能为空", 201, app_key)));
+            render_error(res, "APPID不能为空", 201, app_key);
             return;
         }
     };
@@ -154,7 +154,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     
     // 验证码长度配置
     if vcode_config.vc_length <= 0 {
-        res.render(Json(SignedApiResponse::<()>::error("验证码长度配置错误", 201, app_key)));
+        render_error(res, "验证码长度配置错误", 201, app_key);
         return;
     }
 
@@ -174,7 +174,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     if let Ok(count) = vcnum
         && count.0 >= 10 {
-            res.render(Json(SignedApiResponse::<()>::error("验证码获取频繁", 117, app_key)));
+            render_error(res, "验证码获取频繁", 117, app_key);
             return;
         }
 
@@ -190,7 +190,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .await;
 
     if let Ok(Some(_)) = vc_res {
-        res.render(Json(SignedApiResponse::<()>::error("验证码获取频繁，请2分钟后重试", 116, app_key)));
+        render_error(res, "验证码获取频繁，请2分钟后重试", 116, app_key);
         return;
     }
 
@@ -200,7 +200,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         Ok(tx) => tx,
         Err(e) => {
             tracing::error!("开启事务失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     };
@@ -221,7 +221,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if insert_result.is_err() {
         let _ = tx.rollback().await;
         tracing::error!("验证码插入失败");
-        res.render(Json(SignedApiResponse::<()>::error("验证码获取失败", 201, app_key)));
+        render_error(res, "验证码获取失败", 201, app_key);
         return;
     }
 
@@ -243,18 +243,18 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             if tx.commit().await.is_ok() {
                 // 测试模式返回验证码，生产环境不返回
                 #[cfg(debug_assertions)]
-                res.render(Json(SignedApiResponse::success(app_key, Some(serde_json::json!({"code": code})))));
+                render_success(res, app_key, Some(serde_json::json!({"code": code})), app_info.mi.as_ref());
                 
                 #[cfg(not(debug_assertions))]
-                res.render(Json(SignedApiResponse::success_with_msg("验证码发送成功", app_key)));
+                render_success_with_msg(res, "验证码发送成功", app_key);
             } else {
-                res.render(Json(SignedApiResponse::<()>::error("验证码获取失败", 201, app_key)));
+                render_error(res, "验证码获取失败", 201, app_key);
             }
         }
         Err(msg) => {
             // 回滚事务 - PHP: $this->db->rollback();
             let _ = tx.rollback().await;
-            res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+            render_error(res, msg, 201, app_key);
         }
     }
 }

@@ -100,6 +100,66 @@ pub async fn dict_all(_req: &mut Request, _depot: &mut Depot, res: &mut Response
         DictItem { label: "无要求".to_string(), value: serde_json::json!(0) },
         DictItem { label: "需要VIP".to_string(), value: serde_json::json!(1) },
     ]);
+    
+    // 短信平台类型
+    dict.insert("send_sms_type".to_string(), vec![
+        DictItem { label: "阿里云".to_string(), value: serde_json::json!("ali") },
+        DictItem { label: "腾讯云".to_string(), value: serde_json::json!("tencent") },
+        DictItem { label: "皆网".to_string(), value: serde_json::json!("jie") },
+    ]);
+    
+    // 发信状态
+    dict.insert("send_state".to_string(), vec![
+        DictItem { label: "开启".to_string(), value: serde_json::json!("on") },
+        DictItem { label: "关闭".to_string(), value: serde_json::json!("off") },
+    ]);
+    
+    // 应用类型菜单配置 - 定义不同类型应用可见的菜单
+    // 用户版：完整功能
+    dict.insert("app_menus_user".to_string(), vec![
+        DictItem { label: "仪表盘".to_string(), value: serde_json::json!("dashboard") },
+        DictItem { label: "应用管理".to_string(), value: serde_json::json!("app") },
+        DictItem { label: "用户管理".to_string(), value: serde_json::json!("userList") },
+        DictItem { label: "卡密管理".to_string(), value: serde_json::json!("kami") },
+        DictItem { label: "版本管理".to_string(), value: serde_json::json!("verList") },
+        DictItem { label: "代理管理".to_string(), value: serde_json::json!("agentList") },
+        DictItem { label: "订单管理".to_string(), value: serde_json::json!("orderList") },
+        DictItem { label: "支付配置".to_string(), value: serde_json::json!("payConfig") },
+        DictItem { label: "云函数".to_string(), value: serde_json::json!("functionList") },
+        DictItem { label: "加密方案".to_string(), value: serde_json::json!("encryptionList") },
+        DictItem { label: "黑名单".to_string(), value: serde_json::json!("blocklistList") },
+        DictItem { label: "日志管理".to_string(), value: serde_json::json!("logsList") },
+        DictItem { label: "公告管理".to_string(), value: serde_json::json!("noticeList") },
+        DictItem { label: "留言管理".to_string(), value: serde_json::json!("messageList") },
+        DictItem { label: "发信控制".to_string(), value: serde_json::json!("sendControl") },
+        DictItem { label: "积分管理".to_string(), value: serde_json::json!("fenIndex") },
+        DictItem { label: "商品管理".to_string(), value: serde_json::json!("goodsList") },
+        DictItem { label: "扩展字段".to_string(), value: serde_json::json!("extendList") },
+        DictItem { label: "系统设置".to_string(), value: serde_json::json!("system") },
+        DictItem { label: "管理员".to_string(), value: serde_json::json!("adminList") },
+        DictItem { label: "数据统计".to_string(), value: serde_json::json!("statistics") },
+    ]);
+    
+    // 卡密版：精简功能（无用户管理、留言、积分、商品）
+    dict.insert("app_menus_kami".to_string(), vec![
+        DictItem { label: "仪表盘".to_string(), value: serde_json::json!("dashboard") },
+        DictItem { label: "应用管理".to_string(), value: serde_json::json!("app") },
+        DictItem { label: "卡密管理".to_string(), value: serde_json::json!("kami") },
+        DictItem { label: "版本管理".to_string(), value: serde_json::json!("verList") },
+        DictItem { label: "代理管理".to_string(), value: serde_json::json!("agentList") },
+        DictItem { label: "订单管理".to_string(), value: serde_json::json!("orderList") },
+        DictItem { label: "支付配置".to_string(), value: serde_json::json!("payConfig") },
+        DictItem { label: "云函数".to_string(), value: serde_json::json!("functionList") },
+        DictItem { label: "加密方案".to_string(), value: serde_json::json!("encryptionList") },
+        DictItem { label: "黑名单".to_string(), value: serde_json::json!("blocklistList") },
+        DictItem { label: "日志管理".to_string(), value: serde_json::json!("logsList") },
+        DictItem { label: "公告管理".to_string(), value: serde_json::json!("noticeList") },
+        DictItem { label: "发信控制".to_string(), value: serde_json::json!("sendControl") },
+        DictItem { label: "扩展字段".to_string(), value: serde_json::json!("extendList") },
+        DictItem { label: "系统设置".to_string(), value: serde_json::json!("system") },
+        DictItem { label: "管理员".to_string(), value: serde_json::json!("adminList") },
+        DictItem { label: "数据统计".to_string(), value: serde_json::json!("statistics") },
+    ]);
 
     res.render(Json(ApiResponse::success("成功", Some(dict))));
 }

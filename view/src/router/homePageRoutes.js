@@ -158,6 +158,14 @@ const homePageRoutes = [
     component: () => import('@/views/message/index.vue')
   },
 
+  // ========== 发信控制 ==========
+  {
+    name: 'sendControl',
+    path: '/message/send',
+    meta: { title: '发信控制', icon: 'icon-email', type: 'C' },
+    component: () => import('@/views/message/send.vue')
+  },
+
   // ========== 积分管理 ==========
   {
     name: 'fenIndex',

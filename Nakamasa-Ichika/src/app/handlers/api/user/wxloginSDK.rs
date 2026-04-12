@@ -19,7 +19,7 @@ use rand::Rng;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str, md5_str_from_str};
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_success_msg_data, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::WxLoginSDKRequest;
 use crate::app::models::responses::{UserInfo, LoginResponse};
@@ -84,7 +84,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -93,7 +93,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let wx_req = match req.parse_json::<WxLoginSDKRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -107,13 +107,13 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // invid 是可选的
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -121,7 +121,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let wx_config_str = match &app_info.logon_open_wxconfig {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("微信登录未配置", 201, app_key)));
+            render_error(res, "微信登录未配置", 201, app_key);
             return;
         }
     };
@@ -130,7 +130,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let wx_config: serde_json::Value = match serde_json::from_str(wx_config_str) {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("微信登录配置有误", 201, app_key)));
+            render_error(res, "微信登录配置有误", 201, app_key);
             return;
         }
     };
@@ -140,7 +140,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // PHP: if($wxConfig['state'] != 'on')$this->out->e(201,'微信登录未开启');
     if state_config != "on" {
-        res.render(Json(SignedApiResponse::<()>::error("微信登录未开启", 201, app_key)));
+        render_error(res, "微信登录未开启", 201, app_key);
         return;
     }
 
@@ -153,7 +153,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let logon_config = match get_logon_config(app_state.get_db(), appid).await {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("应用配置不存在", 201, app_key)));
+            render_error(res, "应用配置不存在", 201, app_key);
             return;
         }
     };
@@ -161,7 +161,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // 检查登录状态
     if logon_config.logon_state == "off" {
         let msg = logon_config.logon_off_msg.unwrap_or_else(|| "登录功能已关闭".to_string());
-        res.render(Json(SignedApiResponse::<()>::error(msg, 103, app_key)));
+        render_error(res, msg, 103, app_key);
         return;
     }
 
@@ -176,7 +176,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let user_response = match reqwest::get(&user_info_url).await {
         Ok(resp) => resp,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("获取微信用户信息失败", 201, app_key)));
+            render_error(res, "获取微信用户信息失败", 201, app_key);
             return;
         }
     };
@@ -184,7 +184,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let wx_info: WxUserInfo = match user_response.json().await {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("解析微信用户信息失败", 201, app_key)));
+            render_error(res, "解析微信用户信息失败", 201, app_key);
             return;
         }
     };
@@ -193,14 +193,14 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     if let Some(errcode) = wx_info.errcode
         && errcode != 0 {
             let err_msg = wx_info.errmsg.clone().unwrap_or_else(|| "微信API错误".to_string());
-            res.render(Json(SignedApiResponse::<()>::error(err_msg, 201, app_key)));
+            render_error(res, err_msg, 201, app_key);
             return;
         }
 
     let wx_openid = match wx_info.openid {
         Some(ref openid) => openid.clone(),
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("获取微信OpenID失败", 201, app_key)));
+            render_error(res, "获取微信OpenID失败", 201, app_key);
             return;
         }
     };
@@ -225,7 +225,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             if let Some(ban_time) = ban
                 && ban_time > current_time {
                     let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
-                    res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
+                    render_error(res, msg, 127, app_key);
                     return;
                 }
 
@@ -256,7 +256,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     .await;
                     
                 if update_result.is_err() {
-                    res.render(Json(SignedApiResponse::<()>::error("登录失败，请重试", 201, app_key)));
+                    render_error(res, "登录失败，请重试", 201, app_key);
                     return;
                 }
             } else {
@@ -264,7 +264,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 let sn_list: Vec<serde_json::Value> = match serde_json::from_str(&sn_list_str.unwrap()) {
                     Ok(list) => list,
                     Err(_) => {
-                        res.render(Json(SignedApiResponse::<()>::error("设备列表解析失败", 201, app_key)));
+                        render_error(res, "设备列表解析失败", 201, app_key);
                         return;
                     }
                 };
@@ -285,7 +285,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             let udid_hash = md5_to_str(&udid_hash_bytes);
                             let logon_key = format!("logon_{}_{}_{}", appid, id, udid_hash);
                             if let Ok(Some(_)) = redis_util.get(redis_pool, &logon_key).await {
-                                res.render(Json(SignedApiResponse::<()>::error("已经登录了", 201, app_key)));
+                                render_error(res, "已经登录了", 201, app_key);
                                 return;
                             }
                         }
@@ -307,7 +307,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                                 .await;
                                 
                             if update_result.is_err() {
-                                res.render(Json(SignedApiResponse::<()>::error("登录失败，请重试", 201, app_key)));
+                                render_error(res, "登录失败，请重试", 201, app_key);
                                 return;
                             }
                         }
@@ -323,7 +323,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             .await;
                             
                         if update_result.is_err() {
-                            res.render(Json(SignedApiResponse::<()>::error("登录失败，请重试", 201, app_key)));
+                            render_error(res, "登录失败，请重试", 201, app_key);
                             return;
                         }
                     }
@@ -414,7 +414,7 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 ip_location: lookup_ip_location(ip),
             };
 
-            res.render(Json(SignedApiResponse::success(app_key, Some(response))));
+            render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Ok(None) => {
             // PHP: 新用户注册
@@ -429,12 +429,12 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let app_cfg = match app_result {
                 Ok(Some(row)) => row,
                 Ok(None) => {
-                    res.render(Json(SignedApiResponse::<()>::error("登录失败，应用不存在", 201, app_key)));
+                    render_error(res, "登录失败，应用不存在", 201, app_key);
                     return;
                 }
                 Err(e) => {
                     tracing::error!("数据库查询失败: {}", e);
-                    res.render(Json(SignedApiResponse::<()>::error("系统错误", 201, app_key)));
+                    render_error(res, "系统错误", 201, app_key);
                     return;
                 }
             };
@@ -607,21 +607,17 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     };
 
                     let msg = format!("登录成功，您的初始密码为：{}", pwd);
-                    res.render(Json(SignedApiResponse::success_msg_data(
-                        app_key, 
-                        Some(response),
-                        msg
-                    )));
+                    render_success_msg_data(res, app_key, Some(response), msg);
                 }
                 Err(e) => {
                     tracing::error!("注册失败: {}", e);
-                    res.render(Json(SignedApiResponse::<()>::error("账号注册失败，请重试", 201, app_key)));
+                    render_error(res, "账号注册失败，请重试", 201, app_key);
                 }
             }
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("系统错误", 201, app_key)));
+            render_error(res, "系统错误", 201, app_key);
         }
     }
 }

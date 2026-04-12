@@ -20,7 +20,7 @@ use chrono::Utc;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::middleware::app_context::AppInfo;
 
@@ -100,9 +100,9 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.clone(),
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
@@ -113,7 +113,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let reg_req = match req.parse_json::<RegisterRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -121,7 +121,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 检查应用类型
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -129,7 +129,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let reg_config = match get_reg_config(app_state.get_db(), appid).await {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("应用配置不存在", 201, app_key)));
+            render_error(res, "应用配置不存在", 201, app_key);
             return;
         }
     };
@@ -138,7 +138,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 检查注册状态
     if reg_config.reg_state == "off" {
         let msg = reg_config.reg_off_msg.clone().unwrap_or_else(|| "注册功能已关闭".to_string());
-        res.render(Json(SignedApiResponse::<()>::error(msg, 102, app_key)));
+        render_error(res, msg, 102, app_key);
         return;
     }
 
@@ -162,12 +162,12 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // PHP: 'invid' => ['int','1,11','邀请人ID填写有误',$this->app['reg_is_inviter'] == 'n']
     // 如果需要邀请人
     if reg_config.reg_is_inviter == "y" && reg_req.invid.is_none() {
-        res.render(Json(SignedApiResponse::<()>::error("需要邀请人ID", 201, app_key)));
+        render_error(res, "需要邀请人ID", 201, app_key);
         return;
     }
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -195,13 +195,13 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     match user_check {
         Ok(Some(_)) => {
             tracing::warn!("[注册调试] 账号已存在: account={}", reg_req.account);
-            res.render(Json(SignedApiResponse::<()>::error("账号已存在", 120, app_key)));
+            render_error(res, "账号已存在", 120, app_key);
             return;
         }
         Ok(None) => {}
         Err(e) => {
             tracing::error!("[注册调试] 数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     }
@@ -221,7 +221,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
         if let Ok(Some(_)) = ip_check {
             tracing::warn!("[注册调试] 该IP已注册: ip={}", ip);
-            res.render(Json(SignedApiResponse::<()>::error("该IP已注册", 121, app_key)));
+            render_error(res, "该IP已注册", 121, app_key);
             return;
         }
     }
@@ -241,7 +241,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
         if let Ok(Some(_)) = sn_check {
             tracing::warn!("[注册调试] 该设备已注册: udid={}", reg_req.udid);
-            res.render(Json(SignedApiResponse::<()>::error("该设备已注册", 121, app_key)));
+            render_error(res, "该设备已注册", 121, app_key);
             return;
         }
     }
@@ -251,7 +251,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if reg_way == "phone" || reg_way == "email" {
         // PHP: if(!isset($_POST['code']) || empty($_POST['code']))$this->out->e(118);
         if reg_req.code.is_none() || reg_req.code.unwrap_or(0) == 0 {
-            res.render(Json(SignedApiResponse::<()>::error("验证码为空", 118, app_key)));
+            render_error(res, "验证码为空", 118, app_key);
             return;
         }
         
@@ -275,14 +275,14 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             Ok(result) => {
                 if result.rows_affected() < 1 {
                     tracing::warn!("[注册调试] 验证码不正确: account={}, code={}", reg_req.account, reg_req.code.unwrap());
-                    res.render(Json(SignedApiResponse::<()>::error("验证码不正确", 119, app_key)));
+                    render_error(res, "验证码不正确", 119, app_key);
                     return;
                 }
                 tracing::debug!("[注册调试] 验证码验证成功");
             }
             Err(e) => {
                 tracing::error!("[注册调试] 验证码验证失败: {}", e);
-                res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+                render_error(res, "数据库错误", 201, app_key);
                 return;
             }
         }
@@ -384,12 +384,12 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
                 Ok(None) => {
                     tracing::warn!("[注册调试] 邀请人不存在: invid={}", invid);
-                    res.render(Json(SignedApiResponse::<()>::error("邀请人不存在", 122, app_key)));
+                    render_error(res, "邀请人不存在", 122, app_key);
                     return;
                 }
                 Err(e) => {
                     tracing::error!("[注册调试] 查询邀请人失败: {}", e);
-                    res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+                    render_error(res, "数据库错误", 201, app_key);
                     return;
                 }
             }
@@ -439,14 +439,14 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .await;
 
                 // PHP: $this->out->e(200,'注册成功');
-                res.render(Json(SignedApiResponse::success_msg(app_key)));
+                render_success_msg(res, app_key);
             } else {
-                res.render(Json(SignedApiResponse::<()>::error("注册失败，请重试", 201, app_key)));
+                render_error(res, "注册失败，请重试", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("[注册调试] 注册失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("注册失败，请重试", 201, app_key)));
+            render_error(res, "注册失败，请重试", 201, app_key);
         }
     }
 }

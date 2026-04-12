@@ -23,9 +23,15 @@ impl Rc4Encryption {
     
     /// RC4 核心算法
     /// PHP: mi 方法
-    fn rc4_crypt(&self, data: &[u8], _is_decrypt: bool) -> Vec<u8> {
+    fn rc4_crypt(&self, data: &[u8], _is_decrypt: bool) -> Result<Vec<u8>, String> {
         let pwd = &self.password;
         let pwd_len = pwd.len();
+        
+        // 检查密钥是否为空
+        if pwd_len == 0 {
+            return Err("RC4密钥为空".to_string());
+        }
+        
         let data_len = data.len();
         
         // 初始化 S-box 和 key
@@ -56,7 +62,7 @@ impl Rc4Encryption {
             result.push(byte ^ k);
         }
         
-        result
+        Ok(result)
     }
 }
 
@@ -68,7 +74,7 @@ impl Encryption for Rc4Encryption {
         // UTF-8 转 GBK (与 PHP 一致)
         let (data_gbk, _, _) = GBK.encode(data);
         
-        let encrypted = self.rc4_crypt(data_gbk.as_ref(), false);
+        let encrypted = self.rc4_crypt(data_gbk.as_ref(), false)?;
         
         // PHP 返回 bin2hex
         Ok(hex::encode(encrypted))
@@ -82,7 +88,7 @@ impl Encryption for Rc4Encryption {
         let encrypted = hex::decode(data)
             .map_err(|e| format!("Hex 解码失败: {:?}", e))?;
         
-        let decrypted = self.rc4_crypt(&encrypted, true);
+        let decrypted = self.rc4_crypt(&encrypted, true)?;
         
         // GBK 转 UTF-8
         let (decrypted_utf8, _, _) = GBK.decode(&decrypted);

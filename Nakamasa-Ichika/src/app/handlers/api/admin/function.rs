@@ -244,7 +244,7 @@ struct FunctionDetail {
     allow: i32,
     fen: i32,
     state: String,
-    appid: i64,
+    appid: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -303,7 +303,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let result = sqlx::query_as::<_, (u64, String, String, String, Option<i32>, Option<i32>, String, i64)>(
+    let result = sqlx::query_as::<_, (u64, String, String, String, Option<i32>, Option<i32>, String, u64)>(
         "SELECT id, name, code, notes, allow, fen, state, appid FROM u_app_function WHERE id = ?"
     )
     .bind(info_req.id)

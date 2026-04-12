@@ -17,7 +17,7 @@ use chrono::Utc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::SetExtendRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -27,19 +27,20 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.app_key.as_str(),
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = app_info.app_key.as_str();
     
     let set_req = match req.parse_json::<SetExtendRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -54,7 +55,7 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     // value是可选的
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -62,7 +63,7 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -126,15 +127,15 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .await;
 
                 // PHP: $this->out->e(200,"编辑成功");
-                res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+                render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
                 // PHP: if(!$res)$this->out->e(201,"编辑失败");
-                res.render(Json(SignedApiResponse::<()>::error("编辑失败", 201, app_key)));
+                render_error(res, "编辑失败", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("编辑扩展信息失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("编辑失败", 201, app_key)));
+            render_error(res, "编辑失败", 201, app_key);
         }
     }
 }

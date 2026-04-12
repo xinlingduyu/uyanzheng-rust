@@ -2,14 +2,17 @@
 //! 一比一还原PHP base/user.php的__init方法逻辑
 //! 从路由路径中提取 appid、ver_key、ver_val，并查询 app 数据存入 depot
 //! 优化版：使用 FastJson 减少序列化开销，使用 Cow 减少字符串分配
+//! 支持请求加密解密：根据版本配置的加密方案自动解密客户端请求
 
 use salvo::prelude::*;
 use crate::core::AppState;
 use crate::core::json_optimize::FastJson;
 use crate::app::utils::response::ApiResponse;
+use crate::app::plugins::encryption::{EncryptionConfig, Encryption, create_encryption, txt_to_arr, arr_sign};
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 use sqlx::Row;
+use chrono::Utc;
 
 /// 应用信息（从数据库查询）
 /// 一比一还原PHP的$this->app结构
@@ -202,11 +205,276 @@ impl Handler for AppContext {
         depot.insert("app_appid", appid);
         depot.insert("app_version_index", ver_key);
         depot.insert("app_version", ver_val);
+        
+        // ============================================================
+        // 加密解密处理：检查版本是否配置了加密方案
+        // 如果版本选择了加密方案(mi不为空)，则对请求进行解密和签名验证
+        // 白名单接口跳过加密解密（如 upload 使用 form-data 格式）
+        // ============================================================
+        // 白名单：不需要加密解密的接口路径
+        const ENCRYPTION_SKIP_PATHS: &[&str] = &["/upload"];
+        
+        // 检查是否在白名单中
+        let current_path = req.uri().path();
+        let should_skip_encryption = ENCRYPTION_SKIP_PATHS.iter().any(|p| current_path.ends_with(p));
+        
+        if self.data_check && !should_skip_encryption {
+            if let Some(ref enc_info) = app_info.mi {
+                // 版本配置了加密方案，需要解密请求
+                match decrypt_and_verify_request(req, enc_info, &app_info.app_key).await {
+                    Ok(decrypted_json) => {
+                        // 解密成功
+                        tracing::debug!("准备注入Request的JSON: {}", decrypted_json);
+                        // 1. 存入depot供后续使用
+                        depot.insert("decrypted_json", decrypted_json.clone());
+                        // 2. 替换Request的body，使handler可以直接使用parse_json()
+                        //    使用 Vec<u8> 作为新body内容
+                        req.replace_body(decrypted_json.into_bytes().into());
+                    }
+                    Err(e) => {
+                        // 解密或验签失败
+                        tracing::warn!("请求解密验签失败: {}", e);
+                        res.render(Json(ApiResponse::<()>::error(e, 201)));
+                        ctrl.skip_rest();
+                        return;
+                    }
+                }
+            }
+        }
+        
         depot.insert("app_info", app_info);
 
         // 继续执行下一个处理器
         ctrl.call_next(req, depot, res).await;
     }
+}
+
+/// 解密并验证请求
+/// 
+/// # 流程
+/// 1. 读取请求body（原始字符串）
+/// 2. 解析为键值对（支持 json/form-urlencoded/multipart 格式）
+/// 3. 验证签名（如果启用）
+/// 4. 解密data字段
+/// 5. 返回解密后的JSON字符串
+/// 
+/// # 参数格式
+/// 客户端发送格式（加密后）：
+/// - data: 加密后的数据字符串
+/// - sign: 签名（可选，根据配置）
+/// - time: 时间戳（可选，根据配置）
+async fn decrypt_and_verify_request(
+    req: &mut Request,
+    enc_info: &EncryptionInfo,
+    app_key: &str,
+) -> Result<String, String> {
+    // 调试：打印请求头信息
+    let content_type = req.headers().get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown")
+        .to_string();  // 克隆字符串避免借用问题
+    tracing::debug!("请求Content-Type: {}", content_type);
+    
+    // ============================================================
+    // 根据Content-Type解析参数
+    // 支持三种格式：
+    // 1. application/json: {"data":"...", "sign":"...", "time":123}
+    // 2. application/x-www-form-urlencoded: data=...&sign=...&time=123
+    // 3. multipart/form-data: 表单字段 data, sign, time
+    // ============================================================
+    
+    let params = if content_type.contains("multipart/form-data") {
+        // multipart/form-data 格式解析
+        // 注意：这里需要先把 body 放回去，因为 form_data() 会读取 body
+        tracing::debug!("检测到 multipart/form-data 格式");
+        
+        match req.form_data().await {
+            Ok(form) => {
+                let mut map = std::collections::HashMap::new();
+                // 提取字段（不包括文件）
+                for (key, value) in form.fields.iter() {
+                    map.insert(key.clone(), value.clone());
+                }
+                // 文件字段暂不处理，后续 handler 会处理
+                tracing::debug!("multipart 解析成功，字段数: {}", map.len());
+                map
+            }
+            Err(e) => {
+                tracing::debug!("multipart 解析失败: {}", e);
+                return Err(format!("multipart 解析失败: {}", e));
+            }
+        }
+    } else {
+        // JSON 或 form-urlencoded 格式
+        use http_body_util::BodyExt;
+        let body = req.take_body();
+        let body_bytes = body.collect().await
+            .map_err(|e| format!("读取请求体失败: {}", e))?
+            .to_bytes();
+        
+        if body_bytes.is_empty() {
+            tracing::debug!("请求体为空");
+            return Err("请求体为空".to_string());
+        }
+        
+        let body_str = String::from_utf8_lossy(&body_bytes).to_string();
+        
+        // 调试：打印原始body（限制长度避免日志过长）
+        let body_preview = if body_str.len() > 500 {
+            format!("{}... (总长度: {})", &body_str[..500], body_str.len())
+        } else {
+            body_str.clone()
+        };
+        tracing::debug!("请求body内容: {}", body_preview);
+        
+        if content_type.contains("application/json") {
+            // JSON格式解析
+            match serde_json::from_str::<serde_json::Value>(&body_str) {
+                Ok(json) => {
+                    let mut map = std::collections::HashMap::new();
+                    if let Some(obj) = json.as_object() {
+                        for (k, v) in obj {
+                            let val = match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Number(n) => n.to_string(),
+                                serde_json::Value::Bool(b) => b.to_string(),
+                                _ => v.to_string(),
+                            };
+                            map.insert(k.clone(), val);
+                        }
+                    }
+                    map
+                }
+                Err(e) => {
+                    tracing::debug!("JSON解析失败: {}", e);
+                    return Err(format!("JSON解析失败: {}", e));
+                }
+            }
+        } else {
+            // form-urlencoded格式解析
+            txt_to_arr(&body_str)
+        }
+    };
+    
+    // 调试：打印解析后的参数
+    tracing::debug!("解析后参数数量: {}, 参数键: {:?}", params.len(), params.keys().collect::<Vec<_>>());
+    
+    // 获取加密数据
+    let encrypted_data = params.get("data")
+        .ok_or_else(|| {
+            tracing::debug!("params中无data参数，可用参数: {:?}", params.keys().collect::<Vec<_>>());
+            "缺少data参数".to_string()
+        })?;
+    
+    // ============================================================
+    // 1. 解密 data 字段
+    // ============================================================
+    tracing::debug!("加密方案: type={}, config={}", enc_info.enc_type, enc_info.config);
+    let enc_config = EncryptionConfig::from_json_value(&enc_info.config, &enc_info.enc_type);
+    tracing::debug!("解析后配置: key={:?}, password={:?}, encodeType={:?}", 
+        enc_config.key, enc_config.password, enc_config.encode_type);
+    let encryptor = create_encryption(&enc_config);
+    let decrypted = encryptor.decode(encrypted_data)
+        .map_err(|e| format!("解密失败: {}", e))?;
+    
+    if decrypted.is_empty() {
+        return Err("解密数据为空".to_string());
+    }
+    
+    tracing::debug!("解密后数据: {}", if decrypted.len() > 200 { &decrypted[..200] } else { &decrypted });
+    
+    // ============================================================
+    // 2. 解析解密后的数据并合并参数
+    // PHP: $_POST = array_merge($_POST, $encryption->txtArr($dedata));
+    // 注意：解密后的数据是JSON格式，需要用JSON解析
+    // ============================================================
+    let decrypted_params: std::collections::HashMap<String, String> = 
+        match serde_json::from_str::<serde_json::Value>(&decrypted) {
+            Ok(json) => {
+                let mut map = std::collections::HashMap::new();
+                if let Some(obj) = json.as_object() {
+                    for (k, v) in obj {
+                        let val = match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Number(n) => n.to_string(),
+                            serde_json::Value::Bool(b) => b.to_string(),
+                            _ => v.to_string(),
+                        };
+                        map.insert(k.clone(), val);
+                    }
+                }
+                map
+            }
+            Err(_) => {
+                // fallback: 尝试 txt_to_arr 解析
+                txt_to_arr(&decrypted)
+            }
+        };
+    
+    // 合并参数：原始参数（移除data）+ 解密后的参数
+    let mut merged_params = params.clone();
+    merged_params.remove("data");  // 移除加密的data字段
+    for (k, v) in decrypted_params {
+        merged_params.insert(k, v);
+    }
+    
+    tracing::debug!("合并后参数: {:?}", merged_params.keys().collect::<Vec<_>>());
+    
+    // ============================================================
+    // 3. 验证时间戳
+    // PHP: if(!isset($_POST['time']) || (time()-intval($_POST['time'])) > $this->app['mi']['time'])
+    // ============================================================
+    if enc_info.time > 0 {
+        let client_time = merged_params.get("time")
+            .and_then(|t| t.parse::<i64>().ok())
+            .ok_or("缺少time参数或格式错误")?;
+        
+        let current_time = Utc::now().timestamp();
+        let diff = current_time - client_time;
+        
+        if diff > enc_info.time as i64 {
+            return Err(format!("请求已过期，时间差{}秒", diff));
+        }
+    }
+    
+    // ============================================================
+    // 4. 验证签名（支持两种方式）
+    // PHP: $sign != $encryption->arrSign($_POST,$this->app['app_key']) && $sign != md5($dedata.$this->app['app_key'])
+    // ============================================================
+    if enc_info.sign == "y" {
+        let client_sign = merged_params.get("sign")
+            .ok_or("缺少sign参数")?;
+        
+        // 方式1: 对合并后的参数签名
+        let sign1 = arr_sign(&merged_params, app_key);
+        
+        // 方式2: 对解密后的明文签名
+        use crate::core::md5_optimize::{md5_hex, md5_to_str};
+        let sign2_data = format!("{}{}", decrypted, app_key);
+        let sign2 = md5_to_str(&md5_hex(sign2_data.as_bytes())).to_string();
+        
+        tracing::debug!("签名验证 - 客户端: {}, 方式1: {}, 方式2: {}", client_sign, sign1, sign2);
+        
+        if !constant_time_eq(&sign1, client_sign) && !constant_time_eq(&sign2, client_sign) {
+            return Err("签名验证失败".to_string());
+        }
+    }
+    
+    Ok(decrypted)
+}
+
+/// 常量时间比较，防止时序攻击
+#[inline]
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    
+    let mut result = 0u8;
+    for (x, y) in a.bytes().zip(b.bytes()) {
+        result |= x ^ y;
+    }
+    result == 0
 }
 
 /// 查询应用信息（包含版本和加密配置）
@@ -294,17 +562,17 @@ async fn fetch_app_info_with_version(
     };
 
     // 解析加密配置
-    let mi: Option<EncryptionInfo> = match row.try_get::<Option<String>, _>(51)? {
+    // Column 51 is V.mid (BIGINT), M.type is at column 52
+    let mi: Option<EncryptionInfo> = match row.try_get::<Option<String>, _>(52)? {
         Some(enc_type) => {
-            let config_str: Option<String> = row.try_get(52).ok();
-            let config = config_str
-                .and_then(|s| FastJson::parse_borrowed(&s).ok())
+            // M.config 是 JSON 类型，需要用 serde_json::Value 读取
+            let config: serde_json::Value = row.try_get::<Option<serde_json::Value>, _>(53)?
                 .unwrap_or(serde_json::Value::Null);
             Some(EncryptionInfo {
                 enc_type,
                 config,
-                sign: row.try_get::<Option<String>, _>(53)?.unwrap_or_else(|| "n".to_string()),
-                time: row.try_get::<Option<i32>, _>(54)?.unwrap_or(0),
+                sign: row.try_get::<Option<String>, _>(54)?.unwrap_or_else(|| "n".to_string()),
+                time: row.try_get::<Option<i32>, _>(55)?.unwrap_or(0),
             })
         }
         None => None,

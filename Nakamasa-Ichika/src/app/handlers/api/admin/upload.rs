@@ -22,8 +22,11 @@ const ALLOWED_MIME_TYPES: &[&str] = &[
     "image/webp",
 ];
 
-/// 最大文件大小（字节）- 默认10MB
-const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024;
+/// 最大文件大小（字节）- 默认 100MB（大文件上传支持）
+const MAX_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
+/// 最大请求体大小（字节）- 用于 multipart 表单解析
+const MAX_BODY_SIZE: usize = 100 * 1024 * 1024;
 
 /// 生成唯一文件名（保留原始扩展名）
 fn generate_unique_filename(original_name: &str) -> String {
@@ -146,9 +149,9 @@ pub async fn img(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     tracing::info!("请求体状态检查...");
     tracing::info!("content-type: {:?}", req.content_type());
     
-    // 设置最大大小限制
-    tracing::info!("设置最大大小限制: {} bytes", MAX_FILE_SIZE);
-    req.set_secure_max_size(MAX_FILE_SIZE as usize);
+    // 设置最大大小限制（重要：必须在解析表单之前设置）
+    tracing::info!("设置最大大小限制: {} bytes ({} MB)", MAX_BODY_SIZE, MAX_BODY_SIZE / 1024 / 1024);
+    req.set_secure_max_size(MAX_BODY_SIZE);
     tracing::info!("secure_max_size: {:?}", req.secure_max_size());
     
     // 解析multipart表单数据 - 不要先调用payload()，否则会缓存空数据
@@ -159,12 +162,19 @@ pub async fn img(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             data
         },
         Err(e) => {
-            tracing::error!("解析表单数据失败: {:?}", e);
-            tracing::error!("错误详情: {:?}", e);
-            res.render(Json(ApiResponse::<()>::error(
-                format!("解析表单数据失败: {}", e),
-                3
-            )));
+            let err_str = format!("{:?}", e);
+            tracing::error!("解析表单数据失败: {}", err_str);
+            
+            // 提供更友好的错误信息
+            let user_msg = if err_str.contains("stream") {
+                format!("文件上传失败：可能是文件过大（最大支持{}MB）或网络中断", MAX_FILE_SIZE / 1024 / 1024)
+            } else if err_str.contains("size") || err_str.contains("limit") {
+                format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024)
+            } else {
+                format!("解析表单数据失败: {}", e)
+            };
+            
+            res.render(Json(ApiResponse::<()>::error(user_msg, 3)));
             return;
         }
     };
@@ -201,9 +211,11 @@ pub async fn img(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     
     // 验证文件大小
-    if file.size() > MAX_FILE_SIZE {
+    let file_size = file.size() as u64;
+    tracing::info!("文件大小: {} bytes ({} MB)", file_size, file_size / 1024 / 1024);
+    if file_size > MAX_FILE_SIZE {
         res.render(Json(ApiResponse::<()>::error(
-            format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024),
+            format!("文件大小 {} MB 超过限制（最大{}MB）", file_size / 1024 / 1024, MAX_FILE_SIZE / 1024 / 1024),
             18
         )));
         return;
@@ -307,14 +319,26 @@ pub async fn index(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let upload_base_dir = config.map(|c| c.app().upload_dir.as_str())
         .unwrap_or("./data/upload");
     
+    // 设置最大大小限制（重要：必须在解析表单之前设置）
+    tracing::debug!("设置最大大小限制: {} bytes ({} MB)", MAX_BODY_SIZE, MAX_BODY_SIZE / 1024 / 1024);
+    req.set_secure_max_size(MAX_BODY_SIZE);
+    
     // 解析multipart表单数据
     let form_data = match req.form_data().await {
         Ok(data) => data,
         Err(e) => {
-            res.render(Json(ApiResponse::<()>::error(
-                format!("解析表单数据失败: {}", e),
-                3
-            )));
+            let err_str = format!("{:?}", e);
+            
+            // 提供更友好的错误信息
+            let user_msg = if err_str.contains("stream") {
+                format!("文件上传失败：可能是文件过大（最大支持{}MB）或网络中断", MAX_FILE_SIZE / 1024 / 1024)
+            } else if err_str.contains("size") || err_str.contains("limit") {
+                format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024)
+            } else {
+                format!("解析表单数据失败: {}", e)
+            };
+            
+            res.render(Json(ApiResponse::<()>::error(user_msg, 3)));
             return;
         }
     };
@@ -329,9 +353,10 @@ pub async fn index(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     
     // 验证文件大小
-    if file.size() > MAX_FILE_SIZE {
+    let file_size = file.size() as u64;
+    if file_size > MAX_FILE_SIZE {
         res.render(Json(ApiResponse::<()>::error(
-            format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024),
+            format!("文件大小 {} MB 超过限制（最大{}MB）", file_size / 1024 / 1024, MAX_FILE_SIZE / 1024 / 1024),
             18
         )));
         return;

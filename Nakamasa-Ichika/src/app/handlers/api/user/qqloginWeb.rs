@@ -19,7 +19,7 @@ use rand::Rng;
 use crate::core::AppState;
 use crate::core::md5_optimize::md5_concat_ints;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::WxLogonRequest;
 use crate::app::middleware::app_context::AppInfo;
@@ -40,13 +40,20 @@ struct QqLogonInfo {
 pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = app_info.app_key.as_str();
     
     let qq_req = match req.parse_json::<WxLogonRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -56,22 +63,13 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     validator.reg("udid", &qq_req.udid, "[a-zA-Z0-9_-]+");
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
-    // 获取应用信息
-    let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.clone(),
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, app_key)));
-            return;
-        }
-    };
-
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -79,7 +77,7 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let qq_config_str = match &app_info.logon_open_qqconfig {
         Some(config) => config,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("QQ登录未配置", 201, app_key)));
+            render_error(res, "QQ登录未配置", 201, app_key);
             return;
         }
     };
@@ -88,7 +86,7 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let qq_config: serde_json::Value = match serde_json::from_str(qq_config_str) {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("QQ登录配置有误", 201, app_key)));
+            render_error(res, "QQ登录配置有误", 201, app_key);
             return;
         }
     };
@@ -100,19 +98,19 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // PHP: if($qqConf['state'] != 'on')$this->out->e(201,'QQ登录未开启');
     if state_config != "on" {
-        res.render(Json(SignedApiResponse::<()>::error("QQ登录未开启", 201, app_key)));
+        render_error(res, "QQ登录未开启", 201, app_key);
         return;
     }
 
     // PHP: if(empty($qqConf['appID']))$this->out->e(201,'QQ登录appID未配置');
     if app_id.is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("QQ登录appID未配置", 201, app_key)));
+        render_error(res, "QQ登录appID未配置", 201, app_key);
         return;
     }
 
     // PHP: if(empty($qqConf['appKey']))$this->out->e(201,'QQ登录appKey未配置');
     if app_key_qq.is_empty() {
-        res.render(Json(SignedApiResponse::<()>::error("QQ登录appKey未配置", 201, app_key)));
+        render_error(res, "QQ登录appKey未配置", 201, app_key);
         return;
     }
 
@@ -142,7 +140,7 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Redis未初始化", 201, app_key)));
+            render_error(res, "Redis未初始化", 201, app_key);
             return;
         }
     };
@@ -150,14 +148,14 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let info_json = match serde_json::to_string(&qqlogon_info) {
         Ok(json) => json,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("数据序列化失败", 201, app_key)));
+            render_error(res, "数据序列化失败", 201, app_key);
             return;
         }
     };
     
     if let Err(e) = redis_util.setex(redis_pool, &redis_key, 600, &info_json).await {
         tracing::error!("Redis存储失败: {}", e);
-        res.render(Json(SignedApiResponse::<()>::error("存储登录信息失败", 201, app_key)));
+        render_error(res, "存储登录信息失败", 201, app_key);
         return;
     }
 
@@ -172,8 +170,8 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     );
 
     // PHP: $this->out->setData(['url'=>$url,'uuid'=>$state])->e(200,'获取成功');
-    res.render(Json(SignedApiResponse::success(app_key, Some(json!({
+    render_success(res, app_key, Some(json!({
         "url": qq_url,
         "uuid": state
-    })))));
+    })), app_info.mi.as_ref());
 }

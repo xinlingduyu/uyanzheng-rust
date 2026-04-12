@@ -20,7 +20,7 @@ use std::fs;
 use chrono::{Utc, TimeZone, Datelike};
 use tokio::spawn;
 
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success_no_encrypt, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::ModifyPicRequest;
 use crate::app::middleware::user_auth::UserInfo;
@@ -143,30 +143,32 @@ fn seconds_until_midnight() -> u64 {
 /// 用户上传文件接口
 #[handler]
 pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    // 获取 app_key 和 appid（零拷贝）
-    let (app_key, appid) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.id),
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = &app_info.app_key;
+    let appid = app_info.id;
 
     // 从 depot 获取用户信息（由 UserAuth 中间件提供）
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
     let uid = user_info.uid;
 
     // 获取 AppState 和配置
-    let app_state = match depot.obtain::<AppState>() {
+    let app_state = match depot.obtain::<std::sync::Arc<AppState>>() {
         Ok(state) => state,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("服务状态异常", 3, app_key)));
+            render_error(res, "服务状态异常", 3, app_key);
             return;
         }
     };
@@ -179,28 +181,29 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     req.set_secure_max_size(MAX_FILE_SIZE as usize);
     
     // 解析multipart表单数据
+    // 注意：UserAuth 中间件已经解析过 form_data 并提取了字段到 post_params
+    // 这里重新解析是为了获取文件数据
     let form_data = match req.form_data().await {
         Ok(data) => data,
         Err(e) => {
-            res.render(Json(SignedApiResponse::<()>::error(
-                format!("解析表单数据失败: {}", e),
-                3,
-                app_key
-            )));
+            render_error(res, format!("解析表单数据失败: {}", e), 3, app_key);
             return;
         }
     };
 
-    // 获取 token 字段验证
-    let token = form_data.fields.get("token")
-        .map(|s| s.as_str())
-        .unwrap_or("");
+    // 获取 token 字段 - 优先从 depot 的 post_params 获取（UserAuth 已解析）
+    // 如果没有，则从 form_data 获取
+    let token = if let Ok(params) = depot.get::<std::collections::HashMap<String, String>>("post_params") {
+        params.get("token").map(|s| s.as_str()).unwrap_or("")
+    } else {
+        form_data.fields.get("token").map(|s| s.as_str()).unwrap_or("")
+    };
     
     let mut validator = Validator::new();
     validator.wordnum("token", token, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
     
@@ -214,11 +217,7 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 Ok(Some(count_str)) => {
                     if let Ok(count) = count_str.parse::<u32>() {
                         if count >= daily_limit {
-                            res.render(Json(SignedApiResponse::<()>::error(
-                                format!("今日上传次数已达上限（{}次）", daily_limit),
-                                22,
-                                app_key
-                            )));
+                            render_error(res, format!("今日上传次数已达上限（{}次）", daily_limit), 22, app_key);
                             return;
                         }
                     }
@@ -238,18 +237,17 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let file: &salvo::http::form::FilePart = match form_data.files.get("file") {
         Some(f) => f,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("缺少上传文件", 17, app_key)));
+            render_error(res, "缺少上传文件", 17, app_key);
             return;
         }
     };
     
+    // 获取文件名（提前获取，用于 MIME 类型推断）
+    let original_name = file.name().unwrap_or("upload.jpg");
+    
     // 验证文件大小
     if file.size() > MAX_FILE_SIZE {
-        res.render(Json(SignedApiResponse::<()>::error(
-            format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024),
-            18,
-            app_key
-        )));
+        render_error(res, format!("文件大小超过限制（最大{}MB）", MAX_FILE_SIZE / 1024 / 1024), 18, app_key);
         return;
     }
     
@@ -257,15 +255,36 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let content_type = file.content_type()
         .map(|m| m.to_string())
         .unwrap_or_else(|| "application/octet-stream".to_string());
-    if !is_valid_image_mime(&content_type) {
-        res.render(Json(SignedApiResponse::<()>::error("不支持的图片类型", 21, app_key)));
+    
+    // 如果 Content-Type 是 application/octet-stream，尝试通过扩展名推断
+    let content_type = if content_type == "application/octet-stream" {
+        // 从文件名获取扩展名
+        let ext = Path::new(original_name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .unwrap_or_default();
+        
+        // 根据扩展名推断 MIME 类型
+        match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            _ => &content_type, // 保持原样，后续验证会失败
+        }
+    } else {
+        &content_type
+    };
+    
+    if !is_valid_image_mime(content_type) {
+        render_error(res, format!("不支持的图片类型: {}", content_type), 21, app_key);
         return;
     }
     
     // 验证文件名
-    let original_name = file.name().unwrap_or("upload.jpg");
     if contains_path_traversal(original_name) {
-        res.render(Json(SignedApiResponse::<()>::error("文件名包含非法字符", 17, app_key)));
+        render_error(res, "文件名包含非法字符", 17, app_key);
         return;
     }
     
@@ -273,18 +292,14 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let file_data = match fs::read(file.path()) {
         Ok(data) => data,
         Err(e) => {
-            res.render(Json(SignedApiResponse::<()>::error(
-                format!("读取文件失败: {}", e),
-                20,
-                app_key
-            )));
+            render_error(res, format!("读取文件失败: {}", e), 20, app_key);
             return;
         }
     };
     
     // 验证文件内容（Magic Number）
     if let Err(e) = validate_image_content(&file_data) {
-        res.render(Json(SignedApiResponse::<()>::error(e, 21, app_key)));
+        render_error(res, e, 21, app_key);
         return;
     }
     
@@ -292,7 +307,7 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let upload_dir = match ensure_upload_dir(upload_base_dir, appid, uid) {
         Ok(dir) => dir,
         Err(e) => {
-            res.render(Json(SignedApiResponse::<()>::error(e, 19, app_key)));
+            render_error(res, e, 19, app_key);
             return;
         }
     };
@@ -304,11 +319,7 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     
     // 保存文件
     if let Err(e) = fs::write(&file_path, &file_data) {
-        res.render(Json(SignedApiResponse::<()>::error(
-            format!("保存文件失败: {}", e),
-            20,
-            app_key
-        )));
+        render_error(res, format!("保存文件失败: {}", e), 20, app_key);
         return;
     }
     
@@ -361,5 +372,5 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         });
     }
     
-    res.render(Json(SignedApiResponse::success(app_key, Some(UploadResponse { url }))));
+    render_success_no_encrypt(res, app_key, Some(UploadResponse { url }));
 }

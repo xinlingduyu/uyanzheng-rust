@@ -1,7 +1,18 @@
 <template>
   <div class="app-info-page">
+    <!-- 未选择应用提示 -->
+    <a-card v-if="!hasAppId" class="mb-4" :bordered="false">
+      <a-result status="warning" title="请先选择应用">
+        <template #extra>
+          <a-button type="primary" @click="router.push('/apps')">
+            前往应用列表
+          </a-button>
+        </template>
+      </a-result>
+    </a-card>
+    
     <!-- 应用基本信息 -->
-    <a-card class="mb-4" :bordered="false">
+    <a-card v-else class="mb-4" :bordered="false">
       <p class="font-semibold text-lg mb-4">APPID：{{ appInfo.id }}</p>
       <a-divider />
       <a-form :model="appInfo" layout="vertical" @submit="handleSubmit">
@@ -47,13 +58,11 @@
 
         <a-form-item label="应用图标">
           <a-upload
-            :action="uploadUrl"
-            :headers="uploadHeaders"
+            :custom-request="customUpload"
             list-type="picture-card"
             :file-list="fileList"
             :limit="1"
-            @success="handleUploadSuccess"
-            @error="handleUploadError"
+            @change="handleFileChange"
           >
             <template #upload-button>
               <div class="upload-trigger">
@@ -77,11 +86,15 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { Message } from '@arco-design/web-vue'
+import { useRouter } from 'vue-router'
 import appApi from '@/api/system/app'
+import uploadApi from '@/api/system/upload'
 import tool from '@/utils/tool'
 
+const router = useRouter()
 const loading = ref(false)
 const fileList = ref([])
+const hasAppId = ref(true)
 
 const appInfo = reactive({
   id: '',
@@ -93,14 +106,21 @@ const appInfo = reactive({
   app_off_msg: ''
 })
 
-const uploadUrl = import.meta.env.VITE_APP_BASE_URL + '/api/admin/upload/img'
-const uploadHeaders = {
-  Token: tool.local.get(import.meta.env.VITE_APP_TOKEN_PREFIX),
-  appid: tool.local.get('currentAppId') || ''
-}
-
 // 加载应用信息
 const loadAppInfo = async () => {
+  // 检查 currentAppId 是否存在
+  const currentAppId = tool.local.get('currentAppId')
+  const currentApp = tool.local.get('currentApp')
+  
+  if (!currentAppId && !currentApp?.id) {
+    hasAppId.value = false
+    Message.error('请先选择应用')
+    setTimeout(() => {
+      router.push('/apps')
+    }, 1500)
+    return
+  }
+  
   try {
     const res = await appApi.getInfo(['id', 'app_name', 'app_key', 'app_logo', 'app_mode', 'app_state', 'app_off_msg'])
     if (res.code === 200) {
@@ -137,19 +157,44 @@ const copyKey = async () => {
   }
 }
 
-// 上传成功
-const handleUploadSuccess = (file) => {
-  if (file.response?.code === 200) {
-    appInfo.app_logo = file.response.data.url
-    Message.success('上传成功')
-  } else {
-    Message.error(file.response?.msg || '上传失败')
+// 自定义上传请求（参考旧版实现）
+const customUpload = async (options) => {
+  const { fileItem, onSuccess, onError, onProgress } = options
+  
+  // 创建 FormData
+  const formData = new FormData()
+  formData.append('file', fileItem.file)
+  
+  // 进度处理函数：将 ProgressEvent 转换为 percent (0-100)
+  const handleProgress = (progressEvent) => {
+    if (progressEvent.total && onProgress) {
+      const percent = Math.round((progressEvent.loaded / progressEvent.total) * 100)
+      onProgress(percent)
+    }
+  }
+  
+  try {
+    const res = await uploadApi.img(formData, handleProgress)
+    if (res.code === 200) {
+      appInfo.app_logo = res.data.url
+      Message.success(res.msg || '上传成功')
+      onSuccess(res)
+    } else {
+      Message.error(res.msg || '上传失败')
+      onError(res.msg)
+    }
+  } catch (e) {
+    Message.error('上传失败：' + e)
+    onError(e)
   }
 }
 
-// 上传失败
-const handleUploadError = () => {
-  Message.error('上传失败')
+// 文件列表变化处理
+const handleFileChange = (fileListData) => {
+  // 如果用户删除了文件，清空 app_logo
+  if (!fileListData || fileListData.length === 0) {
+    appInfo.app_logo = ''
+  }
 }
 
 // 提交

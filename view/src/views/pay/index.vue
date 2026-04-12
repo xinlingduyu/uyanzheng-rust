@@ -89,7 +89,7 @@
             <div v-else class="disabled-tip">
               <a-empty description="支付功能未启用，请开启后配置">
                 <template #image>
-                  <icon-pay-circle :size="48" style="color: var(--color-text-3)" />
+                  <icon-credit-card :size="48" style="color: var(--color-text-3)" />
                 </template>
               </a-empty>
             </div>
@@ -183,7 +183,7 @@
             <div v-else class="disabled-tip">
               <a-empty description="支付功能未启用，请开启后配置">
                 <template #image>
-                  <icon-pay-circle :size="48" style="color: var(--color-text-3)" />
+                  <icon-credit-card :size="48" style="color: var(--color-text-3)" />
                 </template>
               </a-empty>
             </div>

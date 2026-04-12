@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::BindUdidRequest;
 use crate::app::models::common::DeviceInfo;
@@ -26,13 +26,20 @@ use crate::app::middleware::app_context::AppInfo;
 pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key（零拷贝）
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（避免 clone）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = &app_info.app_key;
     
     let bind_req = match req.parse_json::<BindUdidRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -45,7 +52,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .reg("udid", &bind_req.udid, "[a-zA-Z0-9_-]+");
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -53,16 +60,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
-            return;
-        }
-    };
-
-    // 获取应用信息（避免 clone）
-    let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info,
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -82,7 +80,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     
     let max_devices = app_info.logon_sn_num + user_info.sn_max;
     if sn_list_arr.len() >= max_devices as usize {
-        res.render(Json(SignedApiResponse::<()>::error("绑定上限", 172, app_key)));
+        render_error(res, "绑定上限", 172, app_key);
         return;
     }
 
@@ -91,7 +89,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // }
     // 检查设备是否已绑定
     if sn_list_arr.iter().any(|d| d.udid == bind_req.udid) {
-        res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+        render_success(res, app_key, None::<()>, app_info.mi.as_ref());
         return;
     }
 
@@ -133,14 +131,14 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
             .execute(app_state.get_db())
             .await;
 
-            res.render(Json(SignedApiResponse::success(app_key, None::<()>)));
+            render_success(res, app_key, None::<()>, app_info.mi.as_ref());
         }
         Ok(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+            render_error(res, "绑定失败", 201, app_key);
         }
         Err(e) => {
             tracing::error!("绑定设备失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+            render_error(res, "绑定失败", 201, app_key);
         }
     }
 }

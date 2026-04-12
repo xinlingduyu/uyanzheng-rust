@@ -262,7 +262,45 @@ impl UserAuth {
         res: &mut Response,
         ctrl: &mut FlowCtrl,
     ) -> Option<(HashMap<String, String>, Option<String>)> {
-        // 获取请求体
+        // 检测 Content-Type
+        let content_type = req.headers().get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        
+        // 根据Content-Type解析参数
+        if content_type.contains("multipart/form-data") {
+            // multipart/form-data 格式：直接从表单字段提取参数
+            tracing::debug!("UserAuth: 检测到 multipart/form-data 格式");
+            
+            // 重要：设置足够大的 secure_max_size，否则 Salvo 会拒绝大文件
+            // 默认值可能很小（如 0 或几 KB），导致解析失败
+            // 这里设置为 100MB，与 admin/upload.rs 保持一致
+            req.set_secure_max_size(100 * 1024 * 1024);
+            tracing::debug!("UserAuth: 已设置 secure_max_size = 100MB");
+            
+            match req.form_data().await {
+                Ok(form) => {
+                    let mut params = HashMap::new();
+                    // form.fields 是 MultiMap 类型，使用 iter_all 获取所有键值对
+                    for (key, values) in form.fields.iter_all() {
+                        // 对于每个键，取第一个值
+                        if let Some(value) = values.first() {
+                            params.insert(key.clone(), value.clone());
+                        }
+                    }
+                    tracing::debug!("UserAuth: multipart 解析成功，字段: {:?}", params.keys().collect::<Vec<_>>());
+                    return Some((params, None));
+                }
+                Err(e) => {
+                    tracing::warn!("UserAuth: multipart 解析失败: {}", e);
+                    res.render(Json(ApiResponse::<()>::error_static("请求体解析失败", 201)));
+                    ctrl.skip_rest();
+                    return None;
+                }
+            }
+        }
+        
+        // JSON 格式处理
         let body_data = match req.parse_json::<serde_json::Value>().await {
             Ok(data) => data,
             Err(_) => {
@@ -913,13 +951,15 @@ async fn fetch_user_info_from_db(
         .await?;
 
         if let Some(r) = row {
+            // phone 字段在数据库中是 BIGINT，需要转换为 String
+            let phone: Option<String> = r.try_get::<Option<i64>, _>(1)?.map(|p| p.to_string());
             Ok(Some(UserInfo {
                 uid: r.try_get::<u64, _>(0)?,
                 udid: String::new(),
                 appid,
                 user_type: "user".to_string(),
                 agent: false,
-                phone: r.try_get(1)?,
+                phone,
                 email: r.try_get(2)?,
                 acctno: r.try_get(3)?,
                 nickname: r.try_get(4)?,
@@ -1012,13 +1052,15 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
         .await?;
 
         if let Some(r) = row {
+            // phone 字段在数据库中是 BIGINT，需要转换为 String
+            let phone: Option<String> = r.try_get::<Option<i64>, _>(1)?.map(|p| p.to_string());
             Ok(Some(UserInfo {
                 uid: r.try_get::<u64, _>(0)?,
                 udid: token_data.udid.clone(),
                 appid: token_data.appid,
                 user_type: "user".to_string(),
                 agent: false,
-                phone: r.try_get(1)?,
+                phone,
                 email: r.try_get(2)?,
                 acctno: r.try_get(3)?,
                 nickname: r.try_get(4)?,

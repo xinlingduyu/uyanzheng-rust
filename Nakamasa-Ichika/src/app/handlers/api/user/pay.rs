@@ -18,7 +18,7 @@ use std::collections::HashMap;
 
 use crate::core::AppState;
 use crate::core::json_optimize::FastJson;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::PayRequest;
 use crate::app::models::responses::PayInfo;
@@ -52,11 +52,11 @@ fn create_pay_plugin(pay_type: &str, config: &serde_json::Value) -> Result<Box<d
 pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和 app_type（零拷贝）
+    // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息获取失败", 201, "")));
+            render_error(res, "应用信息获取失败", 201, "");
             return;
         }
     };
@@ -65,14 +65,14 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let pay_req = match req.parse_json::<PayRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
 
     // 一比一还原PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -85,7 +85,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let user_info = match depot.get::<UserInfo>("user_info") {
                 Ok(info) => info,
                 Err(_) => {
-                    res.render(Json(SignedApiResponse::<()>::error("Token无效或未提供", 201, app_key)));
+                    render_error(res, "Token无效或未提供", 201, app_key);
                     return;
                 }
             };
@@ -97,11 +97,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             &account_owned
         }
         (Some(_), Some(_)) => {
-            res.render(Json(SignedApiResponse::<()>::error("account和token不能同时使用", 201, app_key)));
+            render_error(res, "account和token不能同时使用", 201, app_key);
             return;
         }
         (None, None) => {
-            res.render(Json(SignedApiResponse::<()>::error("充值账号有误", 201, app_key)));
+            render_error(res, "充值账号有误", 201, app_key);
             return;
         }
     };
@@ -116,7 +116,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
@@ -137,12 +137,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let (uid, inviter_id) = match u_res {
         Ok(Some((uid, inviter_id))) => (uid, inviter_id),
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("充值账号不存在", 129, app_key)));
+            render_error(res, "充值账号不存在", 129, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     };
@@ -159,19 +159,19 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let (gid, goods_name, goods_type, money, _blurb, val, state) = match g_res {
         Ok(Some(row)) => row,
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("商品不存在", 151, app_key)));
+            render_error(res, "商品不存在", 151, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     };
 
     // 一比一还原PHP: if($Gres['state'] != 'y')$this->out->e(152);
     if state != "y" {
-        res.render(Json(SignedApiResponse::<()>::error("商品已下架", 152, app_key)));
+        render_error(res, "商品已下架", 152, app_key);
         return;
     }
 
@@ -228,12 +228,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         match ag_res {
             Ok(Some(_)) => {}
             Ok(None) => {
-                res.render(Json(SignedApiResponse::<()>::error("代理分组不存在", 153, app_key)));
+                render_error(res, "代理分组不存在", 153, app_key);
                 return;
             }
             Err(e) => {
                 tracing::error!("数据库查询失败: {}", e);
-                res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+                render_error(res, "数据库错误", 201, app_key);
                 return;
             }
         }
@@ -263,14 +263,14 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let pay_result = if pay_type == "ali" {
         // 一比一还原PHP: if($this->app['pay_ali_state'] != 'on' || empty($this->app['pay_ali_config']))$this->out->e(150);
         if app_info.alipay_state != "on" {
-            res.render(Json(SignedApiResponse::<()>::error("支付宝支付未开启", 150, app_key)));
+            render_error(res, "支付宝支付未开启", 150, app_key);
             return;
         }
 
         let config = match &app_info.alipay_config {
             Some(cfg) => cfg,
             None => {
-                res.render(Json(SignedApiResponse::<()>::error("支付宝支付未配置", 150, app_key)));
+                render_error(res, "支付宝支付未配置", 150, app_key);
                 return;
             }
         };
@@ -280,12 +280,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             Ok(s) => match FastJson::parse_borrowed(s) {
                 Ok(json) => json,
                 Err(_) => {
-                    res.render(Json(SignedApiResponse::<()>::error("支付宝配置解析失败", 150, app_key)));
+                    render_error(res, "支付宝配置解析失败", 150, app_key);
                     return;
                 }
             }
             Err(_) => {
-                res.render(Json(SignedApiResponse::<()>::error("支付宝配置解析失败", 150, app_key)));
+                render_error(res, "支付宝配置解析失败", 150, app_key);
                 return;
             }
         };
@@ -295,7 +295,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         let plugin = match create_pay_plugin(pay_type_name, &config_json) {
             Ok(p) => p,
             Err(e) => {
-                res.render(Json(SignedApiResponse::<()>::error(e, 150, app_key)));
+                render_error(res, e, 150, app_key);
                 return;
             }
         };
@@ -316,14 +316,14 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     } else if pay_type == "wx" {
         // 一比一还原PHP: if($this->app['pay_wx_state'] != 'on' || empty($this->app['pay_wx_config']))$this->out->e(150);
         if app_info.wechat_pay_state != "on" {
-            res.render(Json(SignedApiResponse::<()>::error("微信支付未开启", 150, app_key)));
+            render_error(res, "微信支付未开启", 150, app_key);
             return;
         }
 
         let config = match &app_info.wechat_pay_config {
             Some(cfg) => cfg,
             None => {
-                res.render(Json(SignedApiResponse::<()>::error("微信支付未配置", 150, app_key)));
+                render_error(res, "微信支付未配置", 150, app_key);
                 return;
             }
         };
@@ -333,12 +333,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             Ok(s) => match FastJson::parse_borrowed(s) {
                 Ok(json) => json,
                 Err(_) => {
-                    res.render(Json(SignedApiResponse::<()>::error("微信配置解析失败", 150, app_key)));
+                    render_error(res, "微信配置解析失败", 150, app_key);
                     return;
                 }
             }
             Err(_) => {
-                res.render(Json(SignedApiResponse::<()>::error("微信配置解析失败", 150, app_key)));
+                render_error(res, "微信配置解析失败", 150, app_key);
                 return;
             }
         };
@@ -348,7 +348,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         let plugin = match create_pay_plugin(pay_type_name, &config_json) {
             Ok(p) => p,
             Err(e) => {
-                res.render(Json(SignedApiResponse::<()>::error(e, 150, app_key)));
+                render_error(res, e, 150, app_key);
                 return;
             }
         };
@@ -367,7 +367,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
         plugin.create(&order)
     } else {
-        res.render(Json(SignedApiResponse::<()>::error("不支持的支付类型", 201, app_key)));
+        render_error(res, "不支持的支付类型", 201, app_key);
         return;
     };
 
@@ -376,7 +376,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(result) => {
             // 一比一还原PHP: if(!$result || !isset($result['code']) || !isset($result['msg']))$this->out->e(156);
             if !result.success {
-                res.render(Json(SignedApiResponse::<()>::error(result.message.clone(), 156, app_key)));
+                render_error(res, result.message.clone(), 156, app_key);
                 return;
             }
 
@@ -385,7 +385,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 (Some(url), _) => url.clone(),
                 (None, Some(qr)) => qr.clone(),
                 (None, None) => {
-                    res.render(Json(SignedApiResponse::<()>::error("支付链接获取失败", 157, app_key)));
+                    render_error(res, "支付链接获取失败", 157, app_key);
                     return;
                 }
             };
@@ -398,7 +398,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
         }
         Err(e) => {
-            res.render(Json(SignedApiResponse::<()>::error(e.clone(), 156, app_key)));
+            render_error(res, e.clone(), 156, app_key);
             return;
         }
     };
@@ -430,11 +430,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match insert_result {
         Ok(_) => {
-            res.render(Json(SignedApiResponse::success(app_key, Some(pay_info))));
+            render_success(res, app_key, Some(pay_info), app_info.mi.as_ref());
         }
         Err(e) => {
             tracing::error!("订单创建失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("订单创建失败", 201, app_key)));
+            render_error(res, "订单创建失败", 201, app_key);
         }
     }
 }

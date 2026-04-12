@@ -10,12 +10,12 @@
           </a-button>
         </div>
         <div class="w-full lg:w-auto">
-          <a-form :model="searchForm" class="grow lg:!flex-row gap-x-5 justify-end" auto-label-width>
+          <a-form :model="searchForm.form" class="grow lg:!flex-row gap-x-5 justify-end" auto-label-width>
             <a-form-item field="keyword" hide-label class="w-auto">
               <a-input-search
-                v-model="searchForm.keyword"
+                v-model="searchForm.form.keyword"
                 placeholder="关键词搜索...."
-                :loading="searchBtnLoading"
+                :loading="searchForm.btnLoading"
                 @search="handleSearch"
                 @press-enter="handleSearch"
                 allow-clear
@@ -29,11 +29,11 @@
 
       <!-- 数据表格 -->
       <a-table
-        :columns="columns"
-        :data="tableData"
-        :loading="loading"
-        :row-selection="rowSelection"
-        v-model:selectedKeys="selectedKeys"
+        :columns="tableConfig.columns"
+        :data="tableConfig.list"
+        :loading="tableConfig.loading"
+        :row-selection="tableConfig.rowSelection"
+        v-model:selectedKeys="tableConfig.selectedKeys"
         row-key="id"
         :bordered="false"
         :pagination="false"
@@ -66,21 +66,21 @@
       <!-- 分页和批量操作 -->
       <div class="w-full md:flex items-center justify-between mt-4">
         <div class="mb-5 md:mb-0 text-center">
-          <span v-if="selectedKeys.length > 0" class="text-gray-500 text-sm">
-            <a-button type="text" size="small" status="danger" @click="handleBatchDelete" :loading="delSelectedLoading" :disabled="!auth('cdkGroup')">
+          <span v-if="tableConfig.selectedKeys.length > 0" class="text-gray-500 text-sm">
+            <a-button type="text" size="small" status="danger" @click="handleBatchDelete" :loading="tableConfig.delSelectedLoading" :disabled="!auth('cdkGroup')">
               删除
             </a-button>
-            当前选中的 {{ selectedKeys.length }} 条数据
+            当前选中的 {{ tableConfig.selectedKeys.length }} 条数据
           </span>
           <span v-else class="text-gray-500 text-sm">
-            当前第 {{ pagination.current }} 页 共 {{ pagination.pageTotal }} 页 {{ pagination.total }} 条结果
+            当前第 {{ tableConfig.currentPage }} 页 共 {{ tableConfig.pageTotal }} 页 {{ tableConfig.dataTotal }} 条结果
           </span>
         </div>
         <div class="flex justify-center">
           <a-pagination
-            :total="pagination.total"
-            :current="pagination.current"
-            :page-size="pagination.pageSize"
+            :total="tableConfig.dataTotal"
+            :current="tableConfig.currentPage"
+            :page-size="tableConfig.pageSize"
             @change="handlePageChange"
             @page-size-change="handlePageSizeChange"
             show-page-size
@@ -91,28 +91,28 @@
 
     <!-- 添加/编辑弹窗 -->
     <a-modal
-      v-model:visible="modalVisible"
-      :title="modalTitle"
+      v-model:visible="modalConfig.visible"
+      :title="modalConfig.title"
       :width="400"
       :footer="false"
       title-align="start"
       :mask-closable="false"
     >
       <div class="md:w-80">
-        <a-form :model="modalForm" auto-label-width @submit="handleSubmit">
+        <a-form :model="modalConfig.form" auto-label-width @submit="handleSubmit">
           <a-form-item field="type" label="卡密组类型">
-            <a-radio-group v-model="modalForm.type" :disabled="modalForm.typeDisabled">
+            <a-radio-group v-model="modalConfig.form.type" :disabled="modalConfig.form.typeDisabled">
               <a-radio value="vip">会员卡</a-radio>
               <a-radio value="fen">积分卡</a-radio>
               <a-radio value="addsn">设备增绑卡</a-radio>
             </a-radio-group>
           </a-form-item>
           <a-form-item field="name" label="卡密组名称">
-            <a-input v-model="modalForm.name" placeholder="如：天卡" />
+            <a-input v-model="modalConfig.form.name" placeholder="如：天卡" />
           </a-form-item>
           <a-form-item field="val" label="卡密组面值">
             <a-input-number
-              v-model="modalForm.val"
+              v-model="modalConfig.form.val"
               placeholder="1"
               :min="1"
               :max="9999999999"
@@ -120,8 +120,8 @@
             >
               <template #append>
                 <!-- VIP类型显示单位选择 -->
-                <template v-if="modalForm.type === 'vip'">
-                  <a-select v-model="modalForm.vipType" style="width: 75px">
+                <template v-if="modalConfig.form.type === 'vip'">
+                  <a-select v-model="modalConfig.form.vipType" style="width: 75px">
                     <a-option value="s">秒</a-option>
                     <a-option value="i">分</a-option>
                     <a-option value="h">时</a-option>
@@ -131,14 +131,14 @@
                 </template>
                 <!-- 非VIP类型显示固定单位 -->
                 <template v-else>
-                  <span>{{ modalForm.type === 'fen' ? '积分' : '台' }}</span>
+                  <span>{{ modalConfig.form.type === 'fen' ? '积分' : '台' }}</span>
                 </template>
               </template>
             </a-input-number>
           </a-form-item>
           <a-form-item field="price" label="卡密组定价">
             <a-input-number
-              v-model="modalForm.price"
+              v-model="modalConfig.form.price"
               placeholder="1.00"
               :min="0"
               :precision="2"
@@ -148,7 +148,7 @@
             </a-input-number>
           </a-form-item>
           <a-space direction="vertical" fill>
-            <a-button type="primary" html-type="submit" :loading="modalBtnLoading" long>
+            <a-button type="primary" html-type="submit" :loading="modalConfig.btnLoading" long>
               提交
             </a-button>
           </a-space>
@@ -166,72 +166,57 @@ import cdkGroupApi from '@/api/system/cdkGroup'
 import { parseVipTime, toSeconds, formatVipTime } from '@/utils/sun.js'
 
 // 表格配置
-const columns = [
-  { title: 'ID', dataIndex: 'id', width: 60, align: 'center' },
-  { title: '组名称', dataIndex: 'name' },
-  { title: '定价', dataIndex: 'price', width: 100, align: 'center' },
-  { title: '面值', slotName: 'val', width: 100, align: 'center' },
-  { title: '类型', slotName: 'type', width: 100, align: 'center' },
-  { title: '操作', slotName: 'operate', width: 100, align: 'center' }
-]
-
-// 表格数据
-const tableData = ref([])
-const loading = ref(false)
-const selectedKeys = ref([])
-const delSelectedLoading = ref(false)
-
-const rowSelection = {
-  type: 'checkbox',
-  showCheckedAll: true,
-  onlyCurrent: false
-}
-
-// 分页
-const pagination = reactive({
-  current: 1,
+const tableConfig = reactive({
+  columns: [
+    { title: 'ID', dataIndex: 'id', width: 60, align: 'center' },
+    { title: '组名称', dataIndex: 'name' },
+    { title: '定价', dataIndex: 'price', width: 100, align: 'center' },
+    { title: '面值', slotName: 'val', width: 100, align: 'center' },
+    { title: '类型', slotName: 'type', width: 100, align: 'center' },
+    { title: '操作', slotName: 'operate', width: 100, align: 'center' }
+  ],
+  list: [],
+  loading: false,
+  selectedKeys: [],
+  delSelectedLoading: false,
+  rowSelection: { type: 'checkbox', showCheckedAll: true, onlyCurrent: false },
+  currentPage: 1,
   pageSize: 10,
-  total: 0,
+  dataTotal: 0,
   pageTotal: 0
 })
 
 // 搜索
 const searchForm = reactive({
-  keyword: ''
+  form: { keyword: '' },
+  btnLoading: false
 })
-const searchBtnLoading = ref(false)
 
 // 弹窗
-const modalVisible = ref(false)
-const modalBtnLoading = ref(false)
-const modalTitle = computed(() => modalForm.id ? '编辑卡密组' : '添加卡密组')
-const modalForm = reactive({
-  id: '',
-  name: '',
-  type: 'vip',
-  val: undefined,
-  price: undefined,
-  vipType: 'd',
-  typeDisabled: false
+const modalConfig = reactive({
+  visible: false,
+  btnLoading: false,
+  title: computed(() => modalConfig.form.id ? '编辑卡密组' : '添加卡密组'),
+  form: {
+    id: '',
+    name: '',
+    type: 'vip',
+    val: undefined,
+    price: undefined,
+    vipType: 'd',
+    typeDisabled: false
+  }
 })
 
 // 获取类型名称
 const getTypeName = (type) => {
-  const map = {
-    'vip': '会员卡',
-    'fen': '积分卡',
-    'addsn': '设备增绑卡'
-  }
+  const map = { 'vip': '会员卡', 'fen': '积分卡', 'addsn': '设备增绑卡' }
   return map[type] || type
 }
 
 // 获取类型颜色
 const getTypeColor = (type) => {
-  const map = {
-    'vip': 'red',
-    'fen': 'orange',
-    'addsn': ''
-  }
+  const map = { 'vip': 'red', 'fen': 'orange', 'addsn': '' }
   return map[type] || ''
 }
 
@@ -245,42 +230,42 @@ const formatVal = (record) => {
 
 // 加载数据
 const loadData = async () => {
-  loading.value = true
+  tableConfig.loading = true
   try {
-    const res = await cdkGroupApi.get(pagination.current, pagination.pageSize, searchForm)
+    const res = await cdkGroupApi.get(tableConfig.currentPage, tableConfig.pageSize, searchForm.form)
     if (res.code !== 200) {
       Message.error(res.msg)
       return
     }
-    tableData.value = res.data.list
-    pagination.current = res.data.currentPage
-    pagination.total = res.data.dataTotal
-    pagination.pageTotal = res.data.pageTotal
+    tableConfig.list = res.data.list
+    tableConfig.currentPage = res.data.currentPage
+    tableConfig.dataTotal = res.data.dataTotal
+    tableConfig.pageTotal = res.data.pageTotal
   } catch (e) {
     Message.error('出错了：' + e)
   } finally {
-    loading.value = false
-    searchBtnLoading.value = false
+    tableConfig.loading = false
+    searchForm.btnLoading = false
   }
 }
 
 // 搜索
 const handleSearch = () => {
-  searchBtnLoading.value = true
-  pagination.current = 1
+  searchForm.btnLoading = true
+  tableConfig.currentPage = 1
   loadData()
 }
 
 // 分页
 const handlePageChange = (page) => {
-  pagination.current = page
-  loading.value = true
+  tableConfig.currentPage = page
+  tableConfig.loading = true
   loadData()
 }
 
 const handlePageSizeChange = (size) => {
-  pagination.pageSize = size
-  loading.value = true
+  tableConfig.pageSize = size
+  tableConfig.loading = true
   loadData()
 }
 
@@ -297,54 +282,53 @@ const getEmptyForm = () => ({
 
 // 添加
 const handleAdd = () => {
-  modalTitle.value = '添加卡密组'
-  Object.assign(modalForm, getEmptyForm())
-  modalForm.typeDisabled = false
-  modalVisible.value = true
+  Object.assign(modalConfig.form, getEmptyForm())
+  modalConfig.form.typeDisabled = false
+  modalConfig.visible = true
 }
 
 // 编辑
 const handleEdit = (record) => {
-  modalForm.id = record.id
-  modalForm.name = record.name
-  modalForm.type = record.type
-  modalForm.typeDisabled = true // 编辑时类型不可修改
-  modalForm.price = parseFloat(record.price)
+  modalConfig.form.id = record.id
+  modalConfig.form.name = record.name
+  modalConfig.form.type = record.type
+  modalConfig.form.typeDisabled = true // 编辑时类型不可修改
+  modalConfig.form.price = parseFloat(record.price)
   
   if (record.type === 'vip') {
     // 解析秒数为值和单位
-    modalForm.val = parseVipTime(Number(record.val), 1)
-    modalForm.vipType = parseVipTime(Number(record.val), 2)
+    modalConfig.form.val = parseVipTime(Number(record.val), 1)
+    modalConfig.form.vipType = parseVipTime(Number(record.val), 2)
   } else {
-    modalForm.val = Number(record.val)
-    modalForm.vipType = 'd'
+    modalConfig.form.val = Number(record.val)
+    modalConfig.form.vipType = 'd'
   }
   
-  modalVisible.value = true
+  modalConfig.visible = true
 }
 
 // 设置永久
 const setPermanent = () => {
-  modalForm.val = 9999999999
-  modalForm.vipType = 's'
+  modalConfig.form.val = 9999999999
+  modalConfig.form.vipType = 's'
 }
 
 // 提交
 const handleSubmit = async () => {
-  modalBtnLoading.value = true
+  modalConfig.btnLoading = true
   try {
-    const res = await cdkGroupApi.submit(modalForm)
+    const res = await cdkGroupApi.submit(modalConfig.form)
     if (res.code !== 200) {
       Message.error(res.msg)
       return
     }
-    modalVisible.value = false
+    modalConfig.visible = false
     Message.success(res.msg)
     loadData()
   } catch (e) {
     Message.error('出错了：' + e)
   } finally {
-    modalBtnLoading.value = false
+    modalConfig.btnLoading = false
   }
 }
 
@@ -367,20 +351,20 @@ const handleDelete = async (id) => {
 
 // 批量删除
 const handleBatchDelete = async () => {
-  delSelectedLoading.value = true
+  tableConfig.delSelectedLoading = true
   try {
-    const res = await cdkGroupApi.delAll(selectedKeys.value)
+    const res = await cdkGroupApi.delAll(tableConfig.selectedKeys)
     if (res.code !== 200) {
       Message.error(res.msg)
       return
     }
-    selectedKeys.value = []
+    tableConfig.selectedKeys = []
     Message.success(res.msg)
     loadData()
   } catch (e) {
     Message.error('出错了：' + e)
   } finally {
-    delSelectedLoading.value = false
+    tableConfig.delSelectedLoading = false
   }
 }
 

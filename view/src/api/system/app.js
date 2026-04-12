@@ -99,12 +99,16 @@ export default {
    */
   edit(data = {}) {
     const { id, ...rest } = data
-    return request({
+    const config = {
       url: '/admin/app/edit',
       method: 'post',
-      data: rest,
-      headers: { appid: id }
-    })
+      data: rest
+    }
+    // 只有 id 有效时才设置 headers.appid，否则使用默认值
+    if (id !== undefined && id !== null && id !== '') {
+      config.headers = { appid: id }
+    }
+    return request(config)
   },
 
   /**

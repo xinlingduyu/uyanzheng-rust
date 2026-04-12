@@ -497,7 +497,8 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
         Ok(None) => {}
-        Err(_) => {
+        Err(e) => {
+            tracing::error!("检查账号重复失败: acctno={}, appid={}, error={}", add_req.acctno, appid, e);
             res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
             return;
         }

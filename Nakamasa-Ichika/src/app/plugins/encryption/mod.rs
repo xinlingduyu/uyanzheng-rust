@@ -77,6 +77,9 @@ impl EncryptionConfig {
     pub fn from_json_value(value: &serde_json::Value, enc_type: &str) -> Self {
         let enc_type = EncryptionType::from_str(enc_type).unwrap_or(EncryptionType::Aes);
         
+        // 调试：打印配置
+        tracing::debug!("加密配置 - 类型: {:?}, 原始JSON: {}", enc_type, value);
+        
         Self {
             enc_type,
             key: value.get("key").and_then(|v| v.as_str()).map(|s| s.to_string()),
@@ -114,7 +117,10 @@ pub fn create_encryption(config: &EncryptionConfig) -> Box<dyn Encryption> {
             Box::new(des::DesEncryption::new(&key, iv.as_deref()))
         }
         EncryptionType::Rc4 => {
-            let password = config.password.clone().unwrap_or_default();
+            // RC4: 优先使用 password，fallback 到 key
+            let password = config.password.clone()
+                .or_else(|| config.key.clone())
+                .unwrap_or_default();
             Box::new(rc4::Rc4Encryption::new(&password))
         }
         EncryptionType::Rsa => {

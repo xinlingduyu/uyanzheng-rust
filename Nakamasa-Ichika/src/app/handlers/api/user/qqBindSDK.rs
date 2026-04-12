@@ -14,7 +14,7 @@ use salvo::prelude::*;
 use std::sync::Arc;
 
 use crate::core::AppState;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
@@ -31,19 +31,20 @@ pub struct QqBindSDKRequest {
 pub async fn qq_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key 和 app_type（零拷贝）
-    let (app_key, app_type) = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => (info.app_key.as_str(), info.app_type.as_str()),
+    // 获取应用信息
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, "")));
+            render_error(res, "应用信息不存在", 201, "");
             return;
         }
     };
+    let app_key = &app_info.app_key;
     
     let bind_req = match req.parse_json::<QqBindSDKRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -55,13 +56,13 @@ pub async fn qq_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     validator.wordnum("openid", &bind_req.openid, 1, 64);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
 
     // 只支持用户版应用
-    if app_type != "user" {
-        res.render(Json(SignedApiResponse::<()>::error("当前应用不支持调用该接口", 115, app_key)));
+    if app_info.app_type != "user" {
+        render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
@@ -69,7 +70,7 @@ pub async fn qq_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("未授权", 201, app_key)));
+            render_error(res, "未授权", 201, app_key);
             return;
         }
     };
@@ -88,13 +89,13 @@ pub async fn qq_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     match existing_user {
         Ok(Some(_)) => {
-            res.render(Json(SignedApiResponse::<()>::error("该QQ已被其他账号绑定", 201, app_key)));
+            render_error(res, "该QQ已被其他账号绑定", 201, app_key);
             return;
         }
         Ok(None) => {}
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     }
@@ -119,14 +120,14 @@ pub async fn qq_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     match update_result {
         Ok(result) => {
             if result.rows_affected() > 0 {
-                res.render(Json(SignedApiResponse::success_msg(app_key)));
+                render_success_msg(res, app_key);
             } else {
-                res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+                render_error(res, "绑定失败", 201, app_key);
             }
         }
         Err(e) => {
             tracing::error!("更新QQ绑定失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("绑定失败", 201, app_key)));
+            render_error(res, "绑定失败", 201, app_key);
         }
     }
 }

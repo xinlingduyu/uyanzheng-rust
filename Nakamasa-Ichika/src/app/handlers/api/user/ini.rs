@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::core::AppState;
 use crate::app::middleware::app_context::AppInfo;
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 
 /// 版本信息
 #[derive(Serialize)]
@@ -65,7 +65,7 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用不存在", 201, "")));
+            render_error(res, "应用不存在", 201, "");
             return;
         }
     };
@@ -116,7 +116,7 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
         version: version_data,
     };
 
-    res.render(Json(SignedApiResponse::success(app_key, Some(data))));
+    render_success(res, app_key, Some(data), app_info.mi.as_ref());
 }
 
 /// 获取公告信息

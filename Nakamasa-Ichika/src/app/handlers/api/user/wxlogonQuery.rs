@@ -18,7 +18,7 @@ use sqlx::Row;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::SignedApiResponse;
+use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
 use crate::app::utils::validator::Validator;
 use crate::app::models::requests::WxQueryRequest;
 use crate::app::middleware::app_context::AppInfo;
@@ -41,13 +41,20 @@ struct WxLogonInfo {
 pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = depot.obtain::<Arc<AppState>>().unwrap();
     
-    // 获取 app_key
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
+    // 获取应用信息（零拷贝）
+    let app_info = match depot.get::<AppInfo>("app_info") {
+        Ok(info) => info,
+        Err(_) => {
+            render_error(res, "应用信息不存在", 201, "");
+            return;
+        }
+    };
+    let app_key = app_info.app_key.as_str();
     
     let query_req = match req.parse_json::<WxQueryRequest>().await {
         Ok(data) => data,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("参数解析失败", 201, app_key)));
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
@@ -57,24 +64,15 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     validator.wordnum("uuid", &query_req.uuid, 32, 32);
     
     if let Err(msg) = validator.validate() {
-        res.render(Json(SignedApiResponse::<()>::error(msg, 201, app_key)));
+        render_error(res, msg, 201, app_key);
         return;
     }
-
-    // 获取应用信息
-    let app_info = match depot.get::<AppInfo>("app_info") {
-        Ok(info) => info.clone(),
-        Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("应用信息不存在", 201, app_key)));
-            return;
-        }
-    };
 
     let redis_util = &app_state.redis_util;
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.render(Json(SignedApiResponse::<()>::error("Redis未初始化", 201, app_key)));
+            render_error(res, "Redis未初始化", 201, app_key);
             return;
         }
     };
@@ -84,12 +82,12 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("二维码参数已过期", 201, app_key)));
+            render_error(res, "二维码参数已过期", 201, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("Redis查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("Redis错误", 201, app_key)));
+            render_error(res, "Redis错误", 201, app_key);
             return;
         }
     };
@@ -98,7 +96,7 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let wxlogon_info: WxLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("二维码参数有误", 201, app_key)));
+            render_error(res, "二维码参数有误", 201, app_key);
             return;
         }
     };
@@ -112,16 +110,16 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         Ok(Some(s)) => match s.parse::<u64>() {
             Ok(id) => id,
             Err(_) => {
-                res.render(Json(SignedApiResponse::<()>::error("待扫码", 0, app_key)));
+                render_error(res, "待扫码", 0, app_key);
                 return;
             }
         },
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("待扫码", 0, app_key)));
+            render_error(res, "待扫码", 0, app_key);
             return;
         }
         Err(_) => {
-            res.render(Json(SignedApiResponse::<()>::error("待扫码", 0, app_key)));
+            render_error(res, "待扫码", 0, app_key);
             return;
         }
     };
@@ -144,12 +142,12 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let user_row = match user_result {
         Ok(Some(row)) => row,
         Ok(None) => {
-            res.render(Json(SignedApiResponse::<()>::error("登录信息不存在", 201, app_key)));
+            render_error(res, "登录信息不存在", 201, app_key);
             return;
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
-            res.render(Json(SignedApiResponse::<()>::error("数据库错误", 201, app_key)));
+            render_error(res, "数据库错误", 201, app_key);
             return;
         }
     };
@@ -176,7 +174,7 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     if let Some(ban_time) = ban
         && ban_time > Utc::now().timestamp() {
             let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
-            res.render(Json(SignedApiResponse::<()>::error(msg, 127, app_key)));
+            render_error(res, msg, 127, app_key);
             return;
         }
 
@@ -233,7 +231,7 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 let udid_md5 = md5_to_str(&md5_hex(wxlogon_info.udid.as_bytes())).to_string();
                 let dk_key = format!("logon_{}_{}_{}", app_info.id, user_id, udid_md5);
                 if redis_util.exists(redis_pool, &dk_key).await.unwrap_or(false) {
-                    res.render(Json(SignedApiResponse::<()>::error("已经登录了", 201, app_key)));
+                    render_error(res, "已经登录了", 201, app_key);
                     return;
                 }
             }
@@ -274,12 +272,12 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let token_pre = format!("{}_{}_", app_info.app_type, app_info.id);
     if let Err(e) = set_token(redis_util, redis_pool, &token_pre, &token, &token_data, app_info.logon_token_exp).await {
         tracing::error!("设置Token失败: {}", e);
-        res.render(Json(SignedApiResponse::<()>::error("登录失败，token记录失败", 201, app_key)));
+        render_error(res, "登录失败，token记录失败", 201, app_key);
         return;
     }
 
     // PHP: 返回登录信息 - 按API文档格式
-    res.render(Json(SignedApiResponse::success(app_key, Some(json!({
+    render_success(res, app_key, Some(json!({
         "token": token,
         "state": token_state,
         "info": {
@@ -296,5 +294,5 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
             "vipExpDate": vip_exp_date,
             "extend": extend_val
         }
-    })))));
+    })), app_info.mi.as_ref());
 }
