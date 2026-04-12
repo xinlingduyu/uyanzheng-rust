@@ -80,3 +80,7 @@ QWEN.md
 agent.md
 .claude/
 .qwen/
+.iflowignore
+
+# 参考项目模板 - 不上传
+arco-design-pro/
