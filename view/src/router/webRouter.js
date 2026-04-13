@@ -33,6 +33,12 @@ const routes = [
     meta: { title: '登录' }
   },
   {
+    name: 'install',
+    path: '/install',
+    component: () => import('@/views/install/index.vue'),
+    meta: { title: '系统安装' }
+  },
+  {
     path: '/:pathMatch(.*)*',
     hidden: true,
     meta: { title: '访问的页面不存在' },

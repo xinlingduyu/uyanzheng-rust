@@ -1317,3 +1317,269 @@ fn get_client_ip(req: &Request) -> String {
     // TODO: 获取连接的真实IP
     "127.0.0.1".to_string()
 }
+
+// ==================== 管理员个人中心接口 ====================
+
+/// 更新管理员个人资料
+/// POST /admin/user/updateInfo
+#[derive(Debug, Deserialize)]
+struct UpdateInfoRequest {
+    #[serde(default)]
+    nickname: Option<String>,
+    #[serde(default)]
+    phone: Option<String>,
+    #[serde(default)]
+    email: Option<String>,
+    #[serde(default)]
+    signed: Option<String>,
+    #[serde(rename = "avatar", default)]
+    avatars: Option<String>,
+}
+
+#[handler]
+pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    // 获取当前管理员ID
+    let admin_id: u64 = match depot.get::<u64>("admin_id") {
+        Ok(id) => *id,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("未登录", 201)));
+            return;
+        }
+    };
+
+    // 解析请求
+    let update_req = match req.parse_json::<UpdateInfoRequest>().await {
+        Ok(data) => data,
+        Err(e) => {
+            tracing::error!("参数解析失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    let now = Utc::now().timestamp();
+    let ip = get_client_ip(req);
+
+    // 构建更新语句 - 只更新提供的字段
+    let mut updates = Vec::new();
+    let mut params: Vec<String> = Vec::new();
+
+    // 更新昵称 (存储在 notes 字段)
+    if let Some(ref nickname) = update_req.nickname {
+        if !nickname.is_empty() {
+            updates.push("notes = ?");
+            params.push(nickname.clone());
+        }
+    }
+
+    // 更新头像
+    if let Some(ref avatars) = update_req.avatars {
+        if !avatars.is_empty() {
+            updates.push("avatars = ?");
+            params.push(avatars.clone());
+        }
+    }
+
+    if updates.is_empty() {
+        res.render(Json(ApiResponse::success_msg("无更新内容")));
+        return;
+    }
+
+    let query = format!(
+        "UPDATE u_admin SET {} WHERE id = ?",
+        updates.join(", ")
+    );
+
+    let mut sql_query = sqlx::query(&query);
+    for param in params {
+        sql_query = sql_query.bind(param);
+    }
+    sql_query = sql_query.bind(admin_id);
+
+    let result = sql_query.execute(app_state.get_db()).await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                // 失效管理员缓存
+                app_state.admin_cache.invalidate(admin_id);
+                
+                // 记录日志
+                let _ = sqlx::query(
+                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind("adm")
+                .bind(admin_id)
+                .bind("updateInfo")
+                .bind(true)
+                .bind(now)
+                .bind(&ip)
+                .execute(app_state.get_db())
+                .await;
+
+                res.render(Json(ApiResponse::success_msg("更新成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("更新失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("更新个人资料失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("更新失败", 201)));
+        }
+    }
+}
+
+/// 修改管理员密码
+/// POST /admin/user/modifyPassword
+#[derive(Debug, Deserialize)]
+struct ModifyPasswordRequest {
+    oldPassword: String,
+    newPassword: String,
+    #[serde(rename = "newPassword_confirmation")]
+    new_password_confirmation: String,
+}
+
+#[handler]
+pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    
+    // 获取当前管理员ID
+    let admin_id: u64 = match depot.get::<u64>("admin_id") {
+        Ok(id) => *id,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("未登录", 201)));
+            return;
+        }
+    };
+
+    // 解析请求
+    let pwd_req = match req.parse_json::<ModifyPasswordRequest>().await {
+        Ok(data) => data,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("参数解析失败", 201)));
+            return;
+        }
+    };
+
+    // 参数验证
+    let mut validator = Validator::new();
+    validator
+        .required("oldPassword", &Some(pwd_req.oldPassword.clone()), "旧密码")
+        .required("newPassword", &Some(pwd_req.newPassword.clone()), "新密码")
+        .password("newPassword", &pwd_req.newPassword, 6, 32);
+
+    if let Err(msg) = validator.validate() {
+        res.render(Json(ApiResponse::<()>::error(msg, 201)));
+        return;
+    }
+
+    // 验证新密码和确认密码一致
+    if pwd_req.newPassword != pwd_req.new_password_confirmation {
+        res.render(Json(ApiResponse::<()>::error("新密码与确认密码不一致", 201)));
+        return;
+    }
+
+    // 获取管理员当前密码
+    let current_password: String = match sqlx::query_scalar::<_, String>(
+        "SELECT password FROM u_admin WHERE id = ?"
+    )
+    .bind(admin_id)
+    .fetch_optional(app_state.get_db())
+    .await {
+        Ok(Some(pwd)) => pwd,
+        Ok(None) => {
+            res.render(Json(ApiResponse::<()>::error("管理员不存在", 201)));
+            return;
+        }
+        Err(e) => {
+            tracing::error!("查询管理员密码失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
+            return;
+        }
+    };
+
+    // 验证旧密码
+    let adm_pwd_salt = app_state.config().app().admin().keys();
+    let old_pwd_hash = {
+        let total_len = pwd_req.oldPassword.len() + adm_pwd_salt.len();
+        if total_len <= 256 {
+            let mut buf = [0u8; 256];
+            buf[..pwd_req.oldPassword.len()].copy_from_slice(pwd_req.oldPassword.as_bytes());
+            buf[pwd_req.oldPassword.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
+            let hash_bytes = md5_hex(&buf[..total_len]);
+            md5_to_str(&hash_bytes).to_string()
+        } else {
+            let mut buf = Vec::with_capacity(total_len);
+            buf.extend_from_slice(pwd_req.oldPassword.as_bytes());
+            buf.extend_from_slice(adm_pwd_salt.as_bytes());
+            let hash_bytes = md5_hex(&buf);
+            md5_to_str(&hash_bytes).to_string()
+        }
+    };
+
+    if old_pwd_hash != current_password {
+        res.render(Json(ApiResponse::<()>::error("旧密码错误", 201)));
+        return;
+    }
+
+    // 计算新密码哈希
+    let new_pwd_hash = {
+        let total_len = pwd_req.newPassword.len() + adm_pwd_salt.len();
+        if total_len <= 256 {
+            let mut buf = [0u8; 256];
+            buf[..pwd_req.newPassword.len()].copy_from_slice(pwd_req.newPassword.as_bytes());
+            buf[pwd_req.newPassword.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
+            let hash_bytes = md5_hex(&buf[..total_len]);
+            md5_to_str(&hash_bytes).to_string()
+        } else {
+            let mut buf = Vec::with_capacity(total_len);
+            buf.extend_from_slice(pwd_req.newPassword.as_bytes());
+            buf.extend_from_slice(adm_pwd_salt.as_bytes());
+            let hash_bytes = md5_hex(&buf);
+            md5_to_str(&hash_bytes).to_string()
+        }
+    };
+
+    // 更新密码
+    let result = sqlx::query(
+        "UPDATE u_admin SET password = ? WHERE id = ?"
+    )
+    .bind(&new_pwd_hash)
+    .bind(admin_id)
+    .execute(app_state.get_db())
+    .await;
+
+    match result {
+        Ok(r) => {
+            if r.rows_affected() > 0 {
+                // 失效管理员缓存
+                app_state.admin_cache.invalidate(admin_id);
+                
+                // 记录日志
+                let now = Utc::now().timestamp();
+                let ip = get_client_ip(req);
+                let _ = sqlx::query(
+                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)"
+                )
+                .bind("adm")
+                .bind(admin_id)
+                .bind("modifyPassword")
+                .bind(true)
+                .bind(now)
+                .bind(&ip)
+                .execute(app_state.get_db())
+                .await;
+
+                res.render(Json(ApiResponse::success_msg("密码修改成功")));
+            } else {
+                res.render(Json(ApiResponse::<()>::error("密码修改失败", 201)));
+            }
+        }
+        Err(e) => {
+            tracing::error!("密码修改失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("密码修改失败", 201)));
+        }
+    }
+}

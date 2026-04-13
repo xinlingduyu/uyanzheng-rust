@@ -785,3 +785,137 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 }
+
+// ========== 更新日志接口 ==========
+
+#[derive(Debug, Serialize)]
+struct UplogItem {
+    ver: String,
+    revision: Option<String>,
+    time: i64,
+    #[serde(rename = "type")]
+    log_type: String,
+    content: String,
+}
+
+/// 获取系统更新日志
+/// GET /admin/uplog
+#[handler]
+pub async fn get_uplog(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    let appid = match _req.headers().get("appid") {
+        Some(h) => match h.to_str() {
+            Ok(s) => match s.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    // 返回默认日志
+                    let default_logs = get_default_uplog();
+                    res.render(Json(ApiResponse::success("成功", Some(default_logs))));
+                    return;
+                }
+            },
+            Err(_) => {
+                let default_logs = get_default_uplog();
+                res.render(Json(ApiResponse::success("成功", Some(default_logs))));
+                return;
+            }
+        },
+        None => {
+            let default_logs = get_default_uplog();
+            res.render(Json(ApiResponse::success("成功", Some(default_logs))));
+            return;
+        }
+    };
+
+    // 查询版本更新日志 - 从u_app_ver表获取
+    let query = r#"
+        SELECT ver_major, ver_minor, ver_patch, ver_content, ver_state, discard
+        FROM u_app_ver 
+        WHERE appid = ?
+        ORDER BY ver_major DESC, ver_minor DESC, ver_patch DESC
+        LIMIT 10
+    "#;
+
+    let result = sqlx::query(query)
+        .bind(appid)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            if rows.is_empty() {
+                let default_logs = get_default_uplog();
+                res.render(Json(ApiResponse::success("成功", Some(default_logs))));
+                return;
+            }
+
+            let list: Vec<UplogItem> = rows.iter().map(|row| {
+                let major: i32 = row.try_get("ver_major").unwrap_or(1);
+                let minor: i32 = row.try_get("ver_minor").unwrap_or(0);
+                let patch: i32 = row.try_get("ver_patch").unwrap_or(0);
+                let ver = format!("{}.{}.{}", major, minor, patch);
+
+                let content: String = row.try_get("ver_content").unwrap_or_default();
+                let log_type: String = row.try_get("ver_state").unwrap_or_else(|_| "on".to_string());
+                let log_type = if log_type == "on" { "official".to_string() } else { "beta".to_string() };
+
+                UplogItem {
+                    ver,
+                    revision: None,
+                    time: chrono::Utc::now().timestamp(),
+                    log_type,
+                    content: if content.is_empty() { "无更新内容".to_string() } else { content },
+                }
+            }).collect();
+
+            res.render(Json(ApiResponse::success("成功", Some(list))));
+        }
+        Err(e) => {
+            tracing::error!("获取更新日志失败: {}", e);
+            let default_logs = get_default_uplog();
+            res.render(Json(ApiResponse::success("成功", Some(default_logs))));
+        }
+    }
+}
+
+/// 获取默认更新日志（当数据库无数据时使用）
+fn get_default_uplog() -> Vec<UplogItem> {
+    vec![
+        UplogItem {
+            ver: "3.3.0".to_string(),
+            revision: None,
+            time: chrono::Utc::now().timestamp() - 86400 * 7,
+            log_type: "official".to_string(),
+            content: r#"<ol>
+<li>新增管理员个人中心功能</li>
+<li>支持头像上传和修改</li>
+<li>支持个人资料修改</li>
+<li>支持密码修改</li>
+<li>新增登录日志和操作日志查看</li>
+</ol>"#.to_string(),
+        },
+        UplogItem {
+            ver: "3.2.0".to_string(),
+            revision: None,
+            time: chrono::Utc::now().timestamp() - 86400 * 14,
+            log_type: "official".to_string(),
+            content: r#"<ol>
+<li>优化系统性能</li>
+<li>修复已知问题</li>
+<li>改进用户界面体验</li>
+</ol>"#.to_string(),
+        },
+        UplogItem {
+            ver: "3.1.0".to_string(),
+            revision: None,
+            time: chrono::Utc::now().timestamp() - 86400 * 30,
+            log_type: "official".to_string(),
+            content: r#"<ol>
+<li>新增多应用支持</li>
+<li>优化数据库查询性能</li>
+<li>改进缓存机制</li>
+</ol>"#.to_string(),
+        },
+    ]
+}

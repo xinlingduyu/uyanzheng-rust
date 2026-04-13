@@ -683,3 +683,155 @@ pub async fn get_login_chart(req: &mut Request, depot: &mut Depot, res: &mut Res
 
     res.render(Json(ApiResponse::success("成功", Some(data))));
 }
+
+// ========== 日志接口 ==========
+
+#[derive(Debug, Serialize)]
+struct LoginLogItem {
+    id: u64,
+    login_time: String,
+    ip: String,
+    ip_location: String,
+    os: String,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LogListResponse {
+    data: Vec<LoginLogItem>,
+}
+
+/// 获取登录日志列表
+/// GET /admin/system/getLoginLogList
+#[handler]
+pub async fn get_login_log_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    // 获取当前管理员ID
+    let admin_id: u64 = match depot.get::<u64>("admin_id") {
+        Ok(id) => *id,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("未登录", 201)));
+            return;
+        }
+    };
+
+    // 获取查询参数
+    let limit: i64 = req.query("limit").unwrap_or(10);
+    let _order_by: String = req.query("orderBy").unwrap_or("time".to_string());
+    let _order_type: String = req.query("orderType").unwrap_or("desc".to_string());
+
+    // 查询登录日志 - 从u_logs表中获取管理员登录记录
+    let query = r#"
+        SELECT id, time, ip, ip_address
+        FROM u_logs
+        WHERE ug = 'adm' AND uid = ? AND type = 'login'
+        ORDER BY time DESC
+        LIMIT ?
+    "#;
+
+    let result = sqlx::query(query)
+        .bind(admin_id)
+        .bind(limit)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            let list: Vec<LoginLogItem> = rows.iter().map(|row| {
+                let time: i64 = row.try_get("time").unwrap_or(0);
+                let login_time = chrono::DateTime::from_timestamp(time, 0)
+                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_default();
+
+                let ip_address: Option<String> = row.try_get("ip_address").ok();
+                let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
+
+                LoginLogItem {
+                    id: row.try_get("id").unwrap_or(0),
+                    login_time,
+                    ip: row.try_get("ip").unwrap_or_else(|_| "127.0.0.1".to_string()),
+                    ip_location,
+                    os: "Unknown".to_string(),
+                    message: "登录成功".to_string(),
+                }
+            }).collect();
+
+            let data = LogListResponse { data: list };
+            res.render(Json(ApiResponse::success("成功", Some(data))));
+        }
+        Err(e) => {
+            tracing::error!("获取登录日志失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("获取登录日志失败", 201)));
+        }
+    }
+}
+
+/// 获取操作日志列表
+/// GET /admin/system/getOperationLogList
+#[handler]
+pub async fn get_operation_log_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+
+    // 获取当前管理员ID
+    let admin_id: u64 = match depot.get::<u64>("admin_id") {
+        Ok(id) => *id,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("未登录", 201)));
+            return;
+        }
+    };
+
+    // 获取查询参数
+    let limit: i64 = req.query("limit").unwrap_or(10);
+    let _order_by: String = req.query("orderBy").unwrap_or("time".to_string());
+    let _order_type: String = req.query("orderType").unwrap_or("desc".to_string());
+
+    // 查询操作日志 - 从u_logs表中获取管理员操作记录（排除登录）
+    let query = r#"
+        SELECT id, type, time, ip, ip_address
+        FROM u_logs
+        WHERE ug = 'adm' AND uid = ? AND type != 'login'
+        ORDER BY time DESC
+        LIMIT ?
+    "#;
+
+    let result = sqlx::query(query)
+        .bind(admin_id)
+        .bind(limit)
+        .fetch_all(app_state.get_db())
+        .await;
+
+    match result {
+        Ok(rows) => {
+            let list: Vec<LoginLogItem> = rows.iter().map(|row| {
+                let time: i64 = row.try_get("time").unwrap_or(0);
+                let create_time = chrono::DateTime::from_timestamp(time, 0)
+                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_default();
+
+                let ip_address: Option<String> = row.try_get("ip_address").ok();
+                let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
+
+                let log_type: String = row.try_get("type").unwrap_or_else(|_| "unknown".to_string());
+                let service_name = format!("{}操作", log_type);
+
+                LoginLogItem {
+                    id: row.try_get("id").unwrap_or(0),
+                    login_time: create_time,
+                    ip: row.try_get("ip").unwrap_or_else(|_| "127.0.0.1".to_string()),
+                    ip_location,
+                    os: "POST".to_string(),
+                    message: service_name,
+                }
+            }).collect();
+
+            let data = LogListResponse { data: list };
+            res.render(Json(ApiResponse::success("成功", Some(data))));
+        }
+        Err(e) => {
+            tracing::error!("获取操作日志失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error("获取操作日志失败", 201)));
+        }
+    }
+}

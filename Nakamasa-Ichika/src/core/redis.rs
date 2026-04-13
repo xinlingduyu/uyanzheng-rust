@@ -2,13 +2,31 @@ use deadpool_redis::{Config, Pool, Runtime, redis::cmd};
 use anyhow::Context;
 use tracing::info;
 use crate::config::RedisConfig;
+use crate::config;
 
 /// Redis连接池初始化
+/// 
+/// 支持加密密码：如果配置中的密码已加密，会使用 app.code 解密
+/// 连接成功后，解密后的密码会从内存中清除
 pub async fn init_redis_pool(redis_config: RedisConfig) -> anyhow::Result<Pool> {
     let cpus = num_cpus::get();
     
+    // 获取解密密钥
+    let secret = config::get().app().code();
+    
+    // 检查是否使用加密密码
+    if redis_config.is_password_encrypted() {
+        info!("Redis: 检测到加密密码，正在解密...");
+    } else if redis_config.password().is_some() {
+        info!("Redis: 使用明文密码连接");
+    }
+    
+    // 使用解密后的连接URL
+    // decrypt_if_needed 会自动处理：加密则解密，明文则直接返回
+    let connection_url = redis_config.decrypted_connection_url(secret);
+    
     // 使用配置对象创建连接池
-    let pool = Config::from_url(redis_config.connection_url())
+    let pool = Config::from_url(&connection_url)
         .builder()?
         .max_size(std::cmp::max(redis_config.max_connections() as usize, cpus * 10))
         .runtime(Runtime::Tokio1)

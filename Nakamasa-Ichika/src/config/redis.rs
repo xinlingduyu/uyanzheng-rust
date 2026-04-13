@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct RedisConfig {
@@ -48,6 +49,51 @@ impl RedisConfig {
       if let Some(password) = self.password() {
           url.push(':');
           url.push_str(password);
+          url.push('@');
+      }
+
+      // 添加主机和端口
+      url.push_str(self.host());
+      url.push(':');
+      url.push_str(&self.port().to_string());
+      url.push('/');
+      url.push_str(&self.db().to_string());
+
+      url
+  }
+  
+  /// 检查密码是否已加密
+  pub fn is_password_encrypted(&self) -> bool {
+      self.password.as_deref().map(is_encrypted).unwrap_or(false)
+  }
+  
+  /// 获取解密后的密码
+  /// 
+  /// # 参数
+  /// - `secret`: 解密密钥（app.code）
+  /// 
+  /// # 返回
+  /// 解密后的密码，如果未加密则返回原值
+  pub fn decrypted_password(&self, secret: &str) -> Option<String> {
+      self.password.as_deref().map(|p| {
+          decrypt_if_needed(p, secret).unwrap_or_else(|_| p.to_string())
+      })
+  }
+  
+  /// 构建解密后的Redis连接URL
+  /// 
+  /// # 参数
+  /// - `secret`: 解密密钥（app.code）
+  /// 
+  /// # 返回
+  /// 使用解密后密码的连接URL
+  pub fn decrypted_connection_url(&self, secret: &str) -> String {
+      let mut url = "redis://".to_string();
+
+      // 添加认证信息（使用解密后的密码）
+      if let Some(password) = self.decrypted_password(secret) {
+          url.push(':');
+          url.push_str(&password);
           url.push('@');
       }
 

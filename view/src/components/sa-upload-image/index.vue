@@ -121,6 +121,12 @@ const uploadImageHandler = async (options) => {
     const result = resp.data
     if (result) {
       if (!props.multiple) {
+        // 上传成功后，正确设置 currentItem.url 以显示图片
+        currentItem.value = {
+          url: result['url'],
+          percent: 100,
+          status: 'complete'
+        }
         signImage.value = result['url']
         emit('update:modelValue', signImage.value)
       } else {
@@ -131,6 +137,9 @@ const uploadImageHandler = async (options) => {
         })
         emit('update:modelValue', files)
       }
+    } else {
+      // 上传失败，重置 currentItem
+      currentItem.value = {}
     }
   }
 }

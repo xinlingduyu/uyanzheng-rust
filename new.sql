@@ -1,5 +1,6 @@
 -- MySQL dump 10.13  Distrib 5.7.40, for Linux (x86_64)
 --
+-- Nakamasa-Ichika Database Schema
 -- Host: localhost    Database: uyanzheng
 -- ------------------------------------------------------
 -- Server version	5.7.40-log
@@ -34,36 +35,27 @@ CREATE TABLE `u_admin` (
   `appid` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `user` (`user`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_admin`
---
-
-LOCK TABLES `u_admin` WRITE;
-/*!40000 ALTER TABLE `u_admin` DISABLE KEYS */;
-INSERT INTO `u_admin` VALUES (1,'lingmo1','f855fedbdbaab8eda86242d58da1f44a','超级管理员',NULL,0,NULL,'y',NULL);
-/*!40000 ALTER TABLE `u_admin` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_app_function`
 --
 
-CREATE TABLE u_app_function (
-     id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
-     name varchar(64) NOT NULL COMMENT '函数名称',
-     code text NOT NULL COMMENT 'JavaScript代码',
-     notes varchar(255) DEFAULT '' COMMENT '备注说明',
-     allow tinyint(1) DEFAULT 0 COMMENT 'VIP权限要求',
-     fen int(10) DEFAULT 0 COMMENT '积分消耗',
-     state enum('y','n') DEFAULT 'y' COMMENT '状态',
-     appid bigint(20) unsigned NOT NULL COMMENT '应用ID',
-     PRIMARY KEY (id),
-     UNIQUE KEY name_appid (name, appid),
-     KEY appid (appid)
-   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='云函数表';
+CREATE TABLE `u_app_function` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(64) NOT NULL COMMENT '函数名称',
+  `code` text NOT NULL COMMENT 'JavaScript代码',
+  `notes` varchar(255) DEFAULT '' COMMENT '备注说明',
+  `allow` tinyint(1) DEFAULT 0 COMMENT 'VIP权限要求',
+  `fen` int(10) DEFAULT 0 COMMENT '积分消耗',
+  `state` enum('y','n') DEFAULT 'y' COMMENT '状态',
+  `appid` bigint(20) unsigned NOT NULL COMMENT '应用ID',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name_appid` (`name`, `appid`),
+  KEY `appid` (`appid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='云函数表';
+
 --
 -- Table structure for table `u_app`
 --
@@ -127,18 +119,8 @@ CREATE TABLE `u_app` (
   `pay_wx_config` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `app_key` (`app_key`)
-) ENGINE=InnoDB AUTO_INCREMENT=1002 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_app`
---
-
-LOCK TABLES `u_app` WRITE;
-/*!40000 ALTER TABLE `u_app` DISABLE KEYS */;
-INSERT INTO `u_app` VALUES (1000,'ef4ddef5d3861211b92c1b6cca21e317','user','demo',NULL,'y','on',NULL,'on','','wordnum','n',24,24,'vip',86400,'on','','{\"appID\": \"\", \"state\": \"on\", \"appSecret\": \"\"}','{\"appID\": \"\", \"state\": \"on\", \"appKey\": \"\"}',86400,'y','n',0,1,1,0,'fen',100,'vip',43200,'vip',86400,'fen',100,'off','smtp.qq.com',NULL,NULL,465,'off','jie',NULL,10,4,120,10,'on','jie','{\"pid\": \"9494\", \"AccessID\": \"jdjdnd\", \"AccessKey\": \"bbxbd\"}','on','jie','{}'),(1001,'671553d8fa656cc215c297ce292a0006','kami','demo2',NULL,'y','on',NULL,'on',NULL,'email','n',24,24,'vip',86400,'on',NULL,NULL,NULL,86400,'y','n',0,1,1,0,'fen',100,'vip',43200,'vip',86400,'fen',100,'off','smtp.qq.com',NULL,NULL,465,'off','jie',NULL,10,4,120,10,'off','jie',NULL,'off','jie',NULL);
-/*!40000 ALTER TABLE `u_app` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_app_blocklist`
@@ -160,15 +142,6 @@ CREATE TABLE `u_app_blocklist` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `u_app_blocklist`
---
-
-LOCK TABLES `u_app_blocklist` WRITE;
-/*!40000 ALTER TABLE `u_app_blocklist` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_app_blocklist` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
 -- Table structure for table `u_app_extend`
 --
 
@@ -187,15 +160,6 @@ CREATE TABLE `u_app_extend` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `u_app_extend`
---
-
-LOCK TABLES `u_app_extend` WRITE;
-/*!40000 ALTER TABLE `u_app_extend` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_app_extend` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
 -- Table structure for table `u_app_mi`
 --
 
@@ -212,18 +176,8 @@ CREATE TABLE `u_app_mi` (
   `appid` bigint(20) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_app_mi`
---
-
-LOCK TABLES `u_app_mi` WRITE;
-/*!40000 ALTER TABLE `u_app_mi` DISABLE KEYS */;
-INSERT INTO `u_app_mi` VALUES (1,'测试','rsa','{\"appPublicKey\": \"xnrnxr\", \"appPrivateKey\": \"，dnxnrnr\", \"servicePublicKey\": \"gjcn\", \"servicePrivateKey\": \"tnhtf\"}','y',60,1000),(2,'测额','rc4','{\"key\": \"jdjdjd\", \"encodeType\": \"base64\"}','y',60,1000),(3,'fxr','des','{\"key\": \"jdjdj\", \"encodeType\": \"base64\"}','y',60,1000),(4,'ssss','aes','{\"key\": \"TiSXNzfqxbr4zv4T\", \"encodeType\": \"base64\"}','y',60,1000);
-/*!40000 ALTER TABLE `u_app_mi` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_app_notice`
@@ -244,15 +198,6 @@ CREATE TABLE `u_app_notice` (
   KEY `appid` (`appid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_app_notice`
---
-
-LOCK TABLES `u_app_notice` WRITE;
-/*!40000 ALTER TABLE `u_app_notice` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_app_notice` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_app_ver`
@@ -280,18 +225,8 @@ CREATE TABLE `u_app_ver` (
   KEY `mid` (`mid`),
   KEY `appid` (`appid`),
   KEY `ver_key_appid` (`ver_key`,`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_app_ver`
---
-
-LOCK TABLES `u_app_ver` WRITE;
-/*!40000 ALTER TABLE `u_app_ver` DISABLE KEYS */;
-INSERT INTO `u_app_ver` VALUES (1,'测试','test',1,1,1,'on','','','',NULL,0,1000),(2,'测试','test',1,1,1,'on','','','',NULL,0,1001);
-/*!40000 ALTER TABLE `u_app_ver` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_cdk_group`
@@ -309,18 +244,8 @@ CREATE TABLE `u_cdk_group` (
   `appid` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_cdk_group`
---
-
-LOCK TABLES `u_cdk_group` WRITE;
-/*!40000 ALTER TABLE `u_cdk_group` DISABLE KEYS */;
-INSERT INTO `u_cdk_group` VALUES (1,'11',86400,'vip',1.00,1001),(2,'11',86400,'vip',1.00,1000);
-/*!40000 ALTER TABLE `u_cdk_group` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_cdk_kami`
@@ -371,18 +296,8 @@ CREATE TABLE `u_cdk_kami` (
   KEY `use_time` (`use_time`),
   KEY `ban` (`ban`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_cdk_kami`
---
-
-LOCK TABLES `u_cdk_kami` WRITE;
-/*!40000 ALTER TABLE `u_cdk_kami` DISABLE KEYS */;
-INSERT INTO `u_cdk_kami` VALUES (1,1,'vip','AC4KNWVN496R7',86400,NULL,NULL,'','',NULL,NULL,'admin',1,1.00,1765244458,'183.203.195.138',NULL,NULL,NULL,'n',0,NULL,NULL,0,NULL,1001),(2,1,'vip','WYNGC7Q9G81YX',86400,NULL,NULL,'','',1768632788,0,'admin',1,1.00,1768546377,'120.231.156.218',NULL,1768546388,'1.12.252.32','n',0,0,NULL,0,'[{\"time\": 1768546388, \"udid\": \"lingmo123\"}]',1001);
-/*!40000 ALTER TABLE `u_cdk_kami` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_cdk_user`
@@ -422,18 +337,8 @@ CREATE TABLE `u_cdk_user` (
   KEY `appid` (`appid`),
   KEY `type` (`type`),
   KEY `add_role` (`add_role`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_cdk_user`
---
-
-LOCK TABLES `u_cdk_user` WRITE;
-/*!40000 ALTER TABLE `u_cdk_user` DISABLE KEYS */;
-INSERT INTO `u_cdk_user` VALUES (1,2,'vip','5XTZ6OH74J1D5',86400,'',NULL,NULL,NULL,'admin',1,1.00,1765548619,'118.80.92.126','y',1765548667,'y',1000),(2,2,'vip','FY4WBTPK07KW9',86400,'',NULL,NULL,NULL,'admin',1,1.00,1770548241,'36.110.36.142','n',0,'y',1000);
-/*!40000 ALTER TABLE `u_cdk_user` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_fen_event`
@@ -452,18 +357,8 @@ CREATE TABLE `u_fen_event` (
   `appid` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_fen_event`
---
-
-LOCK TABLES `u_fen_event` WRITE;
-/*!40000 ALTER TABLE `u_fen_event` DISABLE KEYS */;
-INSERT INTO `u_fen_event` VALUES (1,'测试',100,0,'n','on',1000);
-/*!40000 ALTER TABLE `u_fen_event` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_fen_order`
@@ -491,15 +386,6 @@ CREATE TABLE `u_fen_order` (
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `u_fen_order`
---
-
-LOCK TABLES `u_fen_order` WRITE;
-/*!40000 ALTER TABLE `u_fen_order` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_fen_order` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
 -- Table structure for table `u_goods`
 --
 
@@ -517,18 +403,8 @@ CREATE TABLE `u_goods` (
   `appid` bigint(20) NOT NULL,
   PRIMARY KEY (`id`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_goods`
---
-
-LOCK TABLES `u_goods` WRITE;
-/*!40000 ALTER TABLE `u_goods` DISABLE KEYS */;
-INSERT INTO `u_goods` VALUES (1,'会员','vip',86400,1.00,NULL,'y',1000);
-/*!40000 ALTER TABLE `u_goods` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_login`
@@ -550,17 +426,8 @@ CREATE TABLE `u_login` (
   KEY `uid` (`uid`),
   KEY `sn` (`sn`),
   KEY `appid` (`appid`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_login`
---
-
-LOCK TABLES `u_login` WRITE;
-/*!40000 ALTER TABLE `u_login` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_login` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_logs`
@@ -585,18 +452,8 @@ CREATE TABLE `u_logs` (
   KEY `uid` (`uid`),
   KEY `uid_type_appid` (`uid`,`type`,`appid`),
   KEY `type` (`type`)
-) ENGINE=InnoDB AUTO_INCREMENT=41 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_logs`
---
-
-LOCK TABLES `u_logs` WRITE;
-/*!40000 ALTER TABLE `u_logs` DISABLE KEYS */;
-INSERT INTO `u_logs` VALUES (1,'admin',1,'app_add',NULL,1765197454,'120.231.157.7','广东清远',1000),(2,'admin',1,'app_add',NULL,1765244426,'183.203.195.138','山西阳泉',1001),(3,'admin',1,'cdkGroup_add',NULL,1765244444,'183.203.195.138','山西阳泉',1001),(4,'admin',1,'cdkGroup_add','{\"id\": 1, \"val\": 86400, \"name\": \"11\", \"type\": \"vip\", \"appid\": 1001, \"price\": 1}',1765244450,'183.203.195.138','山西阳泉',1001),(5,'admin',1,'cdkKami_add','{\"gid\": 1, \"num\": 1, \"out\": \"\", \"pre\": \"\", \"note\": \"\", \"length\": 13, \"password\": \"\"}',1765244458,'183.203.195.138','山西阳泉',1001),(6,'admin',1,'cdkGroup_add',NULL,1765548606,'118.80.92.126','山西阳泉',1000),(7,'admin',1,'cdkGroup_add','{\"id\": 2, \"val\": 86400, \"name\": \"11\", \"type\": \"vip\", \"appid\": 1000, \"price\": 1}',1765548611,'118.80.92.126','山西阳泉',1000),(8,'admin',1,'cdkUser_add','{\"gid\": 2, \"num\": 1, \"out\": \"\", \"pre\": \"\", \"note\": \"\", \"length\": 13}',1765548619,'118.80.92.126','山西阳泉',1000),(9,'admin',1,'cdkUser_outall','{\"ids\": [1], \"out\": \"txt\"}',1765548628,'118.80.92.126','山西阳泉',1000),(10,'admin',1,'cdkUser_outall','{\"ids\": [1], \"out\": \"txt\"}',1765548667,'118.80.92.126','山西阳泉',1000),(11,'admin',1,'user_add',NULL,1768546127,'120.231.156.218','广东清远',1000),(12,'admin',1,'user_edit','{\"id\": 1, \"fen\": 0, \"vip\": 86398}',1768546137,'120.231.156.218','广东清远',1000),(13,'admin',1,'ver_add','{\"mid\": 0, \"name\": \"测试\", \"ver_key\": \"test\", \"ver_major\": 1, \"ver_minor\": 1, \"ver_patch\": 1, \"ver_state\": \"on\", \"ver_new_url\": \"\", \"ver_off_msg\": \"\", \"ver_new_content\": \"\"}',1768546205,'120.231.156.218','广东清远',1000),(14,'admin',1,'app_edit','{\"reg_way\": \"wordnum\", \"reg_state\": \"on\", \"logon_sn_dk\": \"n\", \"logon_state\": \"on\", \"reg_off_msg\": \"\", \"reg_time_ip\": 24, \"reg_time_sn\": 24, \"logon_sn_num\": 0, \"logon_off_msg\": \"\", \"reg_is_inviter\": \"n\", \"logon_token_exp\": 86400, \"logon_ban_expire\": \"y\", \"logon_sn_over_ban\": true, \"logon_sn_unbde_val\": 100, \"logon_open_qqconfig\": {\"appID\": \"\", \"state\": \"on\", \"appKey\": \"\"}, \"logon_open_wxconfig\": {\"appID\": \"\", \"state\": \"on\", \"appSecret\": \"\"}, \"logon_sn_unbde_auto\": false, \"logon_sn_unbde_type\": \"fen\", \"login_prevent_brute_force\": true}',1768546267,'120.231.156.218','广东清远',1000),(15,'user',1,'login',NULL,1768546283,'1.12.252.32','广东广州',1000),(16,'admin',1,'ver_add','{\"mid\": 0, \"name\": \"测试\", \"ver_key\": \"test\", \"ver_major\": 1, \"ver_minor\": 1, \"ver_patch\": 1, \"ver_state\": \"on\", \"ver_new_url\": \"\", \"ver_off_msg\": \"\", \"ver_new_content\": \"\"}',1768546359,'120.231.156.218','广东清远',1001),(17,'admin',1,'cdkKami_add','{\"gid\": 1, \"num\": 1, \"out\": \"\", \"pre\": \"\", \"note\": \"\", \"length\": 13, \"password\": \"\"}',1768546377,'120.231.156.218','广东清远',1001),(18,'kami',2,'login',NULL,1768546388,'1.12.252.32','广东广州',1001),(19,'kami',2,'info',NULL,1768546451,'1.12.252.32','广东广州',1001),(20,'admin',1,'user_add',NULL,1770280737,'36.110.36.142','北京北京',1000),(21,'admin',1,'app_edit','{\"pay_wx_type\": \"jie\", \"pay_ali_type\": \"jie\", \"pay_wx_state\": \"off\", \"pay_ali_state\": \"on\", \"pay_wx_config\": {}, \"pay_ali_config\": {}}',1770360560,'36.110.36.142','北京北京',1000),(22,'admin',1,'app_edit','{\"pay_wx_type\": \"jie\", \"pay_ali_type\": \"jie\", \"pay_wx_state\": \"off\", \"pay_ali_state\": \"off\", \"pay_wx_config\": {}, \"pay_ali_config\": {}}',1770439467,'36.110.36.142','北京北京',1000),(23,'admin',1,'app_edit','{\"pay_wx_type\": \"jie\", \"pay_ali_type\": \"jie\", \"pay_wx_state\": \"on\", \"pay_ali_state\": \"on\", \"pay_wx_config\": {}, \"pay_ali_config\": {}}',1770439486,'36.110.36.142','北京北京',1000),(24,'admin',1,'app_edit','{\"pay_wx_type\": \"jie\", \"pay_ali_type\": \"jie\", \"pay_wx_state\": \"on\", \"pay_ali_state\": \"on\", \"pay_wx_config\": {}, \"pay_ali_config\": {\"pid\": \"9494\", \"AccessID\": \"jdjdnd\", \"AccessKey\": \"bbxbd\"}}',1770443273,'36.110.36.142','北京北京',1000),(25,'admin',1,'cdkUser_add',NULL,1770548235,'36.110.36.142','北京北京',1000),(26,'admin',1,'cdkUser_add','{\"gid\": 2, \"num\": 1, \"out\": \"\", \"pre\": \"\", \"note\": \"\", \"length\": 13}',1770548241,'36.110.36.142','北京北京',1000),(27,'admin',1,'ver_add',NULL,1770628301,'36.110.36.142',NULL,1000),(28,'admin',1,'ver_add',NULL,1770628308,'36.110.36.142',NULL,1000),(29,'admin',1,'ver_add',NULL,1770628316,'36.110.36.142',NULL,1000),(30,'admin',1,'ver_add',NULL,1770628340,'36.110.36.142',NULL,1000),(31,'admin',1,'ver_add','{\"mid\": 0, \"name\": \"cce\", \"ver_key\": \"ce\", \"ver_major\": 1, \"ver_minor\": 0, \"ver_patch\": 0, \"ver_state\": \"on\", \"ver_new_url\": \"\", \"ver_off_msg\": \"\", \"ver_new_content\": \"\"}',1770628346,'36.110.36.142',NULL,1000),(32,'admin',1,'ver_del','{\"id\": 3}',1770628361,'36.110.36.142',NULL,1000),(33,'admin',1,'encryption_add',NULL,1770684301,'36.110.36.142','北京北京',1000),(34,'admin',1,'encryption_add',NULL,1770684326,'36.110.36.142','北京北京',1000),(35,'admin',1,'encryption_add',NULL,1770684332,'36.110.36.142','北京北京',1000),(36,'admin',1,'encryption_add',NULL,1770684368,'36.110.36.142','北京北京',1000),(37,'admin',1,'encryption_add',NULL,1770684383,'36.110.36.142','北京北京',1000),(38,'admin',1,'goods_add',NULL,1770716274,'36.110.36.142','北京北京',1000),(39,'admin',1,'goods_add','{\"val\": 86400, \"name\": \"会员\", \"type\": \"vip\", \"blurb\": \"\", \"money\": 1}',1770716279,'36.110.36.142','北京北京',1000),(40,'admin',1,'fenEvent_add',NULL,1770775630,'36.110.36.142','北京北京',1000);
-/*!40000 ALTER TABLE `u_logs` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_message`
@@ -626,15 +483,6 @@ CREATE TABLE `u_message` (
   KEY `uid` (`uid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_message`
---
-
-LOCK TABLES `u_message` WRITE;
-/*!40000 ALTER TABLE `u_message` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_message` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_order`
@@ -671,15 +519,6 @@ CREATE TABLE `u_order` (
   KEY `trade_no` (`trade_no`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_order`
---
-
-LOCK TABLES `u_order` WRITE;
-/*!40000 ALTER TABLE `u_order` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_order` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_user`
@@ -721,18 +560,8 @@ CREATE TABLE `u_user` (
   KEY `reg_ip` (`reg_ip`),
   KEY `ban` (`ban`),
   KEY `reg_sn` (`reg_sn`)
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
-
---
--- Dumping data for table `u_user`
---
-
-LOCK TABLES `u_user` WRITE;
-/*!40000 ALTER TABLE `u_user` DISABLE KEYS */;
-INSERT INTO `u_user` VALUES (1,NULL,NULL,'test123',NULL,NULL,'e10adc3949ba59abbe56e057f20f883e',NULL,1768632535,0,NULL,NULL,NULL,1768546127,'120.231.156.218',NULL,NULL,0,NULL,NULL,1000),(2,NULL,NULL,'46465959',NULL,NULL,'5c5aa8549d7ee3356120dbbe3f0ec3f5',NULL,NULL,0,NULL,NULL,NULL,1770280737,'36.110.36.142',NULL,NULL,0,NULL,NULL,1000);
-/*!40000 ALTER TABLE `u_user` ENABLE KEYS */;
-UNLOCK TABLES;
 
 --
 -- Table structure for table `u_vcode`
@@ -758,22 +587,6 @@ CREATE TABLE `u_vcode` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
---
--- Dumping data for table `u_vcode`
---
-
-LOCK TABLES `u_vcode` WRITE;
-/*!40000 ALTER TABLE `u_vcode` DISABLE KEYS */;
-/*!40000 ALTER TABLE `u_vcode` ENABLE KEYS */;
-UNLOCK TABLES;
-
---
--- Dumping events for database 'uyanzheng'
---
-
---
--- Dumping routines for database 'uyanzheng'
---
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -784,4 +597,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-02-11 12:55:45
+-- Dump completed

@@ -3,12 +3,44 @@ import { useUserStore } from '@/store'
 import NProgress from 'nprogress'
 import tool from '@/utils/tool'
 import 'nprogress/nprogress.css'
+import { request } from '@/utils/request.js'
 
 import routes from './webRouter.js'
 
 const title = import.meta.env.VITE_APP_TITLE
 const defaultRoutePath = '/'
-const whiteRoute = ['login']
+// 白名单路由：不需要登录即可访问
+const whiteRoute = ['login', 'install', 'apps', 'portal']
+
+// 安装状态缓存：null=未检查, true=已安装, false=未安装
+let installChecked = null
+
+/**
+ * 检查系统是否已安装
+ * @returns {Promise<boolean>}
+ */
+async function checkInstalled() {
+  // 已检查过，返回缓存结果
+  if (installChecked !== null) {
+    return installChecked
+  }
+  
+  try {
+    const res = await request({
+      url: '/install/check',
+      method: 'get',
+      timeout: 5000
+    })
+    // code === 200 表示已安装
+    installChecked = res.code === 200
+    return installChecked
+  } catch (error) {
+    console.error('安装检查失败:', error)
+    // 检查失败时假设已安装，避免阻塞正常访问
+    installChecked = true
+    return true
+  }
+}
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -21,6 +53,23 @@ router.beforeEach(async (to, from, next) => {
   let toTitle = to.meta.title ? to.meta.title : to.name
   document.title = `${toTitle} - ${title}`
   const token = tool.local.get(import.meta.env.VITE_APP_TOKEN_PREFIX)
+
+  // 安装页面直接放行
+  if (to.name === 'install') {
+    next()
+    return
+  }
+
+  // 检查是否已安装（访问 admin 相关路由时）
+  const isAdminRoute = to.path.startsWith('/admin') || to.path.startsWith('/dashboard') || to.path.startsWith('/usercenter')
+  if (isAdminRoute || to.name === 'login') {
+    const installed = await checkInstalled()
+    if (!installed) {
+      // 未安装，跳转到安装页面
+      next({ name: 'install' })
+      return
+    }
+  }
   
   // 登录状态下
   if (token) {

@@ -10,6 +10,7 @@ use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use Nakamasa_utils::encrypt;
 
 /// 检查系统是否已安装（通过 config.yaml 文件是否存在判断）
 fn is_installed() -> bool {
@@ -34,6 +35,17 @@ pub struct InstallRequest {
     install_type: String,
     install_upgrade: Option<String>,
     adm_pwd: Option<String>,
+    /// 是否启用TLS (HTTPS)，默认为 true
+    #[serde(default = "default_tls_enabled")]
+    tls_enabled: bool,
+    /// 自定义证书文件路径（可选）
+    cert_path: Option<String>,
+    /// 自定义私钥文件路径（可选）
+    key_path: Option<String>,
+}
+
+fn default_tls_enabled() -> bool {
+    true
 }
 
 fn generate_random_string(length: usize) -> String {
@@ -223,6 +235,9 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         install_req.redis_port,
         install_req.redis_pwd.as_deref(),
         &adm_pwd_key,
+        install_req.tls_enabled,
+        install_req.cert_path.as_deref(),
+        install_req.key_path.as_deref(),
     );
     
     if let Err(e) = fs::write("config.yaml", &config_content) {
@@ -240,6 +255,14 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 }
 
 /// 生成 config.yaml 文件内容
+/// 
+/// 敏感信息会被加密：
+/// - MySQL 密码
+/// - Redis 密码
+/// - admin.keys (密码密钥)
+/// - admin.token_key (JWT 密钥)
+/// 
+/// 加密密钥为 app.code
 fn generate_config_yaml(
     mysql_host: &str,
     mysql_port: u16,
@@ -251,14 +274,44 @@ fn generate_config_yaml(
     redis_port: u16,
     redis_pwd: Option<&str>,
     adm_pwd_key: &str,
+    tls_enabled: bool,
+    cert_path: Option<&str>,
+    key_path: Option<&str>,
 ) -> String {
-    let redis_pwd_str = redis_pwd.unwrap_or("");
-    let adm_jwt_key = generate_random_string(64);
+    // 生成随机密钥
     let app_code = generate_random_string(32);
+    let adm_jwt_key = generate_random_string(64);
+    
+    // 加密敏感信息
+    let encrypted_mysql_pwd = encrypt(mysql_pwd, &app_code)
+        .expect("MySQL密码加密失败");
+    let encrypted_redis_pwd = redis_pwd
+        .map(|p| encrypt(p, &app_code).expect("Redis密码加密失败"))
+        .unwrap_or_default();
+    let encrypted_adm_pwd_key = encrypt(adm_pwd_key, &app_code)
+        .expect("管理员密码密钥加密失败");
+    let encrypted_adm_jwt_key = encrypt(&adm_jwt_key, &app_code)
+        .expect("JWT密钥加密失败");
+    
+    // 构建TLS配置部分
+    let tls_config = if tls_enabled {
+        let cert_line = cert_path
+            .map(|p| format!("\n    cert_path: {}", p))
+            .unwrap_or_default();
+        let key_line = key_path
+            .map(|p| format!("\n    key_path: {}", p))
+            .unwrap_or_default();
+        format!("    tls_enabled: true{}{}", cert_line, key_line)
+    } else {
+        "    tls_enabled: false".to_string()
+    };
+    
+    // 根据TLS状态设置host协议
+    let host_protocol = if tls_enabled { "https" } else { "http" };
     
     format!(
         r#"app:
-    host: http://127.0.0.1:8080
+    host: {}://127.0.0.1:8080
     code: "{}"
     upload_dir: ./data/upload
     upload_size: 2
@@ -277,6 +330,7 @@ fn generate_config_yaml(
         token_key: {}
 server:
     port: 8080
+{}
 mysql:
     host: {}
     port: {}
@@ -312,18 +366,20 @@ i18n:
   query_param: "lang"
   header_name: "Accept-Language"
 "#,
+        host_protocol,
         app_code,
-        adm_pwd_key,
-        adm_jwt_key,
+        encrypted_adm_pwd_key,
+        encrypted_adm_jwt_key,
+        tls_config,
         mysql_host,
         mysql_port,
         mysql_user,
-        mysql_pwd,
+        encrypted_mysql_pwd,
         mysql_name,
         mysql_pre,
         redis_host,
         redis_port,
-        redis_pwd_str
+        encrypted_redis_pwd
     )
 }
 

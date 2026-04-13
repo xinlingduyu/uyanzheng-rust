@@ -1,6 +1,7 @@
 //! HTTP 服务器模块
 //! 
 //! 提供高性能、安全的 HTTP/HTTPS/QUIC 服务器配置
+//! 支持HTTP/HTTPS切换和自定义证书路径
 
 use salvo::Router;
 use salvo::prelude::*;
@@ -15,6 +16,10 @@ use crate::core::{AppState, I18nMiddleware, terminal_t, t_with_args};
 use crate::config::ServerConfig;
 use crate::config;
 
+/// 内置证书（编译时嵌入二进制文件）
+const BUILTIN_CERT: &[u8] = include_bytes!("../../certs/ssl.crt");
+const BUILTIN_KEY: &[u8] = include_bytes!("../../certs/ssl.key");
+
 /// 服务器配置
 pub struct Server {
     config: &'static ServerConfig,
@@ -25,26 +30,45 @@ impl Server {
         Self { config }
     }
 
+    /// 加载TLS证书
+    /// 
+    /// 优先级：
+    /// 1. 配置文件中指定的自定义证书路径
+    /// 2. 内置证书（编译时嵌入）
+    async fn load_certificates(&self) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
+        // 检查是否配置了自定义证书路径
+        match (self.config.cert_path(), self.config.key_path()) {
+            (Some(cert_path), Some(key_path)) => {
+                tracing::info!("加载自定义证书: cert={}, key={}", cert_path, key_path);
+                
+                let cert = tokio::fs::read(cert_path).await
+                    .map_err(|e| anyhow::anyhow!("读取证书文件失败: {}", e))?;
+                let key = tokio::fs::read(key_path).await
+                    .map_err(|e| anyhow::anyhow!("读取私钥文件失败: {}", e))?;
+                
+                tracing::info!("自定义证书加载成功");
+                Ok((cert, key))
+            }
+            _ => {
+                tracing::info!("使用内置证书");
+                Ok((BUILTIN_CERT.to_vec(), BUILTIN_KEY.to_vec()))
+            }
+        }
+    }
+
     /// 启动服务器
     pub async fn start(&self, state: Arc<AppState>, router: Router) -> anyhow::Result<()> {
         let router = self.build_router(state, router);
         let port = self.config.port();
+        let tls_enabled = self.config.tls_enabled();
 
-        tracing::info!("{}", terminal_t("tls.loading_certs"));
-        
-        // 加载 TLS 证书
-        let cert = include_bytes!("../../certs/ssl.crt").to_vec();
-        let key = include_bytes!("../../certs/ssl.key").to_vec();
-
-        tracing::info!("{}", terminal_t("tls.loaded"));
-        
         // 创建 CORS 中间件
         let cors = Cors::new()
-        .allow_origin(["https://127.0.0.1:8888", "https://localhost:8888","https://192.168.138.235:8888"])
-        .allow_methods(vec![Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
-       .allow_credentials(true)
-       .allow_headers(vec!["content-type", "authorization", "accept-language"])
-        .into_handler();
+            .allow_origin(["https://127.0.0.1:8888", "https://localhost:8888", "http://127.0.0.1:8888", "http://localhost:8888", "https://192.168.138.235:8888"])
+            .allow_methods(vec![Method::GET, Method::POST, Method::DELETE, Method::OPTIONS])
+            .allow_credentials(true)
+            .allow_headers(vec!["content-type", "authorization", "accept-language"])
+            .into_handler();
 
         // 创建服务
         let mut service = Service::new(router).hoop(cors); 
@@ -55,57 +79,79 @@ impl Server {
             tracing::info!("{}", terminal_t("server.debug_mode"));
         }
 
-        // 配置 TLS
-        tracing::info!("{}", terminal_t("tls.configuring"));
-        let rustls_config = RustlsConfig::new(
-            Keycert::new()
-                .cert(cert.as_slice())
-                .key(key.as_slice())
-        );
-    
-        // 创建监听器
-        tracing::info!("{}", terminal_t("server.creating_listener"));
-        
-        // 根据平台选择监听方式
-        // 移动设备：仅 TCP + TLS，禁用 QUIC 减少资源消耗
-        // 服务器：TCP + TLS + QUIC
-        #[cfg(target_os = "android")]
-        let acceptor = {
-            tracing::info!("Mobile mode: TCP + TLS only");
-            TcpListener::new(("0.0.0.0", port))
-                .rustls(rustls_config.clone())
-                .bind()
-                .await
-        };
-        
-        #[cfg(not(target_os = "android"))]
-        let acceptor = {
-            tracing::info!("Server mode: TCP + TLS + QUIC");
-            let tcp_listener = TcpListener::new(("0.0.0.0", port))
-                .rustls(rustls_config.clone());
+        // 根据TLS配置选择启动模式
+        if tls_enabled {
+            // HTTPS 模式
+            tracing::info!("{}", terminal_t("tls.loading_certs"));
+            let (cert, key) = self.load_certificates().await?;
+            tracing::info!("{}", terminal_t("tls.loaded"));
             
-            // QUIC 协议监听器
-            tracing::info!("{}", terminal_t("quic.enabling"));
-            let quic_config = rustls_config.build_quinn_config()
-                .map_err(|e| anyhow::anyhow!("Failed to build QUIC config: {}", e))?;
+            tracing::info!("{}", terminal_t("tls.configuring"));
+            let rustls_config = RustlsConfig::new(
+                Keycert::new()
+                    .cert(cert.as_slice())
+                    .key(key.as_slice())
+            );
+        
+            tracing::info!("{}", terminal_t("server.creating_listener"));
             
-            QuinnListener::new(quic_config, ("0.0.0.0", port))
-                .join(tcp_listener)
+            // 根据平台选择监听方式
+            #[cfg(target_os = "android")]
+            let acceptor = {
+                tracing::info!("移动端模式: TCP + TLS (HTTPS)");
+                TcpListener::new(("0.0.0.0", port))
+                    .rustls(rustls_config.clone())
+                    .bind()
+                    .await
+            };
+            
+            #[cfg(not(target_os = "android"))]
+            let acceptor = {
+                tracing::info!("服务器模式: TCP + TLS (HTTPS) + QUIC");
+                let tcp_listener = TcpListener::new(("0.0.0.0", port))
+                    .rustls(rustls_config.clone());
+                
+                tracing::info!("{}", terminal_t("quic.enabling"));
+                let quic_config = rustls_config.build_quinn_config()
+                    .map_err(|e| anyhow::anyhow!("构建QUIC配置失败: {}", e))?;
+                
+                QuinnListener::new(quic_config, ("0.0.0.0", port))
+                    .join(tcp_listener)
+                    .bind()
+                    .await
+            };
+            
+            // 输出监听信息
+            let port_str = port.to_string();
+            let mut args = HashMap::new();
+            args.insert("port", port_str.as_str());
+            tracing::info!("HTTPS服务器启动在端口 {}", port);
+            tracing::info!("{}", t_with_args("server.listening", &args));
+            tracing::info!("{}", terminal_t("server.ready"));
+            
+            salvo::prelude::Server::new(acceptor)
+                .serve(service)
+                .await;
+        } else {
+            // HTTP 模式（无TLS）
+            tracing::info!("HTTP模式: 仅TCP（无TLS加密）");
+            tracing::info!("{}", terminal_t("server.creating_listener"));
+            
+            let acceptor = TcpListener::new(("0.0.0.0", port))
                 .bind()
-                .await
-        };
-        
-        // 输出监听端口信息
-        let port_str = port.to_string();
-        let mut args = HashMap::new();
-        args.insert("port", port_str.as_str());
-        tracing::info!("{}", t_with_args("server.listening", &args));
-        tracing::info!("{}", terminal_t("server.ready"));
-        
-        // 启动服务器
-        salvo::prelude::Server::new(acceptor)
-            .serve(service)
-            .await;
+                .await;
+            
+            let port_str = port.to_string();
+            let mut args = HashMap::new();
+            args.insert("port", port_str.as_str());
+            tracing::info!("HTTP服务器启动在端口 {}", port);
+            tracing::info!("{}", t_with_args("server.listening", &args));
+            tracing::info!("{}", terminal_t("server.ready"));
+            
+            salvo::prelude::Server::new(acceptor)
+                .serve(service)
+                .await;
+        }
 
         Ok(())
     }

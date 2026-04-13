@@ -18,6 +18,7 @@ pub mod jwt;
 pub mod geoip;
 pub mod db_mysql;
 pub mod tiered_cache;
+pub mod crypto;
 
 /// 高性能缓存模块
 /// 
@@ -42,6 +43,15 @@ pub use jwt::*;
 pub use geoip::*;
 pub use db_mysql::*;
 pub use tiered_cache::*;
+pub use crypto::{
+    encrypt,
+    decrypt,
+    is_encrypted,
+    decrypt_if_needed,
+    secure_zero,
+    ENCRYPTED_PREFIX,
+    CryptoError,
+};
 
 // 重新导出高性能缓存的核心类型
 pub use high_perf_cache::{

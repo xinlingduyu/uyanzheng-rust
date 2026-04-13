@@ -195,9 +195,9 @@ pub async fn img(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
     
-    // 获取文件字段
-    tracing::info!("查找 file 字段...");
-    let file: &salvo::http::form::FilePart = match form_data.files.get("file") {
+    // 获取文件字段 - 支持 file 和 image 两种字段名（前端可能使用 image）
+    tracing::info!("查找 file/image 字段...");
+    let file: &salvo::http::form::FilePart = match form_data.files.get("file").or_else(|| form_data.files.get("image")) {
         Some(f) => {
             tracing::info!("找到文件: name={:?}, size={}, content_type={:?}", 
                 f.name(), f.size(), f.content_type());
@@ -343,8 +343,8 @@ pub async fn index(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
     
-    // 获取文件字段
-    let file: &salvo::http::form::FilePart = match form_data.files.get("file") {
+    // 获取文件字段 - 支持 file 和 image 两种字段名
+    let file: &salvo::http::form::FilePart = match form_data.files.get("file").or_else(|| form_data.files.get("image")) {
         Some(f) => f,
         None => {
             res.render(Json(ApiResponse::<()>::error("缺少上传文件", 17)));

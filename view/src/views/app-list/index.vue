@@ -158,6 +158,7 @@ import { useRouter } from 'vue-router'
 import { Message, Modal } from '@arco-design/web-vue'
 import appApi from '@/api/system/app'
 import { useUserStore } from '@/store'
+import tool from '@/utils/tool'
 
 const router = useRouter()
 const userStore = useUserStore()

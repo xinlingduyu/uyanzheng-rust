@@ -62,6 +62,11 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/system/notice").hoop(AdminAuth::new()).get(system::get_notice_list))
         .push(Router::with_path("/system/statistics").hoop(AdminAuth::new()).get(system::get_statistics))
         .push(Router::with_path("/system/loginChart").hoop(AdminAuth::new()).get(system::get_login_chart))
+        // 日志接口 - 个人中心
+        .push(Router::with_path("/system/getLoginLogList").hoop(AdminAuth::new()).get(system::get_login_log_list))
+        .push(Router::with_path("/system/getOperationLogList").hoop(AdminAuth::new()).get(system::get_operation_log_list))
+        // 上传图片接口 - 兼容前端API
+        .push(Router::with_path("/system/uploadImage").hoop(AdminAuth::new()).post(upload::img))
         // App - 需要认证
         .push(Router::with_path("/app/get").hoop(AdminAuth::new()).post(app::get_info))
         .push(Router::with_path("/app/getInfo").hoop(AdminAuth::new()).post(app::get_info))
@@ -86,6 +91,9 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/user/delall").hoop(AdminAuth::new()).post(user::del_all))
         .push(Router::with_path("/user/getLog").hoop(AdminAuth::new()).post(user::get_log))
         .push(Router::with_path("/user/unbindSn").hoop(AdminAuth::new()).post(user::unbind_sn))
+        // User 个人中心接口
+        .push(Router::with_path("/user/updateInfo").hoop(AdminAuth::new()).post(user::update_info))
+        .push(Router::with_path("/user/modifyPassword").hoop(AdminAuth::new()).post(user::modify_password))
         // CDK Kami - 需要认证
         .push(Router::with_path("/cdkKami/list").hoop(AdminAuth::new()).post(cdk_kami::get_list))
         .push(Router::with_path("/cdkKami/add").hoop(AdminAuth::new()).post(cdk_kami::add))
@@ -234,4 +242,6 @@ pub fn admin_routes() -> Router {
         .push(Router::with_path("/flamegraph/svg").hoop(AdminAuth::new()).get(flamegraph::flame_svg))
         .push(Router::with_path("/flamegraph/pprof").hoop(AdminAuth::new()).get(flamegraph::flame_pprof))
         .push(Router::with_path("/flamegraph/auto").hoop(AdminAuth::new()).post(flamegraph::flame_auto_profile))
+        // 更新日志 - 个人中心
+        .push(Router::with_path("/uplog").hoop(AdminAuth::new()).get(ver::get_uplog))
 }

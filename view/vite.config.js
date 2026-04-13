@@ -56,6 +56,12 @@ export default ({ mode }) => {
           secure: false, // 关键：允许代理访问自签名证书的 HTTPS 后端
           changeOrigin: true,
           ws: true
+        },
+        // 上传文件路径代理 - 解决 Mixed Content 问题
+        '/upload': {
+          target: env.VITE_APP_BASE_URL,
+          secure: false,
+          changeOrigin: true
         }
       }
     }

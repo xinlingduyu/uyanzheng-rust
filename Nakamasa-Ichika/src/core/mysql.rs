@@ -1,6 +1,7 @@
 //! MySQL 数据库连接池模块
 //! 
 //! 提供高性能、可靠的数据库连接管理
+//! 支持配置密码加密，运行时解密
 
 use crate::config;
 use anyhow::Context;
@@ -12,13 +13,31 @@ use std::time::Duration;
 use tracing::info;
 
 /// 获取纯 SQLx 的 MySQL 连接池 - 优化高并发配置
+/// 
+/// 支持加密密码：如果配置中的密码已加密，会使用 app.code 解密
+/// 连接成功后，解密后的密码会从内存中清除
 pub async fn init_sqlx_pool() -> anyhow::Result<Pool<MySql>> {
     let cpus = num_cpus::get() as u32;
     let database_config = config::get().database();
+    let app_config = config::get().app();
+    
+    // 获取解密密钥
+    let secret = app_config.code();
+    
+    // 检查是否使用加密密码
+    if database_config.is_password_encrypted() {
+        info!("MySQL: 检测到加密密码，正在解密...");
+    } else {
+        info!("MySQL: 使用明文密码连接");
+    }
+    
+    // 获取解密后的密码（连接后会被释放）
+    // decrypt_if_needed 会自动处理：加密则解密，明文则直接返回
+    let decrypted_password = database_config.decrypted_password(secret);
     
     let connect_options = MySqlConnectOptions::new()
         .username(database_config.user())
-        .password(database_config.password())
+        .password(&decrypted_password)
         .host(database_config.host())
         .port(database_config.port())
         .database(database_config.dbname())
@@ -51,6 +70,9 @@ pub async fn init_sqlx_pool() -> anyhow::Result<Pool<MySql>> {
     
     info!("Database connected successfully (min: {}, max: {})", min_conn, max_conn);
     log_database_version(&pool).await?;
+    
+    // 注意：decrypted_password 在此处会被 drop，密码从内存中清除
+    // 连接池内部保存的是已建立的连接，不再需要明文密码
     
     Ok(pool)
 }
