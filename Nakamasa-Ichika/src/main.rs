@@ -67,6 +67,11 @@
 /// 提供应用程序配置的加载和访问。
 mod config;
 
+/// 命令行参数模块
+///
+/// 提供命令行参数解析，支持覆盖配置文件设置。
+mod cli;
+
 /// 应用层模块
 ///
 /// 包含业务逻辑、处理器、中间件等。
@@ -82,6 +87,7 @@ mod core;
 // ============================================================================
 
 use app::routes::routes;
+use cli::CliArgs;
 use core::run;
 
 /// 应用程序主入口
@@ -89,8 +95,9 @@ use core::run;
 /// # 流程
 ///
 /// 1. 安装加密提供者（rustls 0.23+ 需要）
-/// 2. 加载路由配置
-/// 3. 启动服务器
+/// 2. 解析命令行参数
+/// 3. 加载路由配置
+/// 4. 启动服务器
 ///
 /// # Errors
 ///
@@ -107,7 +114,10 @@ async fn main() -> Result<(), anyhow::Error> {
     rustls::crypto::CryptoProvider::install_default(
         rustls::crypto::aws_lc_rs::default_provider()
     ).expect("Failed to install crypto provider");
-    
-    // 启动应用
-    run(routes()).await
+
+    // 解析命令行参数
+    let cli_args = CliArgs::parse_args();
+
+    // 启动应用（传入命令行参数）
+    run(routes(), cli_args).await
 }

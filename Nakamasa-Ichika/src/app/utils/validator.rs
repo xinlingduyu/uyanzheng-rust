@@ -14,6 +14,10 @@ static WORDNUM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-zA-Z0-9]+$").unwrap()
 });
 
+static TABLE_PREFIX_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap()
+});
+
 static PASSWORD_REGEX: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-zA-Z0-9._*\-]{6,}$").unwrap()
 });
@@ -104,6 +108,16 @@ impl Validator {
     pub fn wordnum(&mut self, field: &str, value: &str, min: usize, max: usize) -> &mut Self {
         if !WORDNUM_REGEX.is_match(value) {
             self.error = Some(format!("{}{}", field, ERR_LETTER_NUM));
+        } else if value.len() < min || value.len() > max {
+            self.error = Some(format!("{}{}{}-{}{}", field, ERR_LENGTH, min, max, ERR_BIT));
+        }
+        self
+    }
+
+    #[inline]
+    pub fn table_prefix(&mut self, field: &str, value: &str, min: usize, max: usize) -> &mut Self {
+        if !TABLE_PREFIX_REGEX.is_match(value) {
+            self.error = Some(format!("{}仅支持字母+数字+下划线+横杠", field));
         } else if value.len() < min || value.len() > max {
             self.error = Some(format!("{}{}{}-{}{}", field, ERR_LENGTH, min, max, ERR_BIT));
         }

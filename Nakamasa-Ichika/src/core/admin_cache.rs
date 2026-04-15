@@ -88,8 +88,8 @@ pub struct AdminCacheService {
     cache: ShardedCacheV2<u64, AdminData>,
     /// 用户名 -> 管理员ID
     name_index: ShardedCacheV2<String, u64>,
-    /// 数据库连接池
-    db: MySqlPool,
+    /// 数据库连接池（安装模式下为 Some，安装引导时为 None）
+    db: Option<MySqlPool>,
 }
 
 impl AdminCacheService {
@@ -105,7 +105,7 @@ impl AdminCacheService {
             },
             ..Default::default()
         };
-        
+
         let name_config = CacheConfig {
             max_entries: capacity,
             shard_count: 4,
@@ -113,11 +113,36 @@ impl AdminCacheService {
             eviction_policy: EvictionPolicy::LRU,
             ..Default::default()
         };
-        
+
         Self {
             cache: ShardedCacheV2::new(config),
             name_index: ShardedCacheV2::new(name_config),
-            db,
+            db: Some(db),
+        }
+    }
+
+    /// 创建空的管理员缓存服务（用于安装模式，无数据库时）
+    pub fn new_empty() -> Self {
+        let config = CacheConfig {
+            max_entries: 100,
+            shard_count: 4,
+            default_ttl: Duration::from_secs(60),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+
+        let name_config = CacheConfig {
+            max_entries: 100,
+            shard_count: 2,
+            default_ttl: Duration::from_secs(60),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+
+        Self {
+            cache: ShardedCacheV2::new(config),
+            name_index: ShardedCacheV2::new(name_config),
+            db: None,
         }
     }
     
@@ -264,13 +289,15 @@ impl AdminCacheService {
     
     /// 从数据库加载管理员（通过ID）
     async fn load_from_db_by_id(&self, id: u64) -> Result<Option<AdminData>, String> {
+        let db = self.db.as_ref().ok_or("Database not available")?;
+        
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
             "SELECT id, user, password, notes, state, avatars, auth, lockin, appid FROM u_admin WHERE id = ?"
         )
         .bind(id)
-        .fetch_optional(&self.db)
+        .fetch_optional(db)
         .await;
         
         match result {
@@ -292,13 +319,15 @@ impl AdminCacheService {
     
     /// 从数据库加载管理员（通过用户名）
     async fn load_from_db_by_name(&self, username: &str) -> Result<Option<AdminData>, String> {
+        let db = self.db.as_ref().ok_or("Database not available")?;
+        
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
             "SELECT id, user, password, notes, state, avatars, auth, lockin, appid FROM u_admin WHERE user = ?"
         )
         .bind(username)
-        .fetch_optional(&self.db)
+        .fetch_optional(db)
         .await;
         
         match result {
@@ -320,6 +349,8 @@ impl AdminCacheService {
     
     /// 从数据库验证登录
     async fn verify_from_db(&self, username: &str, password_hash: &str) -> Result<Option<AdminData>, String> {
+        let db = self.db.as_ref().ok_or("Database not available")?;
+        
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
@@ -327,7 +358,7 @@ impl AdminCacheService {
         )
         .bind(username)
         .bind(password_hash)
-        .fetch_optional(&self.db)
+        .fetch_optional(db)
         .await;
         
         match result {
@@ -349,13 +380,15 @@ impl AdminCacheService {
     
     /// 从数据库验证Token
     async fn verify_token_from_db(&self, id: u64, password_md5: &str) -> Result<Option<AdminData>, String> {
+        let db = self.db.as_ref().ok_or("Database not available")?;
+        
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
             "SELECT id, user, password, notes, state, avatars, auth, lockin, appid FROM u_admin WHERE id = ? AND state = 'y'"
         )
         .bind(id)
-        .fetch_optional(&self.db)
+        .fetch_optional(db)
         .await;
         
         match result {

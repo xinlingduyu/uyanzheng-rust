@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct MysqlConfig {
     host: Option<String>,
     port: Option<u16>,

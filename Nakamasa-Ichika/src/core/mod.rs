@@ -257,6 +257,7 @@ pub use quickjs_runtime::QuickJsRuntime as V8Runtime;
 // ============================================================================
 
 use crate::config;
+use crate::cli::CliArgs;
 use salvo::Router;
 use std::sync::Arc;
 use std::path::Path;
@@ -302,7 +303,7 @@ pub fn is_installed() -> bool {
 /// - 数据库连接失败
 /// - Redis 连接失败
 /// - 服务器启动失败
-pub async fn run(router: Router) -> anyhow::Result<()> {
+pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     // 初始化终端语言（启动时只执行一次）
     init_terminal_language();
     
@@ -343,14 +344,16 @@ pub async fn run(router: Router) -> anyhow::Result<()> {
         tracing::warn!("========================================");
         tracing::warn!("系统未安装，请访问 /admin/install 进行安装");
         tracing::warn!("========================================");
-        
+
         // 未安装时，创建空的 AppState
         let app_state = Arc::new(AppState::new(None, None, Arc::new(RedisUtil::new(""))));
-        
-        let server = server::Server::new(config::get().server());
+
+        // 使用命令行参数覆盖配置（泄漏到静态内存以满足 'static 要求）
+        let server_config = Box::leak(Box::new(build_server_config_from_cli(&cli_args)));
+        let server = server::Server::new(server_config);
         return server.start(app_state, router).await;
     }
-    
+
     // 初始化 MySQL 连接
     let db = match init_sqlx_pool().await {
         Ok(pool) => {
@@ -362,7 +365,7 @@ pub async fn run(router: Router) -> anyhow::Result<()> {
             return Ok(());
         }
     };
-    
+
     // 初始化 Redis 连接池
     let redis_config = config::get().redis().clone();
     let redis_pool = match crate::core::redis::init_redis_pool(redis_config).await {
@@ -382,8 +385,52 @@ pub async fn run(router: Router) -> anyhow::Result<()> {
 
     // 创建 AppState
     let app_state = Arc::new(AppState::new(Some(db), Some(redis_pool), redis_util));
-    
-    let server = server::Server::new(config::get().server());
-    
+
+    // 使用命令行参数覆盖配置（泄漏到静态内存以满足 'static 要求）
+    let server_config = Box::leak(Box::new(build_server_config_from_cli(&cli_args)));
+    let server = server::Server::new(server_config);
+
     server.start(app_state, router).await
+}
+
+/// 从命令行参数构建服务器配置
+///
+/// 优先级：命令行参数 > 配置文件 > 默认值
+fn build_server_config_from_cli(cli_args: &CliArgs) -> config::ServerConfig {
+    // 如果提供了配置文件，读取基础配置
+    let base_config = config::get().server();
+    
+    // 使用命令行参数（如果未提供则使用配置文件中的值）
+    let port = Some(cli_args.port);
+    let tls_enabled = cli_args.tls_enabled();
+    
+    // 证书路径：命令行参数 > 配置文件 > None（使用内置证书）
+    let cert_path = cli_args.cert_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .or_else(|| base_config.cert_path().map(String::from));
+    
+    // 私钥路径：命令行参数 > 配置文件 > None（使用内置私钥）
+    let key_path = cli_args.key_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .or_else(|| base_config.key_path().map(String::from));
+
+    // 输出使用的配置
+    tracing::info!("服务器配置: 协议={}, 端口={}", cli_args.protocol, cli_args.port);
+    if cli_args.tls_enabled() {
+        if let Some(ref cert) = cert_path {
+            tracing::info!("证书路径: {}", cert);
+        } else {
+            tracing::info!("使用内置证书");
+        }
+    }
+
+    // 构建配置
+    config::ServerConfig::from_cli(
+        port,
+        tls_enabled,
+        cert_path,
+        key_path,
+    )
 }

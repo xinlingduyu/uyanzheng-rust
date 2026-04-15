@@ -17,7 +17,18 @@ pub use i18n::I18nConfig; // 导出国际化配置
 pub use debug::DebugConfig;
 pub use app_config::AppConfig as AppConfigDetails;
 
-static CONFIG: LazyLock<AppConfig> = LazyLock::new(|| AppConfig::load().expect("Failed to initialize config"));
+static CONFIG: LazyLock<Option<AppConfig>> = LazyLock::new(|| {
+    match AppConfig::load() {
+        Ok(config) => {
+            tracing::info!("Config loaded successfully");
+            Some(config)
+        }
+        Err(e) => {
+            tracing::warn!("Config load failed, will use defaults for installation mode: {}", e);
+            None
+        }
+    }
+});
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
@@ -31,11 +42,11 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn load() -> anyhow::Result<Self> {
-        Config::builder()
+        let config_result = Config::builder()
             .add_source(
                 config::File::with_name("config")
                     .format(FileFormat::Yaml)
-                    .required(true)
+                    .required(false)
             )
             .add_source(
                 config::Environment::with_prefix("APP")
@@ -46,7 +57,20 @@ impl AppConfig {
             .build()
             .with_context(|| anyhow::anyhow!("Failed to load config"))?
             .try_deserialize()
-            .with_context(|| anyhow::anyhow!("Failed to deserialize config"))
+            .with_context(|| anyhow::anyhow!("Failed to deserialize config"));
+
+        // 如果配置文件不存在或反序列化失败，返回默认配置
+        config_result.or_else(|_| {
+            tracing::warn!("Using default configuration (installation mode)");
+            Ok(AppConfig {
+                server: ServerConfig::default(),
+                mysql: MysqlConfig::default(),
+                redis: RedisConfig::default(),
+                i18n: I18nConfig::default(),
+                debug: DebugConfig::default(),
+                app: AppConfigDetails::default(),
+            })
+        })
     }
     
     pub fn server(&self) -> &ServerConfig {
@@ -75,5 +99,18 @@ impl AppConfig {
 }
 
 pub fn get() -> &'static AppConfig {
-    &CONFIG
+    CONFIG.as_ref().unwrap_or_else(|| {
+        // 返回默认配置（用于安装引导）
+        static DEFAULT: LazyLock<AppConfig> = LazyLock::new(|| {
+            AppConfig {
+                server: ServerConfig::default(),
+                mysql: MysqlConfig::default(),
+                redis: RedisConfig::default(),
+                i18n: I18nConfig::default(),
+                debug: DebugConfig::default(),
+                app: AppConfigDetails::default(),
+            }
+        });
+        &DEFAULT
+    })
 }

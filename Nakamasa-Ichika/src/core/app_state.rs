@@ -308,11 +308,10 @@ impl AppState {
         redis_pool: Option<RedisPool>,
         redis_util: Arc<RedisUtil>,
     ) -> Self {
-        // 创建管理员缓存服务
-        let admin_cache = AdminCacheService::new(
-            db.as_ref().expect("Database required for admin cache").clone(),
-            500, // 缓存容量
-        );
+        // 创建管理员缓存服务（仅在数据库可用时）
+        let admin_cache = db.as_ref()
+            .map(|pool| AdminCacheService::new(pool.clone(), 500))
+            .unwrap_or_else(|| AdminCacheService::new_empty());
         
         // 用户信息缓存配置 - 高频访问，大容量
         let user_cache_config = V2CacheConfig {

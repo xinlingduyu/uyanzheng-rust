@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct I18nConfig {
     default_language: Option<String>,
     supported_languages: Option<Vec<String>>,

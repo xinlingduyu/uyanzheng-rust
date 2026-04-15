@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct AppConfig {
     pub host: String,
     pub code: String,
@@ -67,7 +67,7 @@ impl AppConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct AdminConfig {
     pub path: String,
     pub keys: String,
