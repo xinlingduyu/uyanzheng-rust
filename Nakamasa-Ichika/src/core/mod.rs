@@ -199,7 +199,7 @@ pub mod middleware;
 
 // ============================================================================
 // JavaScript 运行时 (云函数支持)
-// ============================================================================
+// ==========================================================================
 
 /// QuickJS 运行时 - 轻量级跨平台 JavaScript 引擎
 pub mod quickjs_runtime;
@@ -212,6 +212,9 @@ pub mod v8_runtime;
 ///
 /// 提供运行时 CPU 性能分析，支持生成 SVG 火焰图和 pprof 格式数据。
 pub mod flamegraph;
+
+/// 数据库迁移模块
+pub mod migration;
 
 // ============================================================================
 // 公开导出
@@ -365,6 +368,12 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
             return Ok(());
         }
     };
+
+    // 检查并执行数据库迁移
+    if let Err(e) = migration::check_and_run_migration(&db).await {
+        tracing::error!("数据库迁移失败: {}", e);
+        return Err(e);
+    }
 
     // 初始化 Redis 连接池
     let redis_config = config::get().redis().clone();

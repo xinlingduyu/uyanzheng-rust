@@ -33,8 +33,10 @@ sha2.workspace = true
 hmac.workspace = true
 chrono.workspace = true
 
+futures-util = "0.3"
 Nakamasa-utils.workspace = true
 Nakamasa-proc.workspace = true
+nakamasa-ai = { path = "../Nakamasa-Ai" }
 validator.workspace = true
 notify.workspace = true
 

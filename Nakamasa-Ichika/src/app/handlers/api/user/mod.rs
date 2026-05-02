@@ -54,6 +54,7 @@ pub mod qqloginWeb;
 pub mod qqloginQuery;
 pub mod qqloginSDK;
 pub mod ban;
+pub mod ai;
 
 use salvo::prelude::*;
 use crate::app::middleware::user_auth::UserAuth;
@@ -195,4 +196,7 @@ pub fn routes() -> Router {
         
         // 账户禁用 - 需要token
         .push(Router::with_path("/ban").hoop(UserAuth::new()).post(ban::ban_user))
+        
+        // AI 对话 - 需要token
+        .push(Router::with_path("/ai").hoop(UserAuth::new()).post(ai::ai_chat))
 }
