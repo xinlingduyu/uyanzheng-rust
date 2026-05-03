@@ -458,6 +458,7 @@ fn generate_config_yaml(
     
     // 根据TLS状态设置host协议
     let host_protocol = if tls_enabled { "https" } else { "http" };
+    let app_version = env!("CARGO_PKG_VERSION");
     
     Ok(format!(
         r#"app:
@@ -468,7 +469,7 @@ fn generate_config_yaml(
     cache: false
     user_api_rewrite: false
     output_msg: true
-    ver: 1.0.1
+    ver: {}
     wx_appid: ""
     wx_secret: ""
     qq_appid: ""
@@ -497,7 +498,6 @@ redis:
     port: {}
     password: "{}"
     db: 0
-    prefix: re_
 log:
     path: ./log
     max_size: 100
@@ -518,6 +518,7 @@ i18n:
 "#,
         host_protocol,
         app_code,
+        app_version,
         encrypted_adm_pwd_key,
         encrypted_adm_jwt_key,
         tls_config,
@@ -670,7 +671,7 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `open_wx` varchar(128) DEFAULT NULL,
             `open_qq` varchar(128) DEFAULT NULL,
             `reg_time` bigint(10) NOT NULL,
-            `reg_ip` varchar(15) NOT NULL,
+            `reg_ip` varchar(45) NOT NULL,
             `reg_sn` varchar(64) DEFAULT NULL,
             `sn_list` json DEFAULT NULL,
             `sn_max` bigint(2) DEFAULT '0',
@@ -695,7 +696,7 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `uid` bigint(20) NOT NULL,
             `token` varchar(32) NOT NULL,
             `sn` varchar(128) DEFAULT NULL,
-            `ip` varchar(15) DEFAULT NULL,
+            `ip` varchar(45) DEFAULT NULL,
             `time` bigint(10) NOT NULL,
             `appid` bigint(20) NOT NULL,
             PRIMARY KEY (`id`),
@@ -713,7 +714,7 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `type` varchar(64) NOT NULL,
             `details` json DEFAULT NULL,
             `time` bigint(10) NOT NULL,
-            `ip` varchar(15) NOT NULL,
+            `ip` varchar(45) NOT NULL,
             `ip_address` varchar(128) DEFAULT NULL,
             `appid` bigint(20) DEFAULT NULL,
             PRIMARY KEY (`id`),
@@ -774,7 +775,7 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `code` int(6) NOT NULL,
             `usable` enum('y','n') DEFAULT 'y',
             `time` bigint(10) NOT NULL,
-            `ip` varchar(15) NOT NULL,
+            `ip` varchar(45) NOT NULL,
             `appid` bigint(20) NOT NULL,
             PRIMARY KEY (`id`),
             KEY `eorp` (`eorp`),
@@ -834,10 +835,10 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `add_uid` bigint(20) NOT NULL,
             `add_price` float(10,2) DEFAULT '0.00',
             `add_time` int(10) NOT NULL,
-            `add_ip` varchar(15) NOT NULL,
+            `add_ip` varchar(45) NOT NULL,
             `use_id` bigint(20) DEFAULT NULL,
             `use_time` bigint(10) DEFAULT NULL,
-            `use_ip` varchar(15) DEFAULT NULL,
+            `use_ip` varchar(45) DEFAULT NULL,
             `out_state` enum('y','n') DEFAULT 'n',
             `out_time` bigint(10) DEFAULT NULL,
             `ban` bigint(10) DEFAULT NULL,
@@ -864,12 +865,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `note` varchar(64) DEFAULT NULL,
             `use_uid` bigint(20) DEFAULT NULL,
             `use_time` bigint(10) DEFAULT NULL,
-            `use_ip` varchar(15) DEFAULT NULL,
+            `use_ip` varchar(45) DEFAULT NULL,
             `add_role` enum('admin','agent') NOT NULL,
             `add_uid` bigint(20) DEFAULT NULL,
             `add_price` float(10,2) DEFAULT '0.00',
             `add_time` bigint(10) NOT NULL,
-            `add_ip` varchar(15) DEFAULT NULL,
+            `add_ip` varchar(45) DEFAULT NULL,
             `out_state` enum('y','n') DEFAULT 'n',
             `out_time` bigint(10) DEFAULT NULL,
             `state` enum('y','n') DEFAULT 'y',

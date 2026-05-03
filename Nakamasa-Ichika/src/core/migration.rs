@@ -4,7 +4,7 @@
 //! 版本号使用语义化版本（如 0.1.0, 0.1.1 等）
 //! 
 //! 架构说明：
-//! - APP_VERSION：程序版本（从 Cargo.toml 读取）
+//! - APP_VERSION：程序版本（编译时从 Cargo.toml 嵌入）
 //! - config.yaml 中的 app.ver：配置文件版本
 //! - u_migration 表：记录已执行的迁移
 
@@ -13,7 +13,7 @@ use sqlx::MySqlPool;
 use std::fs;
 use std::path::Path;
 
-/// 程序版本号（与 Cargo.toml 同步）
+/// 程序版本号（从 Cargo.toml 读取，编译时嵌入）
 /// 当程序版本高于配置版本时，执行迁移
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -25,12 +25,18 @@ pub enum MigrationType {
     Both,      // 两者都更新
 }
 
+/// SQL 来源，支持字符串或字符串数组
+enum SqlSource {
+    String(&'static str),           // 单个字符串（按分号分割执行）
+    Statements(&'static [&'static str]), // 语句数组（每条单独执行）
+}
+
 /// 单个迁移定义
 struct Migration {
     version: &'static str,          // 目标版本号
     description: &'static str,      // 迁移描述
     migration_type: MigrationType,   // 迁移类型
-    sql: Option<&'static str>,      // SQL 语句（如有）
+    sql: Option<SqlSource>,        // SQL 语句来源
 }
 
 /// 获取所有可用的迁移（按版本号排序）
@@ -40,18 +46,30 @@ fn get_migrations() -> Vec<Migration> {
     vec![
         Migration {
             version: "1.0.1",
-            description: "添加 AI 配置字段到 u_app 表",
+            description: "添加 AI 配置字段到 u_app 表，支持 IPv6 修改 IP 字段长度",
             migration_type: MigrationType::Database,
-            sql: Some(
-                "ALTER TABLE u_app 
-                 ADD COLUMN ai_state VARCHAR(10) DEFAULT 'off' COMMENT 'AI功能状态 on/off',
-                 ADD COLUMN ai_provider VARCHAR(50) DEFAULT NULL COMMENT 'AI提供商',
-                 ADD COLUMN ai_api_base TEXT DEFAULT NULL COMMENT 'AI API地址',
-                 ADD COLUMN ai_api_key TEXT DEFAULT NULL COMMENT 'AI API密钥',
-                 ADD COLUMN ai_model VARCHAR(100) DEFAULT NULL COMMENT 'AI模型名称',
-                 ADD COLUMN ai_temperature DECIMAL(3,2) DEFAULT NULL COMMENT 'AI温度参数',
-                 ADD COLUMN ai_max_tokens INT(10) UNSIGNED DEFAULT NULL COMMENT 'AI最大token数';"
-            ),
+            sql: Some(SqlSource::Statements(&[
+                // u_app 添加 AI 相关字段
+                r#"ALTER TABLE u_app
+                    ADD COLUMN IF NOT EXISTS ai_state VARCHAR(10) DEFAULT 'off' COMMENT 'AI功能状态 on/off',
+                    ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT NULL COMMENT 'AI提供商',
+                    ADD COLUMN IF NOT EXISTS ai_api_base TEXT DEFAULT NULL COMMENT 'AI API地址',
+                    ADD COLUMN IF NOT EXISTS ai_api_key TEXT DEFAULT NULL COMMENT 'AI API密钥',
+                    ADD COLUMN IF NOT EXISTS ai_model VARCHAR(100) DEFAULT NULL COMMENT 'AI模型名称',
+                    ADD COLUMN IF NOT EXISTS ai_temperature DECIMAL(3,2) DEFAULT NULL COMMENT 'AI温度参数',
+                    ADD COLUMN IF NOT EXISTS ai_max_tokens INT(10) UNSIGNED DEFAULT NULL COMMENT 'AI最大token数'"#,
+                
+                // 修改 IP 字段支持 IPv6
+                "ALTER TABLE u_user MODIFY COLUMN reg_ip VARCHAR(45) NOT NULL",
+                "ALTER TABLE u_login MODIFY COLUMN ip VARCHAR(45) DEFAULT NULL",
+                "ALTER TABLE u_logs MODIFY COLUMN ip VARCHAR(45) NOT NULL",
+                "ALTER TABLE u_vcode MODIFY COLUMN ip VARCHAR(45) NOT NULL",
+                "ALTER TABLE u_cdk_kami MODIFY COLUMN add_ip VARCHAR(45) NOT NULL",
+                "ALTER TABLE u_cdk_kami MODIFY COLUMN use_ip VARCHAR(45) DEFAULT NULL",
+                "ALTER TABLE u_cdk_user MODIFY COLUMN add_ip VARCHAR(45) DEFAULT NULL",
+                "ALTER TABLE u_cdk_user MODIFY COLUMN use_ip VARCHAR(45) DEFAULT NULL",
+                // 注意：u_cdk_single 表不存在，跳过
+            ])),
         },
         // 添加更多迁移...
     ]
@@ -144,24 +162,58 @@ pub fn init_on_install(config_path: Option<&str>) {
 async fn execute_migration(pool: &MySqlPool, migration: &Migration) -> Result<(), String> {
     tracing::info!("执行迁移 {}: {}", migration.version, migration.description);
     
-    // 记录开始
-    let start_time = chrono::Utc::now().timestamp();
-    
     // 执行 SQL（如果有）
-    if let Some(sql) = migration.sql {
-        match sqlx::query(sql).execute(pool).await {
-            Ok(_) => {
-                tracing::info!("迁移 {} SQL 执行成功", migration.version);
+    if let Some(sql_source) = &migration.sql {
+        let statements: Vec<&str> = match sql_source {
+            SqlSource::String(s) => {
+                // 分割多条SQL语句（按分号分割），过滤空语句和纯注释
+                s.split(';')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty() && !s.starts_with("--"))
+                    .collect()
             }
-            Err(e) => {
-                let error_msg = format!("迁移 {} 失败: {}", migration.version, e);
-                tracing::error!("{}", error_msg);
-                
-                // 记录失败
-                let _ = record_migration(pool, migration.version, &migration.description, false, &error_msg).await;
-                return Err(error_msg);
+            SqlSource::Statements(stmts) => {
+                stmts.to_vec()
+            }
+        };
+        
+        let total = statements.len();
+        let mut success_count = 0;
+        let mut failed_statements: Vec<(usize, String, String)> = Vec::new();
+        
+        for (idx, stmt) in statements.iter().enumerate() {
+            match sqlx::query(stmt).execute(pool).await {
+                Ok(_) => {
+                    success_count += 1;
+                    tracing::debug!("迁移 {} SQL 语句 {}/{} 执行成功", migration.version, idx + 1, total);
+                }
+                Err(e) => {
+                    // 只收集错误，不重复记录日志
+                    failed_statements.push((idx + 1, stmt.to_string(), e.to_string()));
+                }
             }
         }
+        
+        // 检查是否有失败
+        if !failed_statements.is_empty() {
+            let failed_count = failed_statements.len();
+            let mut error_detail = format!(
+                "迁移 {} 执行完成：成功 {} 条，失败 {} 条，共 {} 条\n",
+                migration.version, success_count, failed_count, total
+            );
+            
+            for (idx, stmt, err) in &failed_statements {
+                error_detail.push_str(&format!("\n[失败 {}/{}] {}\n错误: {}\n", idx, total, stmt, err));
+            }
+            
+            tracing::error!("{}", error_detail);
+            
+            // 记录失败
+            let _ = record_migration(pool, migration.version, &migration.description, false, &error_detail).await;
+            return Err(error_detail);
+        }
+        
+        tracing::info!("迁移 {} 所有 SQL 语句执行成功（{}/{}）", migration.version, success_count, total);
     }
     
     // 如果是 Config 或 Both 类型，更新配置文件
