@@ -39,7 +39,7 @@ struct Migration {
 fn get_migrations() -> Vec<Migration> {
     vec![
         Migration {
-            version: "0.1.1",
+            version: "1.0.1",
             description: "添加 AI 配置字段到 u_app 表",
             migration_type: MigrationType::Database,
             sql: Some(

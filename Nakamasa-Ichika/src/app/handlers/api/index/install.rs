@@ -468,7 +468,7 @@ fn generate_config_yaml(
     cache: false
     user_api_rewrite: false
     output_msg: true
-    ver: 3.3
+    ver: 1.0.1
     wx_appid: ""
     wx_secret: ""
     qq_appid: ""
@@ -643,6 +643,13 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `pay_wx_state` enum('on','off') DEFAULT 'off',
             `pay_wx_type` varchar(24) DEFAULT 'jie',
             `pay_wx_config` json DEFAULT NULL,
+            `ai_state` enum('on','off') DEFAULT 'off',
+            `ai_provider` varchar(32) DEFAULT NULL,
+            `ai_api_base` varchar(255) DEFAULT NULL,
+            `ai_api_key` text DEFAULT NULL,
+            `ai_model` varchar(128) DEFAULT NULL,
+            `ai_temperature` float(3,1) DEFAULT NULL,
+            `ai_max_tokens` int(10) DEFAULT NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `app_key` (`app_key`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
