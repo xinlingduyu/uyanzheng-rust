@@ -33,7 +33,7 @@ config = { version = "0.15.11", features = ["yaml", "toml"] }
 notify = { version = "8.2" }
 
 # Database
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "uuid", "mysql", "chrono", "macros", "any", "postgres", "sqlite"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-native-tls", "uuid", "mysql", "chrono", "macros", "any", "postgres", "mysql", "sqlite"] }
 maxminddb = "0.26.0"
 
 # Tracing
@@ -61,7 +61,7 @@ async-trait = "0.1"
 regex = "1.10"
 
 # HTTP / async
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # 静态文件嵌入
 rust-embed = "8.5"

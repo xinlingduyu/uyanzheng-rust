@@ -61,13 +61,13 @@ aes = "0.8"
 des = "0.8"
 cbc = "0.1"
 encoding_rs = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", features = ["json"] }
 
 # rustls crypto provider
 aws-lc-rs = "1"
 
 # 邮件发送 - lettre (成熟稳定的SMTP库)
-lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport"] }
+lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
 
 # JavaScript 引擎 - 云函数支持
 # QuickJS - 轻量级跨平台 JavaScript 引擎
