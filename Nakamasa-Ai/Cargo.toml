@@ -18,7 +18,7 @@ mistral_rust = []
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-reqwest = { workspace = true, features = ["json", "stream"] }
+reqwest = { workspace = true, features = ["stream"] }
 async-trait = { workspace = true }
 thiserror = "2.0"
 futures-util = "0.3"
