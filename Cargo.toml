@@ -33,7 +33,7 @@ config = { version = "0.15.11", features = ["yaml", "toml"] }
 notify = { version = "8.2" }
 
 # Database
-sqlx = { version = "0.8.6", features = ["runtime-tokio", "tls-rustls", "uuid", "mysql", "chrono", "macros", "any", "postgres", "mysql", "sqlite"] }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "uuid", "mysql", "chrono", "macros", "any", "postgres", "sqlite", "json"] }
 maxminddb = "0.26.0"
 
 # Tracing
