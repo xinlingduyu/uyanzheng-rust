@@ -434,10 +434,13 @@ impl PayPlugin for AliPayPlugin {
             .join("&");
 
         // 调用支付宝查询API
-        let response = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                http_client::post_form(&self.gateway_url, &form_data).await
-            })
+        // 使用 block_on 在当前 tokio 运行时中执行异步 HTTP 请求
+        let gw_url = self.gateway_url.clone();
+        let fd = form_data.clone();
+        let response = tokio::task::block_in_place(move || {
+            tokio::runtime::Handle::current().block_on(
+                http_client::post_form(&gw_url, &fd)
+            )
         });
 
         match response {

@@ -392,14 +392,14 @@ impl UserAuth {
             // 计算签名
             let calculated_sign = arr_sign(&post_params, &app_info.app_key);
             
-            if client_sign != calculated_sign {
+            if !constant_time_eq(&client_sign, &calculated_sign) {
                 // 使用栈上计算避免分配
                 let mut alt_data = String::with_capacity(decrypted_data.len() + app_info.app_key.len());
                 alt_data.push_str(&decrypted_data);
                 alt_data.push_str(&app_info.app_key);
                 let alt_sign = md5_str_from_str(&alt_data);
                 
-                if client_sign != alt_sign {
+                if !constant_time_eq(&client_sign, &alt_sign) {
                     res.render(Json(ApiResponse::<()>::error_static("签名验证失败", 109)));
                     ctrl.skip_rest();
                     return None;

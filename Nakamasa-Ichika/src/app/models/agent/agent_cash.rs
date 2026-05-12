@@ -1,0 +1,36 @@
+use sqlx::FromRow;
+use super::super::common::enums::CashWay;
+
+#[derive(Debug, FromRow)]
+pub struct AgentCash {
+    pub id: i32,
+    pub agid: i32,
+    pub name: String,
+    pub account: String,
+    pub way: CashWay,
+    pub money: f64,
+    pub add_time: i32,
+    pub end_time: Option<i32>,
+    pub state: Option<i32>,
+    pub rebut_msg: Option<String>,
+    pub appid: i32,
+}
+
+// 为UAgentCash结构体添加业务方法
+impl AgentCash {
+    pub fn is_pending(&self) -> bool {
+        self.state == Some(0)
+    }
+    
+    pub fn is_approved(&self) -> bool {
+        self.state == Some(1)
+    }
+    
+    pub fn is_rejected(&self) -> bool {
+        self.state == Some(2)
+    }
+    
+    pub fn processing_time(&self) -> Option<i32> {
+        self.end_time.map(|end| end - self.add_time)
+    }
+}

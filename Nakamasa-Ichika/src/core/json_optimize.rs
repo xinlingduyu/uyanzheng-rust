@@ -40,7 +40,7 @@ impl FastJson {
         serde_json::to_vec(value).unwrap_or_default()
     }
     
-    /// 批量解析
+    /// 批量解析 (单线程顺序解析，并非并行处理，命名保留以兼容调用方)
     #[inline]
     pub fn batch_parse<'a, I>(json_strings: I) -> Vec<Result<Value, serde_json::Error>>
     where

@@ -3,10 +3,17 @@
 
 use salvo::prelude::*;
 use std::collections::HashSet;
+use std::sync::Mutex;
 use std::sync::OnceLock;
+use std::sync::PoisonError;
 
 /// IP 缓存，避免重复分配
-static IP_CACHE: OnceLock<HashSet<&'static str>> = OnceLock::new();
+static IP_CACHE: OnceLock<Mutex<HashSet<&'static str>>> = OnceLock::new();
+
+/// 获取 Mutex 锁，处理中毒恢复
+fn lock_cache<'a>(cache: &'a Mutex<HashSet<&'static str>>) -> std::sync::MutexGuard<'a, HashSet<&'static str>> {
+    cache.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// 获取客户端真实 IP 地址
 /// 优先级: X-Real-IP > X-Forwarded-For > 默认 127.0.0.1
@@ -49,9 +56,15 @@ fn extract_ip_from_header(req: &Request, header_name: &str) -> Option<&'static s
         return None;
     }
     
-    // 使用 Box::leak 返回静态引用
-    // 注意：这会泄漏少量内存，但每个唯一 IP 只泄漏一次
-    Some(Box::leak(ip_str.to_string().into_boxed_str()))
+    // 使用 Box::leak 返回静态引用，通过 IP_CACHE 去重避免重复泄漏
+    let cache = IP_CACHE.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut cache_lock = lock_cache(cache);
+    if let Some(cached) = cache_lock.get(ip_str) {
+        return Some(cached);
+    }
+    let leaked: &'static str = Box::leak(ip_str.to_string().into_boxed_str());
+    cache_lock.insert(leaked);
+    Some(leaked)
 }
 
 /// 从 X-Forwarded-For 提取第一个 IP
@@ -80,7 +93,15 @@ fn extract_ip_from_forwarded(req: &Request) -> Option<&'static str> {
         return None;
     }
     
-    Some(Box::leak(first_ip.to_string().into_boxed_str()))
+    // 使用 Box::leak 返回静态引用，通过 IP_CACHE 去重避免重复泄漏
+    let cache = IP_CACHE.get_or_init(|| Mutex::new(HashSet::new()));
+    let mut cache_lock = lock_cache(cache);
+    if let Some(cached) = cache_lock.get(first_ip) {
+        return Some(cached);
+    }
+    let leaked: &'static str = Box::leak(first_ip.to_string().into_boxed_str());
+    cache_lock.insert(leaked);
+    Some(leaked)
 }
 
 /// 验证 IP 地址格式
@@ -104,9 +125,8 @@ pub fn is_valid_ip(ip: &str) -> bool {
         }
     }
     
-    // IPv4 最多 3 个点，IPv6 最多 7 个冒号
-    // 或者是纯数字的情况
-    dot_count <= 3 || colon_count <= 7 || (dot_count == 0 && colon_count == 0)
+    // 放宽限制以兼容未来协议扩展（IPv6 最多 7 冒号，留余量给 IPv8+）
+    dot_count <= 7 && colon_count <= 15
 }
 
 /// 获取客户端 IP 并存入 depot

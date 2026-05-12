@@ -307,13 +307,20 @@ impl<'a> BatchInserter<'a> {
     }
     
     /// 添加一行数据
+    /// 注意：此方法执行手动 SQL 转义，仅用于受信任的数据。
+    /// 对于用户输入，请使用 BatchInserterSafe。
     pub fn add_row(&mut self, values: &[&str]) {
         if values.len() != self.columns.len() {
+            tracing::warn!("BatchInserter: 列数不匹配, values={}, columns={}", values.len(), self.columns.len());
             return;
         }
         
         let escaped: Vec<String> = values.iter()
-            .map(|v| format!("'{}'", v.replace('\'', "''")))
+            .map(|v| {
+                // 转义反斜杠和单引号，防止 SQL 注入
+                let s = v.replace("\\", "\\\\").replace("'", "''");
+                format!("'{}'", s)
+            })
             .collect();
         
         self.current_batch.push(format!("({})", escaped.join(", ")));

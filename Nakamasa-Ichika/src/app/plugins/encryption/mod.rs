@@ -75,7 +75,13 @@ pub struct EncryptionConfig {
 impl EncryptionConfig {
     /// 从 JSON Value 创建配置
     pub fn from_json_value(value: &serde_json::Value, enc_type: &str) -> Self {
-        let enc_type = EncryptionType::from_str(enc_type).unwrap_or(EncryptionType::Aes);
+        let enc_type = match EncryptionType::from_str(enc_type) {
+            Some(t) => t,
+            None => {
+                tracing::warn!("未知加密类型 '{}'，默认使用 AES。请检查应用配置的 mi.enc_type 字段", enc_type);
+                EncryptionType::Aes
+            }
+        };
         
         // 调试：打印配置
         tracing::debug!("加密配置 - 类型: {:?}, 原始JSON: {}", enc_type, value);

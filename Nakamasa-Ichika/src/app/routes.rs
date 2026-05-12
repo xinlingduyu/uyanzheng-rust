@@ -153,10 +153,10 @@ fn oauth2_routes() -> Router {
     Router::with_path("/api/oauth2.0")
         // QQ 登录回调
         .push(Router::with_path("/qqlogon/callback")
-            .get(handlers::api::user::qqlogonCallback::qq_logon_callback))
+            .get(handlers::api::user::oauth::qqlogonCallback::qq_logon_callback))
         // 微信登录回调
         .push(Router::with_path("/wxlogon/callback")
-            .get(handlers::api::user::wxlogonCallback::wx_logon_callback))
+            .get(handlers::api::user::oauth::wxlogonCallback::wx_logon_callback))
 }
 
 // ============================================================================

@@ -7,7 +7,7 @@ use super::trait_def::{PayPlugin, PluginMeta};
 
 /// 支付插件管理器
 pub struct PayPluginManager {
-    plugins: RwLock<HashMap<String, Box<dyn PayPlugin>>>,
+    plugins: RwLock<HashMap<String, Arc<dyn PayPlugin>>>,
 }
 
 impl PayPluginManager {
@@ -24,7 +24,7 @@ impl PayPluginManager {
         let mut plugins = self.plugins.write()
             .map_err(|e| format!("获取写锁失败: {}", e))?;
         
-        plugins.insert(plugin_type.clone(), plugin);
+        plugins.insert(plugin_type.clone(), Arc::from(plugin));
         tracing::info!("支付插件 {} 已注册", plugin_type);
         Ok(())
     }
@@ -35,11 +35,7 @@ impl PayPluginManager {
             .map_err(|e| format!("获取读锁失败: {}", e))?;
         
         plugins.get(plugin_type)
-            .map(|p| {
-                // 这里使用unsafe是因为我们需要从Box获取引用
-                // 在实际生产环境中应该使用更好的设计模式
-                unsafe { Arc::from_raw(&**p as *const dyn PayPlugin) }
-            })
+            .map(|p| p.clone())
             .ok_or_else(|| format!("插件 {} 不存在", plugin_type))
     }
 
@@ -64,7 +60,13 @@ impl PayPluginManager {
             .map_err(|e| format!("获取写锁失败: {}", e))?;
         
         if let Some(plugin) = plugins.get_mut(plugin_type) {
-            plugin.init(config)
+            // Arc::get_mut 仅在引用计数为1时返回 Some(&mut T)
+            // 插件初始化在注册之后、被引用之前，所以这里应该成功
+            if let Some(plugin_mut) = Arc::get_mut(plugin) {
+                plugin_mut.init(config)
+            } else {
+                Err(format!("插件 {} 正在被其他引用使用，无法初始化", plugin_type))
+            }
         } else {
             Err(format!("插件 {} 不存在", plugin_type))
         }

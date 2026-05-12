@@ -253,7 +253,13 @@ fn parse_xml_to_json(xml: &str) -> serde_json::Value {
 /// 支付宝同步回调
 #[handler]
 pub async fn ali_return(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Text::Plain("fail"));
+            return;
+        }
+    };
 
     let order_no = match req.param::<String>("order_no") {
         Some(no) => no,
@@ -339,7 +345,13 @@ pub async fn ali_return(req: &mut Request, depot: &mut Depot, res: &mut Response
 /// 微信同步回调
 #[handler]
 pub async fn wx_return(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Text::Plain("fail"));
+            return;
+        }
+    };
 
     let order_no = match req.param::<String>("order_no") {
         Some(no) => no,

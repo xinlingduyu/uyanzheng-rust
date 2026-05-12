@@ -17,7 +17,7 @@ impl MysqlConfig {
         self.host.as_deref().unwrap_or("127.0.0.1")
     }
     pub fn port(&self) -> u16 {
-        self.port.unwrap_or(5432)
+        self.port.unwrap_or(3306)
     }
     pub fn user(&self) -> &str {
         self.user.as_deref().unwrap_or("mysql")

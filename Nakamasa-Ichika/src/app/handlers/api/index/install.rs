@@ -73,7 +73,13 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    let _app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    let _app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("服务器错误", 201)));
+            return;
+        }
+    };
     
     let install_req = match req.parse_json::<InstallRequest>().await {
         Ok(data) => data,

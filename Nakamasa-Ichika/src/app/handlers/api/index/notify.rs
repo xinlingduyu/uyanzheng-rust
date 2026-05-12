@@ -243,7 +243,13 @@ async fn get_notify_data(req: &mut Request, ptype: &str) -> serde_json::Value {
 /// 支付宝异步通知
 #[handler]
 pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Text::Plain("fail"));
+            return;
+        }
+    };
 
     // 获取订单号
     let order_no = match req.param::<String>("order_no") {
@@ -335,7 +341,13 @@ pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response
 /// 微信异步通知
 #[handler]
 pub async fn wx_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Text::Plain("fail"));
+            return;
+        }
+    };
 
     // 获取订单号
     let order_no = match req.param::<String>("order_no") {

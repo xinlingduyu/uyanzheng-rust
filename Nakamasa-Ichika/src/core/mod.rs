@@ -327,7 +327,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     let mut geoip_initialized = false;
     for path in geoip_paths {
         if Path::new(path).exists() {
-            match crate::app::handlers::api::user::logon::init_geoip(path) {
+            match crate::app::handlers::api::user::auth::logon::init_geoip(path) {
                 Ok(()) => {
                     geoip_initialized = true;
                     break;

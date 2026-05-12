@@ -1,242 +1,34 @@
-//! # 数据模型模块 (Data Models Module)
+//! # 数据模型模块 (Models)
+//! Organized by business domain
 //!
-//! 定义与数据库表结构对应的数据模型，以及 API 请求/响应结构体。
-//!
-//! ## 架构概览
-//!
-//! ```text
-//! models/
-//! ├── mod.rs              # 模块入口和导出
-//! │
-//! │  # 基础类型
-//! ├── enums.rs            # 枚举类型定义
-//! ├── common.rs           # 通用结构体
-//! │
-//! │  # API 数据传输对象 (DTO)
-//! ├── requests.rs         # 用户 API 请求结构体
-//! ├── responses.rs        # 用户 API 响应结构体
-//! ├── admin_requests.rs   # 管理员 API 请求结构体
-//! ├── admin_responses.rs  # 管理员 API 响应结构体
-//! │
-//! │  # 数据库实体 (Entity)
-//! │  # 用户相关
-//! ├── admin.rs            # 管理员表 (u_admin)
-//! ├── user.rs             # 用户表 (u_user)
-//! │
-//! │  # 应用相关
-//! ├── app.rs              # 应用表 (u_app)
-//! ├── app_blocklist.rs    # 应用黑名单 (u_app_blocklist)
-//! ├── app_extend.rs       # 应用扩展 (u_app_extend)
-//! ├── app_function.rs     # 应用功能 (u_app_function)
-//! ├── app_mi.rs           # 应用加密配置 (u_app_mi)
-//! ├── app_notice.rs       # 应用公告 (u_app_notice)
-//! ├── app_ver.rs          # 应用版本 (u_app_ver)
-//! │
-//! │  # 代理相关
-//! ├── agent.rs            # 代理表 (u_agent)
-//! ├── agent_cash.rs       # 代理提现 (u_agent_cash)
-//! ├── agent_group.rs      # 代理分组 (u_agent_group)
-//! │
-//! │  # 卡密相关
-//! ├── cdk_kami.rs         # 卡密表 (u_cdk_kami)
-//! ├── cdk_user.rs         # 卡密用户 (u_cdk_user)
-//! │
-//! │  # 交易相关
-//! ├── goods.rs            # 商品表 (u_goods)
-//! ├── order.rs            # 订单表 (u_order)
-//! ├── fen_event.rs        # 积分事件 (u_fen_event)
-//! ├── fen_order.rs        # 积分订单 (u_fen_order)
-//! │
-//! │  # 其他
-//! ├── logs.rs             # 日志表 (u_logs)
-//! ├── message.rs          # 消息表 (u_message)
-//! ├── vcode.rs            # 验证码 (u_vcode)
-//! ```
-//!
-//! ## 命名规范
-//!
-//! | 类型 | 命名规则 | 示例 |
-//! |------|----------|------|
-//! | 数据库实体 | 表名单数驼峰 | `User`, `AppConfig` |
-//! | 请求 DTO | `{Action}Request` | `LoginRequest`, `UpdateUserRequest` |
-//! | 响应 DTO | `{Entity}Response` | `UserResponse`, `AppListResponse` |
-//! | 枚举 | `{Category}Status` | `UserStatus`, `OrderStatus` |
+//! ## Groups
+//! - admin: admin.rs, admin_requests.rs, admin_responses.rs
+//! - app: app.rs, app_blocklist.rs, app_extend.rs, app_function.rs, app_mi.rs, app_notice.rs, app_ver.rs
+//! - user: user.rs, requests.rs, responses.rs, vcode.rs
+//! - agent: agent.rs, agent_cash.rs, agent_group.rs
+//! - cdk: cdk_kami.rs, cdk_user.rs
+//! - finance: goods.rs, order.rs, fen_event.rs, fen_order.rs
+//! - logs: logs.rs
+//! - message: message.rs
+//! - common: common.rs, enums.rs
 
-// ============================================================================
-// 基础类型
-// ============================================================================
-
-/// 枚举类型定义
-///
-/// 定义系统中使用的各种状态枚举和类型枚举。
-pub mod enums;
-
-/// 通用结构体
-///
-/// 定义跨模块使用的通用数据结构，如分页、ID 包装等。
+pub mod admin;
+pub mod app;
+pub mod user;
+pub mod agent;
+pub mod cdk;
+pub mod finance;
+pub mod logs;
+pub mod message;
 pub mod common;
 
-// ============================================================================
-// API 数据传输对象 (DTO)
-// ============================================================================
-
-/// 用户 API 请求结构体
-///
-/// 定义用户端 API 的请求参数结构。
-pub mod requests;
-
-/// 用户 API 响应结构体
-///
-/// 定义用户端 API 的响应数据结构。
-pub mod responses;
-
-/// 管理员 API 请求结构体
-///
-/// 定义管理后台 API 的请求参数结构。
-pub mod admin_requests;
-
-/// 管理员 API 响应结构体
-///
-/// 定义管理后台 API 的响应数据结构。
-pub mod admin_responses;
-
-// ============================================================================
-// 数据库实体 - 用户相关
-// ============================================================================
-
-/// 管理员实体
-///
-/// 对应数据库表: `u_admin`
-pub mod admin;
-
-/// 用户实体
-///
-/// 对应数据库表: `u_user`
-pub mod user;
-
-// ============================================================================
-// 数据库实体 - 应用相关
-// ============================================================================
-
-/// 应用实体
-///
-/// 对应数据库表: `u_app`
-pub mod app;
-
-/// 应用黑名单实体
-///
-/// 对应数据库表: `u_app_blocklist`
-pub mod app_blocklist;
-
-/// 应用扩展实体
-///
-/// 对应数据库表: `u_app_extend`
-pub mod app_extend;
-
-/// 应用功能实体
-///
-/// 对应数据库表: `u_app_function`
-pub mod app_function;
-
-/// 应用加密配置实体
-///
-/// 对应数据库表: `u_app_mi`
-pub mod app_mi;
-
-/// 应用公告实体
-///
-/// 对应数据库表: `u_app_notice`
-pub mod app_notice;
-
-/// 应用版本实体
-///
-/// 对应数据库表: `u_app_ver`
-pub mod app_ver;
-
-// ============================================================================
-// 数据库实体 - 代理相关
-// ============================================================================
-
-/// 代理实体
-///
-/// 对应数据库表: `u_agent`
-pub mod agent;
-
-/// 代理提现实体
-///
-/// 对应数据库表: `u_agent_cash`
-pub mod agent_cash;
-
-/// 代理分组实体
-///
-/// 对应数据库表: `u_agent_group`
-pub mod agent_group;
-
-// ============================================================================
-// 数据库实体 - 卡密相关
-// ============================================================================
-
-/// 卡密实体
-///
-/// 对应数据库表: `u_cdk_kami`
-pub mod cdk_kami;
-
-/// 卡密用户实体
-///
-/// 对应数据库表: `u_cdk_user`
-pub mod cdk_user;
-
-// ============================================================================
-// 数据库实体 - 交易相关
-// ============================================================================
-
-/// 积分事件实体
-///
-/// 对应数据库表: `u_fen_event`
-pub mod fen_event;
-
-/// 积分订单实体
-///
-/// 对应数据库表: `u_fen_order`
-pub mod fen_order;
-
-/// 商品实体
-///
-/// 对应数据库表: `u_goods`
-pub mod goods;
-
-/// 订单实体
-///
-/// 对应数据库表: `u_order`
-pub mod order;
-
-// ============================================================================
-// 数据库实体 - 其他
-// ============================================================================
-
-/// 日志实体
-///
-/// 对应数据库表: `u_logs`
-pub mod logs;
-
-/// 消息实体
-///
-/// 对应数据库表: `u_message`
-pub mod message;
-
-/// 验证码实体
-///
-/// 对应数据库表: `u_vcode`
-pub mod vcode;
-
-// ============================================================================
-// 公开导出
-// ============================================================================
-
-// 枚举
-pub use enums::*;
-
-// 通用结构体
+// Re-export all for backward compatibility
+pub use admin::*;
+pub use app::*;
+pub use user::*;
+pub use agent::*;
+pub use cdk::*;
+pub use finance::*;
+pub use logs::*;
+pub use message::*;
 pub use common::*;
-
-// 请求/响应 DTO (按需导入使用，不在此重导出)
