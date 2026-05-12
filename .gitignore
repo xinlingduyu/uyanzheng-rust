@@ -35,6 +35,9 @@ log/
 logs/
 *.log
 
+# But keep source code logs directories tracked
+!Nakamasa-Ichika/src/**/logs/
+
 # Upload directory (user generated content)
 data/upload/
 
