@@ -122,9 +122,6 @@ fn build_production_routes() -> Router {
         // 健康检查
         .push(health::health_check::route())
         
-        // 安装 API 路由（安装后也可访问，用于重新配置）
-        .push(install_routes())
-        
         // 管理后台 API 路由 - /api/admin/*
         .push(admin_routes())
         

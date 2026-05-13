@@ -75,8 +75,12 @@ fn to_camel_case(s: &str) -> String {
     result
 }
 
-/// 表名黑名单 - 禁止访问的敏感表
+/// 表名黑名单 - 禁止云函数访问的敏感表
+///
+/// 这些表包含管理凭据、支付密钥、财务数据等敏感信息。
+/// 匹配规则：精确匹配 + `_表名` 后缀匹配 + `表名_` 前缀匹配
 const FORBIDDEN_TABLES: &[&str] = &[
+    // ═══ 管理员认证 ═══
     "admin",
     "admins",
     "user_admin",
@@ -84,6 +88,49 @@ const FORBIDDEN_TABLES: &[&str] = &[
     "system_admin",
     "super_admin",
     "root",
+
+    // ═══ 应用配置（含支付密钥、加密配置） ═══
+    "app",
+    "apps",
+
+    // ═══ 订单与财务 ═══
+    "order",
+    "orders",
+    "fen_event",
+    "fen_order",
+
+    // ═══ 代理佣金 ═══
+    "agent",
+    "agents",
+
+    // ═══ 卡密 ═══
+    "cdk_kami",
+    "cdk_user",
+
+    // ═══ 审计日志 ═══
+    "log",
+    "logs",
+
+    // ═══ 消息与通知 ═══
+    "message",
+    "messages",
+    "notice",
+
+    // ═══ 应用扩展配置 ═══
+    "blocklist",
+    "extend",
+    "function",
+    "app_blocklist",
+    "app_extend",
+    "app_function",
+    "app_mi",
+    "app_notice",
+    "app_ver",
+
+    // ═══ 云函数自身定义 ═══
+    "app_function",
+
+    // ═══ 系统表 ═══
     "sys_user",
     "system_user",
     "config",
@@ -559,6 +606,11 @@ impl QuickJsRuntime {
     /// 注入 Db/Redis/Http 帮助类（JavaScript 实现）
     fn inject_helpers(ctx: &Ctx) -> Result<(), String> {
         let helpers_code = r#"
+            // 列名消毒：只允许字母、数字、下划线，防止 SQL 注入
+            function sanitizeColumnName(name) {
+                return String(name).replace(/[^a-zA-Z0-9_]/g, '');
+            }
+
             // Db 类 - 数据库操作
             var Db = function(tableName) {
                 this._table = tableName || '';
@@ -673,8 +725,8 @@ impl QuickJsRuntime {
                     return {OK: false, Err: '数据不能为空'};
                 }
                 
-                // 使用参数化查询
-                var columns = keys.join(', ');
+                // 使用参数化查询，列名经过消毒
+                var columns = keys.map(function(k) { return sanitizeColumnName(k); }).join(', ');
                 var placeholders = keys.map(function() { return '?'; }).join(', ');
                 var params = keys.map(function(k) { return data[k]; });
                 
@@ -697,8 +749,8 @@ impl QuickJsRuntime {
                     return {OK: false, Err: '数据不能为空'};
                 }
                 
-                // 使用参数化查询
-                var sets = keys.map(function(k) { return k + ' = ?'; }).join(', ');
+                // 使用参数化查询，列名经过消毒
+                var sets = keys.map(function(k) { return sanitizeColumnName(k) + ' = ?'; }).join(', ');
                 var params = keys.map(function(k) { return data[k]; }).concat(this._whereParams);
                 
                 var sql = 'UPDATE ' + this._validatedTable + ' SET ' + sets + ' WHERE ' + this._where;
@@ -731,12 +783,14 @@ impl QuickJsRuntime {
                     return {OK: false, Err: '数据不能为空'};
                 }
                 
+                // 列名经过 sanitizeColumnName 消毒，防止 SQL 注入
                 var sets = keys.map(function(k) {
+                    var safeKey = sanitizeColumnName(k);
                     var v = data[k];
                     if (v >= 0) {
-                        return k + ' = ' + k + ' + ' + v;
+                        return safeKey + ' = ' + safeKey + ' + ' + v;
                     } else {
-                        return k + ' = ' + k + ' - ' + (-v);
+                        return safeKey + ' = ' + safeKey + ' - ' + (-v);
                     }
                 }).join(', ');
                 

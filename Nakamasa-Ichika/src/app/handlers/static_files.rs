@@ -58,6 +58,62 @@ pub async fn admin_handler(req: &mut Request, depot: &mut Depot, res: &mut Respo
     serve_admin_static(req, res).await;
 }
 
+/// 验证静态文件路径，防止目录穿刺攻击
+///
+/// # 安全措施
+/// 1. 路径中不能包含 `..`（防止上级目录访问）
+/// 2. 路径中不能包含 `\0`（防止空字节注入）
+/// 3. 路径规范化后必须在允许的基础目录内
+fn validate_static_path(file_path: &str, base_dir: &str) -> Result<PathBuf, String> {
+    // 1. 检查空字节注入
+    if file_path.contains('\0') {
+        return Err("非法路径：包含空字节".to_string());
+    }
+
+    // 2. 检查路径穿刺（..）
+    if file_path.contains("..") {
+        return Err("非法路径：不允许访问上级目录".to_string());
+    }
+
+    // 3. 检查是否访问隐藏文件（以.开头）
+    let path_segments: Vec<&str> = file_path.split('/').collect();
+    for segment in &path_segments {
+        if segment.starts_with('.') {
+            return Err("非法路径：不允许访问隐藏文件".to_string());
+        }
+    }
+
+    // 4. 构建完整路径
+    let base_path = PathBuf::from(base_dir);
+    let full_path = base_path.join(file_path);
+
+    // 5. 规范化基础目录路径
+    let canonical_base = match fs::canonicalize(&base_path) {
+        Ok(p) => p,
+        Err(_) => {
+            // 基础目录不存在，跳过路径验证（后续尝试嵌入文件或返回 404）
+            return Ok(full_path);
+        }
+    };
+
+    // 6. 验证最终路径是否在基础目录内
+    //    对不存在的文件，取其父目录进行验证
+    let target_path = if full_path.exists() {
+        full_path.clone()
+    } else {
+        // 尝试取父目录
+        full_path.parent().map(|p| p.to_path_buf()).unwrap_or(base_path.clone())
+    };
+
+    if let Ok(canonical_target) = fs::canonicalize(&target_path) {
+        if !canonical_target.starts_with(&canonical_base) {
+            return Err("非法路径：不允许访问指定目录外的文件".to_string());
+        }
+    }
+
+    Ok(full_path)
+}
+
 /// Admin Assets 控制器 - 专门处理 /admin/static 路径
 #[handler]
 pub async fn admin_assets_handler(req: &mut Request, _depot: &mut Depot, res: &mut Response) {
@@ -65,14 +121,25 @@ pub async fn admin_assets_handler(req: &mut Request, _depot: &mut Depot, res: &m
     let path = req.uri().path();
     
     // 提取文件路径（去掉 /admin/static 前缀）
-    let file_path = match path.strip_prefix("/admin/static/") {
+    let raw_file_path = match path.strip_prefix("/admin/static/") {
         Some(p) if !p.is_empty() => p,
         _ => "index.html",
     };
-    
-    // 构建实际文件路径
+
+    // 安全验证：防止路径穿越
     let base_dir = "Nakamasa-Ichika/static/static";
-    let full_path = Path::new(base_dir).join(file_path);
+    let full_path = match validate_static_path(raw_file_path, base_dir) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("静态文件访问被拒绝: {} - {}", path, e);
+            res.status_code(StatusCode::BAD_REQUEST);
+            res.render(Json(serde_json::json!({
+                "code": 400,
+                "msg": e
+            })));
+            return;
+        }
+    };
     
     // 先尝试本地文件
     if let Some(content) = get_local_file(&full_path) {
@@ -81,7 +148,8 @@ pub async fn admin_assets_handler(req: &mut Request, _depot: &mut Depot, res: &m
     }
     
     // 本地文件不存在，尝试嵌入文件
-    let embed_path = format!("static/{}", file_path);
+    // 注意：嵌入文件由 RustEmbed 自行保护，路径穿越无效，但前端已拦截
+    let embed_path = format!("static/{}", raw_file_path);
     if let Some(embedded) = get_embedded_file(&embed_path) {
         send_embedded_file(embedded, &full_path, res).await;
         return;
@@ -98,25 +166,32 @@ async fn serve_admin_static(req: &mut Request, res: &mut Response) {
     let path = req.uri().path();
     
     // 提取文件路径
-    let file_path = if path == "/admin" || path == "/static/" {
+    let raw_file_path = if path == "/admin" || path == "/static/" {
         "index.html"
     } else {
         // 去掉 /admin 前缀
-        path.strip_prefix("/admin/").unwrap_or("")
+        let relative = path.strip_prefix("/admin/").unwrap_or("");
+        if relative.is_empty() {
+            "index.html"
+        } else {
+            relative
+        }
     };
     
-    // 构建实际文件路径
+    // 安全验证：防止路径穿越
     let base_dir = "Nakamasa-Ichika/static";
-    
-    // 如果路径为空，返回 index.html
-    let file_path = if file_path.is_empty() {
-        "index.html"
-    } else {
-        file_path
+    let full_path = match validate_static_path(raw_file_path, base_dir) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("静态文件访问被拒绝: {} - {}", path, e);
+            res.status_code(StatusCode::BAD_REQUEST);
+            res.render(Json(serde_json::json!({
+                "code": 400,
+                "msg": e
+            })));
+            return;
+        }
     };
-    
-    // 构建完整路径
-    let full_path = Path::new(base_dir).join(file_path);
     
     // 先尝试本地文件
     if let Some(content) = get_local_file(&full_path) {
@@ -125,7 +200,8 @@ async fn serve_admin_static(req: &mut Request, res: &mut Response) {
     }
     
     // 本地文件不存在，尝试嵌入文件
-    if let Some(embedded) = get_embedded_file(file_path) {
+    // 注意：嵌入文件由 RustEmbed 自行保护，路径穿越无效，但前端已拦截
+    if let Some(embedded) = get_embedded_file(raw_file_path) {
         send_embedded_file(embedded, &full_path, res).await;
         return;
     }
