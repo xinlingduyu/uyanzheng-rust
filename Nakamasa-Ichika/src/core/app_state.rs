@@ -34,16 +34,16 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use sqlx::mysql::MySqlPool;
 use deadpool_redis::Pool as RedisPool;
+use sqlx::mysql::MySqlPool;
 
+use crate::config::AppConfig;
 use crate::core::RedisUtil;
 use crate::core::admin_cache::AdminCacheService;
-use crate::config::AppConfig;
 
 // 引入高性能缓存 V2
 use Nakamasa_utils::high_perf_cache::{
-    ShardedCacheV2, CacheConfig as V2CacheConfig, EvictionPolicy,
+    CacheConfig as V2CacheConfig, EvictionPolicy, ShardedCacheV2,
 };
 
 // ============================================================================
@@ -85,66 +85,63 @@ pub struct AppState {
     // ========================================================================
     // 数据存储层
     // ========================================================================
-    
     /// MySQL 数据库连接池
     ///
     /// 使用 `sqlx` 的异步连接池，支持自动重连和连接健康检查。
     /// 在未安装状态下为 `None`。
     pub db: Option<MySqlPool>,
-    
+
     /// Redis 连接池
     ///
     /// 使用 `deadpool-redis` 管理连接，支持 Pipeline 批量操作。
     /// 在未安装状态下为 `None`。
     pub redis_pool: Option<RedisPool>,
-    
+
     /// Redis 工具类
     ///
     /// 封装常用的 Redis 操作，支持键前缀。
     pub redis_util: Arc<RedisUtil>,
-    
+
     // ========================================================================
     // 缓存层
     // ========================================================================
-    
     /// 管理员缓存服务
     ///
     /// 专门用于管理员信息的缓存，支持用户名索引和密码验证。
     pub admin_cache: AdminCacheService,
-    
+
     /// 用户基本信息缓存 (uid -> UserInfoCache)
     ///
     /// 高频访问的用户基本信息，减少数据库查询。
     /// 容量：50,000，TTL：5分钟，策略：Hybrid
     pub user_info_cache: Arc<ShardedCacheV2<u64, UserInfoCache>>,
-    
+
     /// 应用配置缓存 (appid -> AppConfigCache)
     ///
     /// 应用配置信息，变更频率低。
     /// 容量：500，TTL：10分钟，策略：LRU
     pub app_config_cache: Arc<ShardedCacheV2<u64, AppConfigCache>>,
-    
+
     /// 积分事件缓存 (fenid -> FenEventCache)
     ///
     /// 积分事件定义，用于积分计算。
     /// 容量：1,000，TTL：5分钟，策略：LRU
     pub fen_event_cache: Arc<ShardedCacheV2<u64, FenEventCache>>,
-    
+
     /// Token 验证缓存 (token_hash -> CachedTokenData)
     ///
     /// 缓存已验证的 Token 数据，减少 Redis 查询。
     /// 容量：20,000，TTL：60秒，策略：LRU
-    /// 
+    ///
     /// 性能优化：
     /// - 高频访问的 Token 只需每分钟验证一次 Redis
     /// - 减少网络 I/O 开销
     /// - 使用 token_hash 作为 key，避免长字符串存储
     pub token_cache: Arc<ShardedCacheV2<u64, CachedTokenData>>,
-    
+
     // ========================================================================
     // 配置访问器
     // ========================================================================
-    
     /// 配置获取器
     ///
     /// 使用函数指针实现延迟加载，避免循环依赖。
@@ -309,10 +306,11 @@ impl AppState {
         redis_util: Arc<RedisUtil>,
     ) -> Self {
         // 创建管理员缓存服务（仅在数据库可用时）
-        let admin_cache = db.as_ref()
+        let admin_cache = db
+            .as_ref()
             .map(|pool| AdminCacheService::new(pool.clone(), 500))
             .unwrap_or_else(|| AdminCacheService::new_empty());
-        
+
         // 用户信息缓存配置 - 高频访问，大容量
         let user_cache_config = V2CacheConfig {
             max_entries: 50_000,
@@ -324,7 +322,7 @@ impl AppState {
             },
             ..Default::default()
         };
-        
+
         // 应用配置缓存配置 - 低频访问，小容量
         let app_config = V2CacheConfig {
             max_entries: 500,
@@ -333,7 +331,7 @@ impl AppState {
             eviction_policy: EvictionPolicy::LRU,
             ..Default::default()
         };
-        
+
         // 积分事件缓存配置 - 中频访问
         let fen_config = V2CacheConfig {
             max_entries: 1_000,
@@ -342,17 +340,17 @@ impl AppState {
             eviction_policy: EvictionPolicy::LRU,
             ..Default::default()
         };
-        
+
         // Token 验证缓存配置 - 高频访问
         // 短 TTL 确保安全性，同时大幅减少 Redis 查询
         let token_cache_config = V2CacheConfig {
             max_entries: 20_000,
             shard_count: 32,
-            default_ttl: Duration::from_secs(60),  // 60秒短期缓存
+            default_ttl: Duration::from_secs(60), // 60秒短期缓存
             eviction_policy: EvictionPolicy::LRU,
             ..Default::default()
         };
-        
+
         AppState {
             db,
             redis_pool,
@@ -365,11 +363,11 @@ impl AppState {
             token_cache: Arc::new(ShardedCacheV2::new(token_cache_config)),
         }
     }
-    
+
     // ========================================================================
     // 便捷访问方法
     // ========================================================================
-    
+
     /// 获取应用配置
     ///
     /// 返回全局应用配置的静态引用。
@@ -377,7 +375,7 @@ impl AppState {
     pub fn config(&self) -> &'static AppConfig {
         (self.config)()
     }
-    
+
     /// 获取数据库连接池
     ///
     /// # Panics
@@ -387,7 +385,7 @@ impl AppState {
     pub fn get_db(&self) -> &MySqlPool {
         self.db.as_ref().expect("Database not initialized")
     }
-    
+
     /// 尝试获取数据库连接池
     ///
     /// 返回 `Option`，不会 panic。
@@ -395,7 +393,7 @@ impl AppState {
     pub fn try_get_db(&self) -> Option<&MySqlPool> {
         self.db.as_ref()
     }
-    
+
     /// 获取 Redis 连接池
     ///
     /// # Panics
@@ -405,7 +403,7 @@ impl AppState {
     pub fn get_redis(&self) -> &RedisPool {
         self.redis_pool.as_ref().expect("Redis not initialized")
     }
-    
+
     /// 尝试获取 Redis 连接池
     ///
     /// 返回 `Option`，不会 panic。
@@ -413,11 +411,11 @@ impl AppState {
     pub fn try_get_redis(&self) -> Option<&RedisPool> {
         self.redis_pool.as_ref()
     }
-    
+
     // ========================================================================
     // 缓存失效方法
     // ========================================================================
-    
+
     /// 失效用户信息缓存
     ///
     /// 当用户信息被修改后调用，确保下次请求获取最新数据。
@@ -437,7 +435,7 @@ impl AppState {
         self.user_info_cache.remove(&uid);
         tracing::debug!("用户缓存已失效: uid={}", uid);
     }
-    
+
     /// 失效应用配置缓存
     ///
     /// 当应用配置被修改后调用。
@@ -450,7 +448,7 @@ impl AppState {
         self.app_config_cache.remove(&appid);
         tracing::debug!("应用配置缓存已失效: appid={}", appid);
     }
-    
+
     /// 失效积分事件缓存
     ///
     /// 当积分事件配置被修改后调用。
@@ -463,7 +461,7 @@ impl AppState {
         self.fen_event_cache.remove(&fenid);
         tracing::debug!("积分事件缓存已失效: fenid={}", fenid);
     }
-    
+
     /// 批量失效积分事件缓存
     ///
     /// 当多个积分事件被修改后调用。
@@ -478,7 +476,7 @@ impl AppState {
         }
         tracing::debug!("批量积分事件缓存已失效: count={}", fenids.len());
     }
-    
+
     /// 失效指定用户的所有相关缓存
     ///
     /// 同时失效用户信息缓存和相关的会话数据。
@@ -488,11 +486,11 @@ impl AppState {
         // 可以添加更多相关缓存的失效逻辑
         tracing::info!("用户所有缓存已失效: uid={}", uid);
     }
-    
+
     // ========================================================================
     // Token 缓存方法
     // ========================================================================
-    
+
     /// 计算 Token 的缓存 key
     ///
     /// 使用标准 hasher 对 token 字符串计算 u64 hash，
@@ -504,7 +502,7 @@ impl AppState {
         token.hash(&mut hasher);
         hasher.finish()
     }
-    
+
     /// 失效 Token 缓存
     ///
     /// 当用户修改密码或被踢下线时调用。
@@ -514,7 +512,7 @@ impl AppState {
         self.token_cache.remove(&key);
         tracing::debug!("Token缓存已失效: key={}", key);
     }
-    
+
     /// 批量失效 Token 缓存
     ///
     /// 当需要踢掉用户所有设备时调用。
@@ -555,7 +553,7 @@ mod tests {
             avatars: None,
             extend: None,
         };
-        
+
         assert_eq!(user_info.uid, 1);
         assert_eq!(user_info.fen, 100);
     }

@@ -9,7 +9,13 @@ pub struct BodyReader;
 
 #[async_trait]
 impl Handler for BodyReader {
-    async fn handle(&self, _req: &mut Request, _depot: &mut Depot, _res: &mut Response, ctrl: &mut FlowCtrl) {
+    async fn handle(
+        &self,
+        _req: &mut Request,
+        _depot: &mut Depot,
+        _res: &mut Response,
+        ctrl: &mut FlowCtrl,
+    ) {
         ctrl.call_next(_req, _depot, _res).await;
     }
 }

@@ -99,7 +99,7 @@ impl LmStudioProvider {
             .unwrap_or_else(|| "http://localhost:1234/v1".to_string());
 
         let mut headers = HeaderMap::new();
-        
+
         // LM Studio 不需要认证，但支持通过 Bearer token 认证
         if !config.api_key.is_empty() && config.api_key != "EMPTY" {
             let auth_value = format!("Bearer {}", config.api_key);
@@ -159,9 +159,12 @@ impl AiProvider for LmStudioProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(false),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         let url = format!("{}/chat/completions", self.api_base);
@@ -219,9 +222,12 @@ impl AiProvider for LmStudioProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(true),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         let url = format!("{}/chat/completions", self.api_base);
@@ -253,12 +259,12 @@ impl AiProvider for LmStudioProvider {
 
     async fn list_models(&self) -> Result<Vec<String>> {
         let url = format!("{}/models", self.api_base);
-        
+
         #[derive(Deserialize)]
         struct ModelsResponse {
             data: Vec<ModelData>,
         }
-        
+
         #[derive(Deserialize)]
         struct ModelData {
             id: String,

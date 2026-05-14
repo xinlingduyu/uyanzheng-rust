@@ -1,5 +1,5 @@
 //! 账号注册
-//! 
+//!
 //! 功能说明：
 //! 用户账号注册，支持邮箱/手机号注册。
 //! 可配置邀请奖励、注册奖励等功能。
@@ -13,16 +13,18 @@
 //! 6. 处理邀请奖励和注册奖励
 //! 7. 返回注册成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 /// 注册请求参数
 #[derive(serde::Deserialize)]
@@ -39,35 +41,44 @@ struct RegConfig {
     reg_state: String,
     reg_off_msg: Option<String>,
     reg_way: String,
-    reg_time_ip: i32,      // IP重复注册间隔(小时)
-    reg_time_sn: i32,      // 设备重复注册间隔(小时)
-    reg_award: String,     // 注册奖励类型: vip/fen
+    reg_time_ip: i32,  // IP重复注册间隔(小时)
+    reg_time_sn: i32,  // 设备重复注册间隔(小时)
+    reg_award: String, // 注册奖励类型: vip/fen
     reg_award_val: i64,
     reg_is_inviter: String, // 是否需要邀请人
-    inviter_award: String, // 邀请人奖励类型
+    inviter_award: String,  // 邀请人奖励类型
     inviter_award_val: i64,
     invitee_award: String, // 受邀者奖励类型
     invitee_award_val: i64,
-    vc_time: i32,          // 验证码有效期(分钟)
+    vc_time: i32, // 验证码有效期(分钟)
 }
 
 /// 获取注册配置
 async fn get_reg_config(pool: &sqlx::MySqlPool, appid: u64) -> Option<RegConfig> {
-    let result = sqlx::query_as::<_, (
-        Option<String>, Option<String>, Option<String>, 
-        Option<i32>, Option<i32>, 
-        Option<String>, Option<i64>,
-        Option<String>,
-        Option<String>, Option<i64>,
-        Option<String>, Option<i64>,
-        Option<i32>
-    )>(
+    let result = sqlx::query_as::<
+        _,
+        (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<i32>,
+            Option<i32>,
+            Option<String>,
+            Option<i64>,
+            Option<String>,
+            Option<String>,
+            Option<i64>,
+            Option<String>,
+            Option<i64>,
+            Option<i32>,
+        ),
+    >(
         "SELECT reg_state, reg_off_msg, reg_way, reg_time_ip, reg_time_sn, 
                 reg_award, reg_award_val, reg_is_inviter,
                 inviter_award, inviter_award_val, 
                 invitee_award, invitee_award_val,
                 vc_time 
-         FROM u_app WHERE id = ?"
+         FROM u_app WHERE id = ?",
     )
     .bind(appid)
     .fetch_optional(pool)
@@ -103,7 +114,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -143,35 +154,44 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // PHP: if($this->app['reg_state'] == 'off')$this->out->e(102,$this->app['reg_off_msg']);
     // 检查注册状态
     if reg_config.reg_state == "off" {
-        let msg = reg_config.reg_off_msg.clone().unwrap_or_else(|| "注册功能已关闭".to_string());
+        let msg = reg_config
+            .reg_off_msg
+            .clone()
+            .unwrap_or_else(|| "注册功能已关闭".to_string());
         render_error(res, msg, 102, app_key);
         return;
     }
 
     // 根据注册方式验证参数
     let mut validator = Validator::new();
-    
+
     // PHP: $wayMsg = ['phone'=>'注册的手机号有误','email'=>'注册的邮箱有误','wordnum'=>'注册的账号有误，仅支持5~18位字母+数字'];
     let reg_way = reg_config.reg_way.as_str();
     match reg_way {
-        "phone" => { validator.phone("account", &reg_req.account); }
-        "email" => { validator.email("account", &reg_req.account); }
-        _ => { validator.wordnum("account", &reg_req.account, 5, 32); }
+        "phone" => {
+            validator.phone("account", &reg_req.account);
+        }
+        "email" => {
+            validator.email("account", &reg_req.account);
+        }
+        _ => {
+            validator.wordnum("account", &reg_req.account, 5, 32);
+        }
     }
-    
+
     // PHP: 'password' => ['Password','6,18','密码长度需要满足6-18位数,不支持中文以及.-*_以外特殊字符']
     validator.password("password", &reg_req.password, 6, 18);
-    
+
     // PHP: 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']
     validator.udid("udid", &reg_req.udid, 1, 128);
-    
+
     // PHP: 'invid' => ['int','1,11','邀请人ID填写有误',$this->app['reg_is_inviter'] == 'n']
     // 如果需要邀请人
     if reg_config.reg_is_inviter == "y" && reg_req.invid.is_none() {
         render_error(res, "需要邀请人ID", 201, app_key);
         return;
     }
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -182,14 +202,17 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     tracing::debug!(
         "[注册调试] account={}, reg_way={}, appid={}, ip={}",
-        reg_req.account, reg_way, appid, ip
+        reg_req.account,
+        reg_way,
+        appid,
+        ip
     );
 
     // PHP: $res = $this->db->where("(phone = ? or email = ? or acctno = ?) and appid = ?",[...])->fetch();
     // PHP: if($res)$this->out->e(120);
     // 检查账号是否已存在
     let user_check = sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?"
+        "SELECT id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?",
     )
     .bind(&reg_req.account)
     .bind(&reg_req.account)
@@ -217,7 +240,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if reg_config.reg_time_ip > 0 {
         let ip_time = current_time - (reg_config.reg_time_ip as i64 * 3600);
         let ip_check = sqlx::query_as::<_, (u64,)>(
-            "SELECT id FROM u_user WHERE reg_ip = ? AND appid = ? AND reg_time > ?"
+            "SELECT id FROM u_user WHERE reg_ip = ? AND appid = ? AND reg_time > ?",
         )
         .bind(ip)
         .bind(appid)
@@ -237,7 +260,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if reg_config.reg_time_sn > 0 {
         let sn_time = current_time - (reg_config.reg_time_sn as i64 * 3600);
         let sn_check = sqlx::query_as::<_, (u64,)>(
-            "SELECT id FROM u_user WHERE reg_sn = ? AND appid = ? AND reg_time > ?"
+            "SELECT id FROM u_user WHERE reg_sn = ? AND appid = ? AND reg_time > ?",
         )
         .bind(&reg_req.udid)
         .bind(appid)
@@ -260,10 +283,10 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             render_error(res, "验证码为空", 118, app_key);
             return;
         }
-        
+
         // PHP: $dtime = time() - (60*$this->app['vc_time']);
         let dtime = current_time - (reg_config.vc_time as i64 * 60);
-        
+
         // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [...])->update(['usable'=>'n']);
         // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
         let verify_result = sqlx::query(
@@ -276,11 +299,15 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         .bind(appid)
         .execute(app_state.get_db())
         .await;
-        
+
         match verify_result {
             Ok(result) => {
                 if result.rows_affected() < 1 {
-                    tracing::warn!("[注册调试] 验证码不正确: account={}, code={}", reg_req.account, reg_req.code.unwrap());
+                    tracing::warn!(
+                        "[注册调试] 验证码不正确: account={}, code={}",
+                        reg_req.account,
+                        reg_req.code.unwrap()
+                    );
                     render_error(res, "验证码不正确", 119, app_key);
                     return;
                 }
@@ -298,7 +325,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 使用优化的MD5计算
     let password_hash_bytes = md5_hex(reg_req.password.as_bytes());
     let password_hash = md5_to_str(&password_hash_bytes).to_string();
-    
+
     // PHP: $user = $this->app['reg_way'] == 'wordnum' ? 'acctno' : $this->app['reg_way'];
     // 初始化注册数据
     let mut initial_vip: i64 = 0;
@@ -319,95 +346,119 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 处理邀请人
     let mut inviter_id: Option<i64> = None;
     if let Some(invid) = reg_req.invid
-        && invid > 0 {
-            // PHP: $inv_res = $this->db->where('id = ? and appid = ?',[$_POST['invid'],$this->app['id']])->fetch();
-            // PHP: if(!$inv_res)$this->out->e(122);
-            let inviter_check = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
-                "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?"
-            )
-            .bind(invid)
-            .bind(appid)
-            .fetch_optional(app_state.get_db())
-            .await;
+        && invid > 0
+    {
+        // PHP: $inv_res = $this->db->where('id = ? and appid = ?',[$_POST['invid'],$this->app['id']])->fetch();
+        // PHP: if(!$inv_res)$this->out->e(122);
+        let inviter_check = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
+            "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?",
+        )
+        .bind(invid)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await;
 
-            match inviter_check {
-                Ok(Some((inv_id, inv_vip, inv_fen))) => {
-                    inviter_id = Some(inv_id);
-                    tracing::debug!("[注册调试] 找到邀请人: invid={}, vip={:?}, fen={}", invid, inv_vip, inv_fen);
-                    
-                    // PHP: if($this->app['inviter_award_val'] > 0)
-                    // 邀请人奖励
-                    if reg_config.inviter_award_val > 0 {
-                        if reg_config.inviter_award == "vip" {
-                            // PHP: if($inv_res['vip'] != 9999999999)
-                            let new_vip = if inv_vip.unwrap_or(0) != 9999999999 {
-                                if inv_vip.unwrap_or(0) > current_time {
-                                    inv_vip.unwrap_or(0) + reg_config.inviter_award_val
-                                } else {
-                                    current_time + reg_config.inviter_award_val
-                                }
+        match inviter_check {
+            Ok(Some((inv_id, inv_vip, inv_fen))) => {
+                inviter_id = Some(inv_id);
+                tracing::debug!(
+                    "[注册调试] 找到邀请人: invid={}, vip={:?}, fen={}",
+                    invid,
+                    inv_vip,
+                    inv_fen
+                );
+
+                // PHP: if($this->app['inviter_award_val'] > 0)
+                // 邀请人奖励
+                if reg_config.inviter_award_val > 0 {
+                    if reg_config.inviter_award == "vip" {
+                        // PHP: if($inv_res['vip'] != 9999999999)
+                        let new_vip = if inv_vip.unwrap_or(0) != 9999999999 {
+                            if inv_vip.unwrap_or(0) > current_time {
+                                inv_vip.unwrap_or(0) + reg_config.inviter_award_val
                             } else {
-                                inv_vip.unwrap_or(0)
-                            };
-                            
-                            let _ = sqlx::query(
-                                "UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?"
-                            )
+                                current_time + reg_config.inviter_award_val
+                            }
+                        } else {
+                            inv_vip.unwrap_or(0)
+                        };
+
+                        let _ = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?")
                             .bind(new_vip)
                             .bind(invid)
                             .bind(appid)
                             .execute(app_state.get_db())
                             .await;
-                            tracing::debug!("[注册调试] 邀请人VIP奖励: invid={}, new_vip={}", invid, new_vip);
-                        } else {
-                            let _ = sqlx::query(
-                                "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?"
-                            )
-                            .bind(reg_config.inviter_award_val)
-                            .bind(invid)
-                            .bind(appid)
-                            .execute(app_state.get_db())
-                            .await;
-                            tracing::debug!("[注册调试] 邀请人积分奖励: invid={}, +{}", invid, reg_config.inviter_award_val);
-                        }
+                        tracing::debug!(
+                            "[注册调试] 邀请人VIP奖励: invid={}, new_vip={}",
+                            invid,
+                            new_vip
+                        );
+                    } else {
+                        let _ = sqlx::query(
+                            "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?",
+                        )
+                        .bind(reg_config.inviter_award_val)
+                        .bind(invid)
+                        .bind(appid)
+                        .execute(app_state.get_db())
+                        .await;
+                        tracing::debug!(
+                            "[注册调试] 邀请人积分奖励: invid={}, +{}",
+                            invid,
+                            reg_config.inviter_award_val
+                        );
                     }
+                }
 
-                    // PHP: if($this->app['invitee_award_val'] > 0)
-                    // 受邀者奖励
-                    if reg_config.invitee_award_val > 0 {
-                        if reg_config.invitee_award == "vip" {
-                            initial_vip = if initial_vip > current_time {
-                                initial_vip + reg_config.invitee_award_val
-                            } else {
-                                current_time + reg_config.invitee_award_val
-                            };
-                            tracing::debug!("[注册调试] 受邀者VIP奖励: vip={}", initial_vip);
+                // PHP: if($this->app['invitee_award_val'] > 0)
+                // 受邀者奖励
+                if reg_config.invitee_award_val > 0 {
+                    if reg_config.invitee_award == "vip" {
+                        initial_vip = if initial_vip > current_time {
+                            initial_vip + reg_config.invitee_award_val
                         } else {
-                            initial_fen += reg_config.invitee_award_val;
-                            tracing::debug!("[注册调试] 受邀者积分奖励: fen={}", initial_fen);
-                        }
+                            current_time + reg_config.invitee_award_val
+                        };
+                        tracing::debug!("[注册调试] 受邀者VIP奖励: vip={}", initial_vip);
+                    } else {
+                        initial_fen += reg_config.invitee_award_val;
+                        tracing::debug!("[注册调试] 受邀者积分奖励: fen={}", initial_fen);
                     }
-                }
-                Ok(None) => {
-                    tracing::warn!("[注册调试] 邀请人不存在: invid={}", invid);
-                    render_error(res, "邀请人不存在", 122, app_key);
-                    return;
-                }
-                Err(e) => {
-                    tracing::error!("[注册调试] 查询邀请人失败: {}", e);
-                    render_error(res, "数据库错误", 201, app_key);
-                    return;
                 }
             }
+            Ok(None) => {
+                tracing::warn!("[注册调试] 邀请人不存在: invid={}", invid);
+                render_error(res, "邀请人不存在", 122, app_key);
+                return;
+            }
+            Err(e) => {
+                tracing::error!("[注册调试] 查询邀请人失败: {}", e);
+                render_error(res, "数据库错误", 201, app_key);
+                return;
+            }
         }
+    }
 
     // 插入新用户
     // PHP: $user = $this->app['reg_way'] == 'wordnum' ? 'acctno' : $this->app['reg_way'];
     // 根据注册方式设置对应字段，其他字段为NULL
-    let acctno: Option<&str> = if reg_way == "wordnum" { Some(&reg_req.account) } else { None };
-    let phone: Option<&str> = if reg_way == "phone" { Some(&reg_req.account) } else { None };
-    let email: Option<&str> = if reg_way == "email" { Some(&reg_req.account) } else { None };
-    
+    let acctno: Option<&str> = if reg_way == "wordnum" {
+        Some(&reg_req.account)
+    } else {
+        None
+    };
+    let phone: Option<&str> = if reg_way == "phone" {
+        Some(&reg_req.account)
+    } else {
+        None
+    };
+    let email: Option<&str> = if reg_way == "email" {
+        Some(&reg_req.account)
+    } else {
+        None
+    };
+
     let insert_result = sqlx::query(
         "INSERT INTO u_user (acctno, phone, email, password, vip, fen, reg_time, reg_ip, reg_sn, appid, inviter_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
@@ -429,7 +480,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         Ok(result) => {
             if result.rows_affected() > 0 {
                 tracing::debug!("[注册调试] 注册成功: uid={}", result.last_insert_id());
-                
+
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"

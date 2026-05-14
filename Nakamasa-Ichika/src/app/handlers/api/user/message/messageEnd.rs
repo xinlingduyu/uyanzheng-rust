@@ -1,17 +1,19 @@
 //! 结束留言
-//! 
+//!
 //! 功能说明：
 //! 用户主动结束留言工单，关闭后会话结束。
 
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::MessageEndRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::MessageEndRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 #[handler]
 pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -22,7 +24,7 @@ pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -32,7 +34,7 @@ pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Respons
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let end_req = match req.parse_json::<MessageEndRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -43,9 +45,10 @@ pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     // 验证参数
     let mut validator = Validator::new();
-    validator.wordnum("token", &end_req.token, 32, 32)
+    validator
+        .wordnum("token", &end_req.token, 32, 32)
         .int("mid", end_req.mid, 1, 11);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -64,12 +67,13 @@ pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let appid = user_info.appid;
 
     // 更新留言状态为已结束
-    let result = sqlx::query(
-        "UPDATE u_message SET state = 2 WHERE id = ? AND uid = ? AND appid = ?"
-    )
-    .bind(end_req.mid).bind(uid).bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let result =
+        sqlx::query("UPDATE u_message SET state = 2 WHERE id = ? AND uid = ? AND appid = ?")
+            .bind(end_req.mid)
+            .bind(uid)
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await;
 
     match result {
         Ok(r) => {

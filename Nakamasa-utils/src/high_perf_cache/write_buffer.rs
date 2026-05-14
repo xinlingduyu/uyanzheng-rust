@@ -1,15 +1,15 @@
 //! 写缓冲模块
-//! 
+//!
 //! 实现分层延迟写入:
 //! 1. 写入先进入无锁环形缓冲区
 //! 2. 后台线程批量刷新到主缓存
 //! 3. 减少写锁竞争，提高吞吐量
 
 use std::hash::Hash;
-use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
-use std::time::Duration;
-use std::ptr;
 use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::time::Duration;
 
 use crossbeam::utils::CachePadded;
 
@@ -61,21 +61,20 @@ impl<T, const N: usize> RingBuffer<T, N> {
     #[inline(always)]
     pub fn force_push(&self, item: T) {
         let boxed = Box::into_raw(Box::new(item));
-        
+
         loop {
             let write = self.write_pos.load(Ordering::Relaxed);
             let next_write = (write + 1) % N;
 
             // 存储旧值
             let old = self.buffer[write].swap(boxed, Ordering::AcqRel);
-            
+
             // 更新写入位置
-            if self.write_pos.compare_exchange_weak(
-                write,
-                next_write,
-                Ordering::Release,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .write_pos
+                .compare_exchange_weak(write, next_write, Ordering::Release, Ordering::Relaxed)
+                .is_ok()
+            {
                 // 释放旧值
                 if !old.is_null() {
                     unsafe {
@@ -138,7 +137,7 @@ impl<T, const N: usize> RingBuffer<T, N> {
     pub fn len(&self) -> usize {
         let write = self.write_pos.load(Ordering::Relaxed);
         let read = self.read_pos.load(Ordering::Relaxed);
-        
+
         if write >= read {
             write - read
         } else {
@@ -222,12 +221,17 @@ impl<T> MpmcQueue<T> {
             if tail == self.tail.load(Ordering::Acquire) {
                 if next.is_null() {
                     // 尝试链接新节点
-                    if unsafe { (*tail).next.compare_exchange_weak(
-                        ptr::null_mut(),
-                        node,
-                        Ordering::Release,
-                        Ordering::Relaxed,
-                    ).is_ok() } {
+                    if unsafe {
+                        (*tail)
+                            .next
+                            .compare_exchange_weak(
+                                ptr::null_mut(),
+                                node,
+                                Ordering::Release,
+                                Ordering::Relaxed,
+                            )
+                            .is_ok()
+                    } {
                         // 成功链接，尝试推进 tail
                         let _ = self.tail.compare_exchange_weak(
                             tail,
@@ -280,13 +284,12 @@ impl<T> MpmcQueue<T> {
                     // 读取值
                     unsafe {
                         let data = (*next).data.as_ptr().read();
-                        
-                        if self.head.compare_exchange_weak(
-                            head,
-                            next,
-                            Ordering::Release,
-                            Ordering::Relaxed,
-                        ).is_ok() {
+
+                        if self
+                            .head
+                            .compare_exchange_weak(head, next, Ordering::Release, Ordering::Relaxed)
+                            .is_ok()
+                        {
                             // 成功出队
                             self.len.fetch_sub(1, Ordering::Relaxed);
                             // 释放旧 head
@@ -338,7 +341,11 @@ impl<T> Default for MpmcQueue<T> {
 #[derive(Clone)]
 pub enum WriteOp<K, V> {
     /// 设置值
-    Set { key: K, value: V, ttl: Option<Duration> },
+    Set {
+        key: K,
+        value: V,
+        ttl: Option<Duration>,
+    },
     /// 删除值
     Remove { key: K },
     /// 清空
@@ -446,7 +453,9 @@ impl<K, V> WriteBuffer<K, V> {
 
         if count > 0 {
             self.stats.total_flushes.fetch_add(1, Ordering::Relaxed);
-            self.stats.current_buffered.fetch_sub(count, Ordering::Relaxed);
+            self.stats
+                .current_buffered
+                .fetch_sub(count, Ordering::Relaxed);
         }
 
         ops
@@ -469,8 +478,8 @@ impl<K, V> WriteBuffer<K, V> {
 // 延迟写入缓存包装器
 // ============================================================================
 
-use super::shard_v2::{ShardedCacheV2, CacheStatsV2};
 use super::config::CacheConfig;
+use super::shard_v2::{CacheStatsV2, ShardedCacheV2};
 
 /// 支持延迟写入的缓存
 pub struct BufferedCache<K, V>
@@ -491,7 +500,11 @@ where
     K: Hash + Eq + Clone + Send + Sync + std::hash::Hash + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    pub fn new(cache_config: CacheConfig, buffer_config: WriteBufferConfig, buffered_writes: bool) -> Self {
+    pub fn new(
+        cache_config: CacheConfig,
+        buffer_config: WriteBufferConfig,
+        buffered_writes: bool,
+    ) -> Self {
         Self {
             cache: ShardedCacheV2::new(cache_config),
             write_buffer: WriteBuffer::new(buffer_config),
@@ -509,7 +522,11 @@ where
     #[inline(always)]
     pub fn set(&self, key: K, value: V) {
         if self.buffered_writes {
-            self.write_buffer.write(WriteOp::Set { key, value, ttl: None });
+            self.write_buffer.write(WriteOp::Set {
+                key,
+                value,
+                ttl: None,
+            });
         } else {
             self.cache.set(key, value);
         }
@@ -519,7 +536,11 @@ where
     #[inline(always)]
     pub fn set_with_ttl(&self, key: K, value: V, ttl: Duration) {
         if self.buffered_writes {
-            self.write_buffer.write(WriteOp::Set { key, value, ttl: Some(ttl) });
+            self.write_buffer.write(WriteOp::Set {
+                key,
+                value,
+                ttl: Some(ttl),
+            });
         } else {
             self.cache.set_with_ttl(key, value, ttl);
         }

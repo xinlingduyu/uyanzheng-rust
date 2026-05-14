@@ -42,7 +42,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -76,12 +76,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let offset = (page - 1) * page_size;
 
     // 查询总数
-    let count_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT COUNT(*) FROM u_app_function WHERE appid = ?"
-    )
-    .bind(appid)
-    .fetch_one(app_state.get_db())
-    .await;
+    let count_result =
+        sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM u_app_function WHERE appid = ?")
+            .bind(appid)
+            .fetch_one(app_state.get_db())
+            .await;
 
     let data_total = match count_result {
         Ok((count,)) => count as u64,
@@ -100,7 +99,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 查询列表
     let query = "SELECT id, name, notes, allow, IFNULL(fen, 0) as fen, state FROM u_app_function WHERE appid = ? ORDER BY id DESC LIMIT ? OFFSET ?";
-    
+
     let result = sqlx::query_as::<_, (u64, String, String, Option<i32>, i32, String)>(query)
         .bind(appid)
         .bind(page_size)
@@ -110,14 +109,17 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<FunctionItem> = rows.into_iter().map(|row| FunctionItem {
-                id: row.0,
-                name: row.1,
-                notes: row.2,
-                allow: row.3.unwrap_or(0),
-                fen: row.4,
-                state: row.5,
-            }).collect();
+            let list: Vec<FunctionItem> = rows
+                .into_iter()
+                .map(|row| FunctionItem {
+                    id: row.0,
+                    name: row.1,
+                    notes: row.2,
+                    allow: row.3.unwrap_or(0),
+                    fen: row.4,
+                    state: row.5,
+                })
+                .collect();
 
             let response = ListResponse {
                 list,
@@ -157,7 +159,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddFunctionRequest>().await {
         Ok(data) => {
             tracing::info!("添加云函数请求: {:?}", data);
@@ -197,21 +199,42 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 验证 name 字段
-    if !add_req.name.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
-        res.render(Json(ApiResponse::<()>::error("函数名称必须以字母开头", 201)));
+    if !add_req
+        .name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_alphabetic())
+        .unwrap_or(false)
+    {
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称必须以字母开头",
+            201,
+        )));
         return;
     }
     if add_req.name.len() < 3 || add_req.name.len() > 64 {
-        res.render(Json(ApiResponse::<()>::error("函数名称长度必须为3-64位", 201)));
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称长度必须为3-64位",
+            201,
+        )));
         return;
     }
     if !add_req.name.chars().all(|c| c.is_ascii_alphanumeric()) {
-        res.render(Json(ApiResponse::<()>::error("函数名称只能包含字母和数字", 201)));
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称只能包含字母和数字",
+            201,
+        )));
         return;
     }
 
-    tracing::info!("插入云函数: name={}, appid={}, allow={}, fen={}, state={}", 
-        add_req.name, appid, add_req.allow, add_req.fen, add_req.state);
+    tracing::info!(
+        "插入云函数: name={}, appid={}, allow={}, fen={}, state={}",
+        add_req.name,
+        appid,
+        add_req.allow,
+        add_req.fen,
+        add_req.state
+    );
 
     let result = sqlx::query(
         "INSERT INTO u_app_function (name, code, notes, allow, fen, state, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -228,8 +251,15 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(r) => {
-            tracing::info!("添加成功, rows_affected={}, last_insert_id={}", r.rows_affected(), r.last_insert_id());
-            res.render(Json(ApiResponse::success("添加成功", Some(serde_json::json!({"id": r.last_insert_id()})))));
+            tracing::info!(
+                "添加成功, rows_affected={}, last_insert_id={}",
+                r.rows_affected(),
+                r.last_insert_id()
+            );
+            res.render(Json(ApiResponse::success(
+                "添加成功",
+                Some(serde_json::json!({"id": r.last_insert_id()})),
+            )));
         }
         Err(e) => {
             tracing::error!("添加失败: {:?}", e);
@@ -265,7 +295,7 @@ struct GetCodeResponse {
 }
 
 /// 获取云函数代码（Base64 编码）
-/// 
+///
 /// 前端编辑时调用此接口获取代码内容
 #[handler]
 pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -276,7 +306,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let info_req = match req.parse_json::<GetInfoRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -285,12 +315,10 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let result = sqlx::query_as::<_, (String,)>(
-        "SELECT code FROM u_app_function WHERE id = ?"
-    )
-    .bind(info_req.id)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let result = sqlx::query_as::<_, (String,)>("SELECT code FROM u_app_function WHERE id = ?")
+        .bind(info_req.id)
+        .fetch_optional(app_state.get_db())
+        .await;
 
     match result {
         Ok(Some((code,))) => {
@@ -318,7 +346,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let info_req = match req.parse_json::<GetInfoRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -327,8 +355,20 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let result = sqlx::query_as::<_, (u64, String, String, String, Option<i32>, Option<i32>, String, u64)>(
-        "SELECT id, name, code, notes, allow, fen, state, appid FROM u_app_function WHERE id = ?"
+    let result = sqlx::query_as::<
+        _,
+        (
+            u64,
+            String,
+            String,
+            String,
+            Option<i32>,
+            Option<i32>,
+            String,
+            u64,
+        ),
+    >(
+        "SELECT id, name, code, notes, allow, fen, state, appid FROM u_app_function WHERE id = ?",
     )
     .bind(info_req.id)
     .fetch_optional(app_state.get_db())
@@ -337,7 +377,8 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     match result {
         Ok(Some(row)) => {
             // 将代码进行 Base64 编码，避免传输过程中的编码问题
-            let encoded_code = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &row.2);
+            let encoded_code =
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &row.2);
             let detail = FunctionDetail {
                 id: row.0,
                 name: row.1,
@@ -387,7 +428,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditFunctionRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -397,16 +438,31 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 验证 name 字段: 必须是字母开头，3-64位字母数字
-    if !edit_req.name.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false) {
-        res.render(Json(ApiResponse::<()>::error("函数名称必须以字母开头", 201)));
+    if !edit_req
+        .name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_alphabetic())
+        .unwrap_or(false)
+    {
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称必须以字母开头",
+            201,
+        )));
         return;
     }
     if edit_req.name.len() < 3 || edit_req.name.len() > 64 {
-        res.render(Json(ApiResponse::<()>::error("函数名称长度必须为3-64位", 201)));
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称长度必须为3-64位",
+            201,
+        )));
         return;
     }
     if !edit_req.name.chars().all(|c| c.is_ascii_alphanumeric()) {
-        res.render(Json(ApiResponse::<()>::error("函数名称只能包含字母和数字", 201)));
+        res.render(Json(ApiResponse::<()>::error(
+            "函数名称只能包含字母和数字",
+            201,
+        )));
         return;
     }
 
@@ -457,7 +513,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -501,7 +557,7 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     let state_req = match req.parse_json::<EditStateRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -537,5 +593,5 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

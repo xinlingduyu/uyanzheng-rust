@@ -1,5 +1,5 @@
 //! 微信扫码登录回调
-//! 
+//!
 //! 功能说明：
 //! 微信开放平台授权后的回调处理，用于完成登录或注册。
 //! 通过code换取access_token，获取用户信息。
@@ -12,15 +12,15 @@
 //! 5. 查询或创建用户账号
 //! 6. 更新Redis登录状态供轮询接口使用
 
-use salvo::prelude::*;
-use std::sync::Arc;
 use chrono::Utc;
 use rand::Rng;
+use salvo::prelude::*;
+use std::sync::Arc;
 
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
 use crate::core::AppState;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// 微信登录信息 - 存储在Redis中
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,9 +63,14 @@ struct WxUserInfo {
 /// HTML模板
 fn render_result_page(title: &str, state: i32, msg: &str) -> String {
     let state_class = if state == 2 { "success" } else { "error" };
-    let script = if state == 2 { "<script>setTimeout(function(){window.close();},2000);</script>" } else { "" };
-    
-    format!(r#"
+    let script = if state == 2 {
+        "<script>setTimeout(function(){window.close();},2000);</script>"
+    } else {
+        ""
+    };
+
+    format!(
+        r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -93,18 +98,34 @@ fn render_result_page(title: &str, state: i32, msg: &str) -> String {
     {}
 </body>
 </html>
-"#, title, state_class, if state == 2 { "✓" } else { "✗" }, title, msg, script)
+"#,
+        title,
+        state_class,
+        if state == 2 { "✓" } else { "✗" },
+        title,
+        msg,
+        script
+    )
 }
 
 #[handler]
 pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
-    
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.render(render_result_page("登录失败", 0, "系统错误"));
+            return;
+        }
+    };
+
     // PHP: $checkRules = ['code' => ['wordnum','32,32','CODE参数不规范'], 'state' => ['wordnum','32,32','状态标识参数不规范']];
     let code = match req.query::<String>("code") {
         Some(c) if c.len() >= 10 && c.len() <= 64 => c,
         _ => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "CODE参数不规范"));
             return;
         }
@@ -113,7 +134,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let state = match req.query::<String>("state") {
         Some(s) if s.len() == 32 => s,
         _ => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "状态标识参数不规范"));
             return;
         }
@@ -123,7 +145,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "系统错误"));
             return;
         }
@@ -134,12 +157,14 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
         Ok(None) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "缺少参数"));
             return;
         }
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "系统错误"));
             return;
         }
@@ -149,17 +174,24 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let logon_info: WxLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "登录失败，缺少参数"));
             return;
         }
     };
 
     let wx_config = &logon_info.wx_config;
-    let app_id = wx_config.get("appID").and_then(|v| v.as_str()).unwrap_or("");
-    let app_secret = wx_config.get("appSecret").and_then(|v| v.as_str()).unwrap_or("");
+    let app_id = wx_config
+        .get("appID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let app_secret = wx_config
+        .get("appSecret")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
-    // PHP: $url='https://api.weixin.qq.com/sns/oauth2/access_token?appid='.$logon_info['wxConfig']['appID'].'&secret='.$logon_info['wxConfig']['appSecret'].'&code='.$_GET['code'].'&grant_type=authorization_code';
+    // PHP: $url='https://api.weixin.qq.com/sns/oauth2/access_token?appid='.$logon_info['wxConfig']['appID'].'&secret=***&code=***&grant_type=authorization_code';
     let token_url = format!(
         "https://api.weixin.qq.com/sns/oauth2/access_token?appid={}&secret={}&code={}&grant_type=authorization_code",
         app_id, app_secret, code
@@ -169,7 +201,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let token_response = match reqwest::get(&token_url).await {
         Ok(resp) => resp,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "微信API请求失败"));
             return;
         }
@@ -178,7 +211,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let token_result: WxTokenResponse = match token_response.json().await {
         Ok(json) => json,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "微信API响应解析失败"));
             return;
         }
@@ -188,8 +222,11 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let access_token = match token_result.access_token {
         Some(token) => token,
         None => {
-            let err_msg = token_result.errmsg.unwrap_or_else(|| "未知错误".to_string());
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            let err_msg = token_result
+                .errmsg
+                .unwrap_or_else(|| "未知错误".to_string());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, &err_msg));
             return;
         }
@@ -197,7 +234,7 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
 
     let openid = token_result.openid.unwrap_or_default();
 
-    // PHP: $url='https://api.weixin.qq.com/sns/userinfo?access_token='.$arr['access_token'].'&openid='.$arr['openid'].'&lang=zh_CN';
+    // PHP: $url='https://api.weixin.qq.com/sns/userinfo?access_token=***&openid='.$arr['openid'].'&lang=zh_CN';
     let user_info_url = format!(
         "https://api.weixin.qq.com/sns/userinfo?access_token={}&openid={}&lang=zh_CN",
         access_token, openid
@@ -207,7 +244,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let user_response = match reqwest::get(&user_info_url).await {
         Ok(resp) => resp,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "获取微信用户信息失败"));
             return;
         }
@@ -216,7 +254,8 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let wx_info: WxUserInfo = match user_response.json().await {
         Ok(json) => json,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "解析微信用户信息失败"));
             return;
         }
@@ -227,9 +266,18 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let wx_headimgurl = wx_info.headimgurl.unwrap_or_default();
 
     // PHP: $this->__logon($_GET['state'],$logon_info,$wx_info);
-    let result = __logon(app_state, &state, &logon_info, &wx_openid, &wx_nickname, &wx_headimgurl).await;
+    let result = __logon(
+        app_state,
+        &state,
+        &logon_info,
+        &wx_openid,
+        &wx_nickname,
+        &wx_headimgurl,
+    )
+    .await;
 
-    res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+    res.headers_mut()
+        .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
     res.render(render_result_page(&result.0, result.1, &result.2));
 }
 
@@ -248,19 +296,20 @@ async fn __logon(
     let appid = logon_info.appid;
 
     // PHP: $Ures = $this->db->where('open_wx = ? and appid = ?', [$wx_info['openid'],$logon_info['appid']])->fetch('id');
-    let existing_user = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE open_wx = ? AND appid = ?"
-    )
-    .bind(wx_openid)
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let existing_user =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE open_wx = ? AND appid = ?")
+            .bind(wx_openid)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match existing_user {
         Ok(Some((uid,))) => {
             // PHP: 已有用户，直接登录
             let logon_key = format!("logon_{}", uuid);
-            let _ = redis_util.setex(redis_pool, &logon_key, 600, &uid.to_string()).await;
+            let _ = redis_util
+                .setex(redis_pool, &logon_key, 600, &uid.to_string())
+                .await;
             ("登录成功".to_string(), 2, "登录成功".to_string())
         }
         Ok(None) => {
@@ -275,7 +324,13 @@ async fn __logon(
 
             let app_cfg = match app_result {
                 Ok(Some(row)) => row,
-                Ok(None) => return ("登录失败".to_string(), 0, "登录失败，应用不存在".to_string()),
+                Ok(None) => {
+                    return (
+                        "登录失败".to_string(),
+                        0,
+                        "登录失败，应用不存在".to_string(),
+                    );
+                }
                 Err(_) => return ("登录失败".to_string(), 0, "系统错误".to_string()),
             };
 
@@ -311,7 +366,7 @@ async fn __logon(
             if let Some(inv_id) = logon_info.invid {
                 // 查询邀请人是否存在
                 let inv_res = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
-                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?"
+                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?",
                 )
                 .bind(inv_id)
                 .bind(appid)
@@ -376,12 +431,22 @@ async fn __logon(
                 Ok(result) => {
                     let reg_id = result.last_insert_id() as i64;
                     let logon_key = format!("logon_{}", uuid);
-                    let _ = redis_util.setex(redis_pool, &logon_key, 600, &reg_id.to_string()).await;
-                    ("登录成功".to_string(), 2, format!("登录成功，您的初始密码为：{}", pwd))
+                    let _ = redis_util
+                        .setex(redis_pool, &logon_key, 600, &reg_id.to_string())
+                        .await;
+                    (
+                        "登录成功".to_string(),
+                        2,
+                        format!("登录成功，您的初始密码为：{}", pwd),
+                    )
                 }
                 Err(e) => {
                     tracing::error!("注册失败: {}", e);
-                    ("登录失败".to_string(), 0, "账号注册失败，请重试".to_string())
+                    (
+                        "登录失败".to_string(),
+                        0,
+                        "账号注册失败，请重试".to_string(),
+                    )
                 }
             }
         }

@@ -1,8 +1,8 @@
-use serde::{Serialize, Deserialize};
-use sqlx::{FromRow, Type};
-use sqlx::types::Json;
-use serde_json::Value;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::types::Json;
+use sqlx::{FromRow, Type};
 
 /// 卡券类型枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
@@ -34,82 +34,81 @@ pub enum OutState {
     N,
 }
 
-
 /// 卡券模型 (对应 u_cdk_kami 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct Kami {
     #[sqlx(rename = "id")]
     pub id: i32,
-    
+
     #[sqlx(rename = "gid")]
     pub group_id: i32,
-    
+
     #[sqlx(rename = "type")]
     pub card_type: CardType,
-    
+
     #[sqlx(rename = "cardNo")]
     pub card_number: String,
-    
+
     #[sqlx(rename = "val")]
     pub value: i64,
-    
+
     #[sqlx(rename = "email")]
     pub email: Option<String>,
-    
+
     #[sqlx(rename = "phone")]
     pub phone: Option<i64>,
-    
+
     #[sqlx(rename = "password")]
     pub password: Option<String>,
-    
+
     #[sqlx(rename = "note")]
     pub note: Option<String>,
-    
+
     #[sqlx(rename = "vip_exp")]
     pub vip_expire: Option<i64>,
-    
+
     #[sqlx(rename = "add_role")]
     pub creator_role: AddRole,
-    
+
     #[sqlx(rename = "add_uid")]
     pub creator_id: i32,
-    
+
     #[sqlx(rename = "add_price")]
     pub price: f64,
-    
+
     #[sqlx(rename = "add_time")]
     pub create_time: i32,
-    
+
     #[sqlx(rename = "add_ip")]
     pub create_ip: String,
-    
+
     #[sqlx(rename = "use_id")]
     pub user_id: Option<i32>,
-    
+
     #[sqlx(rename = "use_time")]
     pub use_time: Option<i32>,
-    
+
     #[sqlx(rename = "use_ip")]
     pub use_ip: Option<String>,
-    
+
     #[sqlx(rename = "out_state")]
     pub export_state: OutState,
-    
+
     #[sqlx(rename = "out_time")]
     pub export_time: Option<i32>,
-    
+
     #[sqlx(rename = "ban")]
     pub ban_until: Option<i64>,
-    
+
     #[sqlx(rename = "ban_msg")]
     pub ban_message: Option<String>,
-    
+
     #[sqlx(rename = "sn_max")]
     pub sn_max: i32,
-    
+
     #[sqlx(rename = "sn_list")]
     pub sn_list: Option<Json<Value>>,
-    
+
     #[sqlx(rename = "appid")]
     pub app_id: i32,
 }
@@ -128,7 +127,7 @@ impl Kami {
         app_id: i32,
     ) -> Self {
         let now = Utc::now().timestamp() as i32;
-        
+
         Self {
             id: 0, // 数据库自增
             group_id,
@@ -183,16 +182,16 @@ impl Kami {
         if self.is_used() {
             return Err("卡券已被使用");
         }
-        
+
         if self.is_banned() {
             return Err("卡券已被禁用");
         }
-        
+
         let now = Utc::now().timestamp() as i32;
         self.user_id = Some(user_id);
         self.use_time = Some(now);
         self.use_ip = Some(use_ip);
-        
+
         Ok(())
     }
 

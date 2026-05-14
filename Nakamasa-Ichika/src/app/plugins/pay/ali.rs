@@ -1,11 +1,11 @@
 //! 支付宝支付插件
 //! 支持 H5 支付、PC 支付、APP 支付
 
-use super::trait_def::{PayPlugin, PayOrder, PayResult};
 use super::http_client;
+use super::trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
+use chrono::Utc;
 use serde_json::json;
 use std::collections::BTreeMap;
-use chrono::Utc;
 
 /// 支付宝支付插件
 pub struct AliPayPlugin {
@@ -41,12 +41,12 @@ impl AliPayPlugin {
     /// RSA2签名
     fn sign_rsa2(&self, data: &str) -> Result<String, String> {
         use base64::Engine;
-        use rsa::pkcs1::DecodeRsaPrivateKey;
-        use rsa::pkcs8::DecodePrivateKey;
-        use rsa::pkcs1v15::SigningKey;
-        use rsa::signature::{RandomizedSigner, SignatureEncoding};
         use rsa::RsaPrivateKey;
+        use rsa::pkcs1::DecodeRsaPrivateKey;
+        use rsa::pkcs1v15::SigningKey;
+        use rsa::pkcs8::DecodePrivateKey;
         use rsa::sha2::Sha256;
+        use rsa::signature::{RandomizedSigner, SignatureEncoding};
 
         if self.private_key.is_none() {
             return Err("私钥未配置".to_string());
@@ -75,12 +75,12 @@ impl AliPayPlugin {
     /// RSA2验签
     fn verify_rsa2(&self, data: &str, sign: &str) -> bool {
         use base64::Engine;
+        use rsa::RsaPublicKey;
         use rsa::pkcs1v15::Signature;
         use rsa::pkcs1v15::VerifyingKey;
         use rsa::pkcs8::DecodePublicKey;
-        use rsa::signature::Verifier;
-        use rsa::RsaPublicKey;
         use rsa::sha2::Sha256;
+        use rsa::signature::Verifier;
 
         if self.alipay_public_key.is_none() {
             return false;
@@ -359,36 +359,58 @@ impl PayPlugin for AliPayPlugin {
         }
     }
 
-    fn verify_notify(&self, data: serde_json::Value) -> Result<String, String> {
+    fn verify_notify(&self, data: serde_json::Value) -> Result<NotifyVerifyResult, String> {
         if self.alipay_public_key.is_none() {
             return Err("支付宝公钥未配置".to_string());
         }
 
         if let Some(obj) = data.as_object() {
-            // 提取签名
             let sign = match obj.get("sign") {
                 Some(s) => s.as_str().unwrap_or("").to_string(),
                 None => return Err("缺少签名参数".to_string()),
             };
 
-            // 构建验签参数（排除sign和sign_type）
             let mut params = BTreeMap::new();
             for (k, v) in obj {
-                if k != "sign" && k != "sign_type"
-                    && let Some(s) = v.as_str() {
-                        params.insert(k.clone(), s.to_string());
-                    }
+                if k != "sign"
+                    && k != "sign_type"
+                    && let Some(s) = v.as_str()
+                {
+                    params.insert(k.clone(), s.to_string());
+                }
             }
 
-            // 验证签名
             if self.verify(&params, &sign) {
-                if let Some(out_trade_no) = obj.get("out_trade_no")
-                    && let Some(trade_status) = obj.get("trade_status")
-                        && (trade_status.as_str() == Some("TRADE_SUCCESS") ||
-                           trade_status.as_str() == Some("TRADE_FINISHED")) {
-                            return Ok(out_trade_no.as_str().unwrap_or("").to_string());
-                        }
-                return Err("订单状态未成功".to_string());
+                let trade_status = obj
+                    .get("trade_status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if trade_status != "TRADE_SUCCESS" && trade_status != "TRADE_FINISHED" {
+                    return Err("订单状态未成功".to_string());
+                }
+                let order_no = obj
+                    .get("out_trade_no")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if order_no.is_empty() {
+                    return Err("缺少商户订单号".to_string());
+                }
+                let trade_no = obj
+                    .get("trade_no")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(order_no)
+                    .to_string();
+                let amount = obj
+                    .get("total_amount")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<f64>().ok())
+                    .map(|v| (v * 100.0).round() as i64);
+                return Ok(NotifyVerifyResult {
+                    order_no: order_no.to_string(),
+                    trade_no,
+                    amount,
+                });
             }
         }
         Err("签名验证失败".to_string())
@@ -438,9 +460,7 @@ impl PayPlugin for AliPayPlugin {
         let gw_url = self.gateway_url.clone();
         let fd = form_data.clone();
         let response = tokio::task::block_in_place(move || {
-            tokio::runtime::Handle::current().block_on(
-                http_client::post_form(&gw_url, &fd)
-            )
+            tokio::runtime::Handle::current().block_on(http_client::post_form(&gw_url, &fd))
         });
 
         match response {

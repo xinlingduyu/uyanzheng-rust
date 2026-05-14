@@ -1,5 +1,5 @@
 //! 设置账号
-//! 
+//!
 //! 功能说明：
 //! 用户设置自定义账号，设置后可用账号+密码登录。
 //! 账号必须以字母开头，5-12位字母数字。
@@ -10,17 +10,19 @@
 //! 3. 更新用户acctno字段
 //! 4. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::SetAcctnoRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::SetAcctnoRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -42,7 +44,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     };
     let app_key = app_info.app_key.as_str();
     let app_type = app_info.app_type.as_str();
-    
+
     let set_req = match req.parse_json::<SetAcctnoRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -57,7 +59,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     validator
         .wordnum("token", &set_req.token, 32, 32)
         .wordnum("acctno", &set_req.acctno, 5, 12);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -95,7 +97,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     // PHP: if($Anores)$this->out->e(120);
     // 检查账号是否已被使用（同时检查手机号）
     let acctno_check = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE (phone = ? OR acctno = ?) AND appid = ?"
+        "SELECT id FROM u_user WHERE (phone = ? OR acctno = ?) AND appid = ?",
     )
     .bind(&set_req.acctno)
     .bind(&set_req.acctno)
@@ -110,14 +112,12 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['acctno'=>$_POST['acctno']]);
     // 更新账号
-    let result = sqlx::query(
-        "UPDATE u_user SET acctno = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(&set_req.acctno)
-    .bind(uid)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_user SET acctno = ? WHERE id = ? AND appid = ?")
+        .bind(&set_req.acctno)
+        .bind(uid)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) => {

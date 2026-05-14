@@ -1,6 +1,6 @@
-use sqlx::FromRow;
-use serde::{Serialize, Deserialize};
 use super::super::common::enums::{GoodsType, YesNoStatus};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 /// 商品模型 - 对应 u_goods 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

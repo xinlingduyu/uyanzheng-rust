@@ -120,11 +120,7 @@ fn get_log_type_mapping() -> LogTypeResponse {
             "add".to_string(),
             "del".to_string(),
         ],
-        agent: vec![
-            "bind".to_string(),
-            "unbind".to_string(),
-            "cash".to_string(),
-        ],
+        agent: vec!["bind".to_string(), "unbind".to_string(), "cash".to_string()],
         user: vec![
             "reg".to_string(),
             "login".to_string(),
@@ -141,39 +137,46 @@ fn get_log_type_mapping() -> LogTypeResponse {
 }
 
 // 获取用户名
-async fn get_username(ug: &str, uid: i64, app_type: Option<&str>, db: &sqlx::MySqlPool) -> Option<String> {
+async fn get_username(
+    ug: &str,
+    uid: i64,
+    app_type: Option<&str>,
+    db: &sqlx::MySqlPool,
+) -> Option<String> {
     match ug {
-        "adm" => {
-            sqlx::query_scalar("SELECT notes FROM u_admin WHERE id = ?")
-                .bind(uid)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-        }
-        "kami" => {
-            sqlx::query_scalar("SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?")
-                .bind(uid)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-        }
+        "adm" => sqlx::query_scalar("SELECT notes FROM u_admin WHERE id = ?")
+            .bind(uid)
+            .fetch_optional(db)
+            .await
+            .ok()
+            .flatten(),
+        "kami" => sqlx::query_scalar(
+            "SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?",
+        )
+        .bind(uid)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
         "user" | "agent" => {
             if let Some("kami") = app_type {
-                sqlx::query_scalar("SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?")
-                    .bind(uid)
-                    .fetch_optional(db)
-                    .await
-                    .ok()
-                    .flatten()
+                sqlx::query_scalar(
+                    "SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?",
+                )
+                .bind(uid)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
             } else {
-                sqlx::query_scalar("SELECT COALESCE(phone, COALESCE(email, acctno)) FROM u_user WHERE id = ?")
-                    .bind(uid)
-                    .fetch_optional(db)
-                    .await
-                    .ok()
-                    .flatten()
+                sqlx::query_scalar(
+                    "SELECT COALESCE(phone, COALESCE(email, acctno)) FROM u_user WHERE id = ?",
+                )
+                .bind(uid)
+                .fetch_optional(db)
+                .await
+                .ok()
+                .flatten()
             }
         }
         _ => None,
@@ -183,22 +186,22 @@ async fn get_username(ug: &str, uid: i64, app_type: Option<&str>, db: &sqlx::MyS
 // 获取目标用户名
 async fn get_tousername(toug: &str, touid: i64, db: &sqlx::MySqlPool) -> Option<String> {
     match toug {
-        "kami" => {
-            sqlx::query_scalar("SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?")
-                .bind(touid)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-        }
-        "user" | "agent" => {
-            sqlx::query_scalar("SELECT COALESCE(phone, COALESCE(email, acctno)) FROM u_user WHERE id = ?")
-                .bind(touid)
-                .fetch_optional(db)
-                .await
-                .ok()
-                .flatten()
-        }
+        "kami" => sqlx::query_scalar(
+            "SELECT COALESCE(phone, COALESCE(email, cardNo)) FROM u_cdk_kami WHERE id = ?",
+        )
+        .bind(touid)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
+        "user" | "agent" => sqlx::query_scalar(
+            "SELECT COALESCE(phone, COALESCE(email, acctno)) FROM u_user WHERE id = ?",
+        )
+        .bind(touid)
+        .fetch_optional(db)
+        .await
+        .ok()
+        .flatten(),
         _ => None,
     }
 }
@@ -224,7 +227,7 @@ fn get_log_type_display(ug: &str, log_type: &str) -> String {
         "kami" => &mapping.kami,
         _ => return log_type.to_string(),
     };
-    
+
     if types.contains(&log_type.to_string()) {
         log_type.to_string()
     } else {
@@ -377,7 +380,10 @@ pub async fn get_type_admin(_req: &mut Request, _depot: &mut Depot, res: &mut Re
     admin_log_types.insert("ver_delall", "批量删除版本");
     admin_log_types.insert("ver_edit", "版本编辑");
 
-    res.render(Json(ApiResponse::success("成功", Some(json!(admin_log_types)))));
+    res.render(Json(ApiResponse::success(
+        "成功",
+        Some(json!(admin_log_types)),
+    )));
 }
 
 #[handler]
@@ -389,7 +395,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -406,25 +412,27 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         "SELECT LOG.id, LOG.ug, LOG.uid, LOG.type, LOG.details, LOG.time, LOG.ip, LOG.ip_address,
          A.app_type, A.app_name
          FROM u_logs AS LOG 
-         LEFT JOIN u_app AS A ON (LOG.appid = A.id)"
+         LEFT JOIN u_app AS A ON (LOG.appid = A.id)",
     );
-    
+
     let mut conditions = Vec::new();
     let mut params = Vec::new();
 
     if let Some(so) = list_req.so {
         if let Some(log_type) = so.log_type
-            && !log_type.is_empty() {
-                conditions.push("LOG.type = ?");
-                params.push(log_type);
-            }
+            && !log_type.is_empty()
+        {
+            conditions.push("LOG.type = ?");
+            params.push(log_type);
+        }
 
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                conditions.push("(LOG.type LIKE ? OR LOG.ip LIKE ?)");
-                params.push(format!("%{}%", keyword));
-                params.push(format!("%{}%", keyword));
-            }
+            && !keyword.is_empty()
+        {
+            conditions.push("(LOG.type LIKE ? OR LOG.ip LIKE ?)");
+            params.push(format!("%{}%", keyword));
+            params.push(format!("%{}%", keyword));
+        }
     }
 
     if !conditions.is_empty() {
@@ -461,10 +469,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 });
                 let app_type: Option<String> = row.try_get("app_type").ok();
 
-                let username = get_username(&ug, uid, app_type.as_deref(), app_state.get_db()).await;
+                let username =
+                    get_username(&ug, uid, app_type.as_deref(), app_state.get_db()).await;
 
-                let details_json = details
-                    .and_then(|s| serde_json::from_str(&s).ok());
+                let details_json = details.and_then(|s| serde_json::from_str(&s).ok());
 
                 list.push(LogItem {
                     id: row.try_get("id").unwrap_or(0),
@@ -495,7 +503,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 count_sql = count_sql.bind(param);
             }
 
-            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
+            let total = count_sql
+                .fetch_one(app_state.get_db())
+                .await
+                .unwrap_or_default();
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 
             let response = LogsListResponse {
@@ -523,7 +534,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let post_data: serde_json::Value = match req.parse_json().await {
         Ok(data) => data,
         Err(_) => {
@@ -570,7 +581,7 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetUserLogsRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -590,36 +601,40 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
          LEFT JOIN u_user AS U ON (LOG.uid = U.id AND LOG.ug = 'user')
          WHERE LOG.ug = 'user'"
     );
-    
+
     let mut conditions = Vec::new();
     let mut params: Vec<String> = Vec::new();
 
     if let Some(so) = list_req.so {
         if let Some(log_type) = so.log_type
-            && !log_type.is_empty() {
-                conditions.push("LOG.type = ?");
-                params.push(log_type);
-            }
+            && !log_type.is_empty()
+        {
+            conditions.push("LOG.type = ?");
+            params.push(log_type);
+        }
 
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                conditions.push("(U.acctno LIKE ? OR LOG.type LIKE ?)");
-                params.push(format!("%{}%", keyword));
-                params.push(format!("%{}%", keyword));
-            }
+            && !keyword.is_empty()
+        {
+            conditions.push("(U.acctno LIKE ? OR LOG.type LIKE ?)");
+            params.push(format!("%{}%", keyword));
+            params.push(format!("%{}%", keyword));
+        }
 
         if let Some(appid) = so.appid
-            && appid > 0 {
-                conditions.push("LOG.appid = ?");
-                params.push(appid.to_string());
-            }
+            && appid > 0
+        {
+            conditions.push("LOG.appid = ?");
+            params.push(appid.to_string());
+        }
 
         if let Some(time_range) = so.time
-            && time_range.len() == 2 {
-                conditions.push("LOG.time >= ? AND LOG.time <= ?");
-                params.push(time_range[0].to_string());
-                params.push(time_range[1].to_string());
-            }
+            && time_range.len() == 2
+        {
+            conditions.push("LOG.time >= ? AND LOG.time <= ?");
+            params.push(time_range[0].to_string());
+            params.push(time_range[1].to_string());
+        }
     }
 
     if !conditions.is_empty() {
@@ -680,7 +695,10 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
                 count_sql = count_sql.bind(param);
             }
 
-            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
+            let total = count_sql
+                .fetch_one(app_state.get_db())
+                .await
+                .unwrap_or_default();
 
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 
@@ -710,7 +728,7 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetUserLogsRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -730,36 +748,40 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
          LEFT JOIN u_admin AS A ON (LOG.uid = A.id AND LOG.ug = 'admin')
          WHERE LOG.ug = 'admin'"
     );
-    
+
     let mut conditions = Vec::new();
     let mut params: Vec<String> = Vec::new();
 
     if let Some(so) = list_req.so {
         if let Some(log_type) = so.log_type
-            && !log_type.is_empty() {
-                conditions.push("LOG.type = ?");
-                params.push(log_type);
-            }
+            && !log_type.is_empty()
+        {
+            conditions.push("LOG.type = ?");
+            params.push(log_type);
+        }
 
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                conditions.push("(A.notes LIKE ? OR LOG.type LIKE ?)");
-                params.push(format!("%{}%", keyword));
-                params.push(format!("%{}%", keyword));
-            }
+            && !keyword.is_empty()
+        {
+            conditions.push("(A.notes LIKE ? OR LOG.type LIKE ?)");
+            params.push(format!("%{}%", keyword));
+            params.push(format!("%{}%", keyword));
+        }
 
         if let Some(appid) = so.appid
-            && appid > 0 {
-                conditions.push("LOG.appid = ?");
-                params.push(appid.to_string());
-            }
+            && appid > 0
+        {
+            conditions.push("LOG.appid = ?");
+            params.push(appid.to_string());
+        }
 
         if let Some(time_range) = so.time
-            && time_range.len() == 2 {
-                conditions.push("LOG.time >= ? AND LOG.time <= ?");
-                params.push(time_range[0].to_string());
-                params.push(time_range[1].to_string());
-            }
+            && time_range.len() == 2
+        {
+            conditions.push("LOG.time >= ? AND LOG.time <= ?");
+            params.push(time_range[0].to_string());
+            params.push(time_range[1].to_string());
+        }
     }
 
     if !conditions.is_empty() {
@@ -820,7 +842,10 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 count_sql = count_sql.bind(param);
             }
 
-            let total = count_sql.fetch_one(app_state.get_db()).await.unwrap_or_default();
+            let total = count_sql
+                .fetch_one(app_state.get_db())
+                .await
+                .unwrap_or_default();
 
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
 
@@ -850,7 +875,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let post_data: serde_json::Value = match req.parse_json().await {
         Ok(data) => data,
         Err(_) => {
@@ -860,13 +885,12 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let ids: Vec<i64> = match post_data.get("ids") {
-        Some(v) if v.is_array() => {
-            v.as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|id| id.as_i64())
-                .collect()
-        }
+        Some(v) if v.is_array() => v
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|id| id.as_i64())
+            .collect(),
         _ => {
             res.render(Json(ApiResponse::<()>::error("参数格式有误", 201)));
             return;
@@ -875,6 +899,19 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     if ids.is_empty() {
         res.render(Json(ApiResponse::<()>::error("请选择要删除的日志", 201)));
+        return;
+    }
+
+    if ids.len() > 1000 {
+        res.render(Json(ApiResponse::<()>::error(
+            "单次最多删除1000条日志",
+            201,
+        )));
+        return;
+    }
+
+    if ids.iter().any(|id| *id <= 0) {
+        res.render(Json(ApiResponse::<()>::error("参数格式有误", 201)));
         return;
     }
 
@@ -911,7 +948,7 @@ pub async fn clean(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let post_data: serde_json::Value = match req.parse_json().await {
         Ok(data) => data,
         Err(_) => {
@@ -921,9 +958,7 @@ pub async fn clean(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 获取清理天数，默认清理7天前的日志
-    let days = post_data.get("time")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(7);
+    let days = post_data.get("time").and_then(|v| v.as_i64()).unwrap_or(7);
 
     // 计算截止时间戳（当前时间 - days 天）
     let cutoff_time = chrono::Utc::now().timestamp() - (days * 86400);

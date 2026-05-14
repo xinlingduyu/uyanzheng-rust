@@ -33,7 +33,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -67,7 +67,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let offset = (page - 1) * page_size;
 
     let query = "SELECT M.id, M.title, M.state, M.time, IFNULL(U.phone,IFNULL(U.email,U.acctno)) as user FROM u_message AS M LEFT JOIN u_user AS U ON (M.Uid = U.id) WHERE M.appid = ? AND M.reply_id IS NULL ORDER BY M.id DESC LIMIT ? OFFSET ?";
-    
+
     let result = sqlx::query_as::<_, (i64, String, i64, i64, Option<String>)>(query)
         .bind(appid)
         .bind(page_size)
@@ -77,13 +77,16 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<MessageItem> = rows.into_iter().map(|row| MessageItem {
-                id: row.0,
-                title: row.1,
-                user: row.4,
-                state: row.2,
-                time: row.3,
-            }).collect();
+            let list: Vec<MessageItem> = rows
+                .into_iter()
+                .map(|row| MessageItem {
+                    id: row.0,
+                    title: row.1,
+                    user: row.4,
+                    state: row.2,
+                    time: row.3,
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -113,7 +116,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -142,5 +145,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

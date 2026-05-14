@@ -1,5 +1,5 @@
 //! 高性能缓存系统
-//! 
+//!
 //! 极致优化的多级缓存实现，专为高并发场景设计。
 //!
 //! # V2 优化版本
@@ -10,19 +10,19 @@
 //! - `stats_v2`: 采样统计 + 分位数估计
 
 pub mod atomic;
+pub mod config;
 pub mod hash;
-pub mod shard;
+pub mod manager;
 pub mod policy;
 pub mod pool;
+pub mod shard;
 pub mod stats;
-pub mod config;
-pub mod manager;
 
 // V2 优化模块
-pub mod shard_v2;
-pub mod write_buffer;
 pub mod pool_v2;
+pub mod shard_v2;
 pub mod stats_v2;
+pub mod write_buffer;
 
 #[cfg(target_arch = "aarch64")]
 pub mod arch_aarch64;
@@ -32,19 +32,27 @@ pub mod arch_x86_64;
 
 // V1 导出（向后兼容）
 pub use atomic::*;
+pub use config::*;
 pub use hash::*;
-pub use shard::*;
+pub use manager::*;
 pub use policy::*;
 pub use pool::*;
+pub use shard::*;
 pub use stats::*;
-pub use config::*;
-pub use manager::*;
 
 // V2 导出
-pub use shard_v2::{ShardedCacheV2, CacheShardV2, CacheStatsV2, FastLru, HashedKey, CacheEntry};
-pub use write_buffer::{WriteBuffer, WriteBufferConfig, WriteOp, BufferedCache, RingBuffer, MpmcQueue};
-pub use pool_v2::{MemoryPoolV2, ObjectPoolV2, PooledMemory, PooledObjectV2, global_alloc_v2, global_free_v2, MemoryPoolStats};
-pub use stats_v2::{SamplingCounter, SamplingConfig, LatencyTracker, LatencyStats, CacheMonitorV2, CacheMonitorSnapshot, QuantileEstimator};
+pub use pool_v2::{
+    MemoryPoolStats, MemoryPoolV2, ObjectPoolV2, PooledMemory, PooledObjectV2, global_alloc_v2,
+    global_free_v2,
+};
+pub use shard_v2::{CacheEntry, CacheShardV2, CacheStatsV2, FastLru, HashedKey, ShardedCacheV2};
+pub use stats_v2::{
+    CacheMonitorSnapshot, CacheMonitorV2, LatencyStats, LatencyTracker, QuantileEstimator,
+    SamplingConfig, SamplingCounter,
+};
+pub use write_buffer::{
+    BufferedCache, MpmcQueue, RingBuffer, WriteBuffer, WriteBufferConfig, WriteOp,
+};
 
 // ============================================================================
 // 缓存行大小（避免伪共享）

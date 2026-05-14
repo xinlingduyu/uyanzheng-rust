@@ -48,7 +48,6 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 #![allow(non_upper_case_globals)]
-
 // Clippy 警告抑制
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
@@ -111,9 +110,8 @@ use core::run;
 async fn main() -> Result<(), anyhow::Error> {
     // 安装默认的加密提供者
     // rustls 0.23+ 使用 aws-lc-rs 作为 crypto provider
-    rustls::crypto::CryptoProvider::install_default(
-        rustls::crypto::aws_lc_rs::default_provider()
-    ).expect("Failed to install crypto provider");
+    rustls::crypto::CryptoProvider::install_default(rustls::crypto::aws_lc_rs::default_provider())
+        .expect("Failed to install crypto provider");
 
     // 解析命令行参数
     let cli_args = CliArgs::parse_args();

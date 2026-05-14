@@ -1,5 +1,5 @@
 //! 解绑手机号
-//! 
+//!
 //! 功能说明：
 //! 用户解绑已绑定的手机号，需要验证码验证。
 //!
@@ -10,17 +10,19 @@
 //! 4. 清空用户phone字段
 //! 5. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::RePhoneRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::RePhoneRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -42,7 +44,7 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
     let app_key = &app_info.app_key;
     let vc_time = app_info.vc_time;
-    
+
     let re_req = match req.parse_json::<RePhoneRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -59,7 +61,7 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         .wordnum("token", &re_req.token, 32, 32)
         .phone("phone", &re_req.phone)
         .int("code", re_req.code as i64, 4, 6);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -104,7 +106,7 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(appid)
     .execute(app_state.get_db())
     .await;
-    
+
     match verify_result {
         Ok(result) => {
             if result.rows_affected() < 1 {
@@ -121,13 +123,11 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['phone'=>NULL]);
     // 更新手机号为NULL
-    let result = sqlx::query(
-        "UPDATE u_user SET phone = NULL WHERE id = ? AND appid = ?"
-    )
-    .bind(uid)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_user SET phone = NULL WHERE id = ? AND appid = ?")
+        .bind(uid)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) => {

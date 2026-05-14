@@ -1,5 +1,5 @@
 //! 每日签到
-//! 
+//!
 //! 功能说明：
 //! 用户每日签到获取奖励，奖励类型和数量由应用配置决定。
 //! 可配置VIP免费签到或额外奖励。
@@ -12,23 +12,25 @@
 //! 5. 记录签到日志
 //! 6. 返回签到结果
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::app_state::AppConfigCache;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::SignInRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::SignInRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::app_state::AppConfigCache;
+use crate::core::middleware::get_client_ip;
 
 /// 签到奖励配置
 struct DiaryAwardConfig {
-    diary_award: String,      // "vip" or "fen"
-    diary_award_val: i32,     // 奖励数量
+    diary_award: String,  // "vip" or "fen"
+    diary_award_val: i32, // 奖励数量
 }
 
 /// 获取签到奖励配置 - 使用高性能缓存
@@ -41,10 +43,10 @@ async fn get_diary_award_config(app_state: &Arc<AppState>, appid: u64) -> DiaryA
             diary_award_val: cached.diary_award_val,
         };
     }
-    
+
     // 缓存未命中，从数据库查询
     let result = sqlx::query_as::<_, (Option<String>, Option<i32>)>(
-        "SELECT diary_award, diary_award_val FROM u_app WHERE id = ?"
+        "SELECT diary_award, diary_award_val FROM u_app WHERE id = ?",
     )
     .bind(appid)
     .fetch_optional(app_state.get_db())
@@ -52,8 +54,6 @@ async fn get_diary_award_config(app_state: &Arc<AppState>, appid: u64) -> DiaryA
 
     match result {
         Ok(Some(row)) => {
-            
-            
             // 存入缓存（不完整，只存需要的数据）
             // 实际使用时可以存完整的 AppConfigCache
             DiaryAwardConfig {
@@ -77,7 +77,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -88,7 +88,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     let app_key = app_info.app_key.as_str();
     let app_type = app_info.app_type.as_str();
-    
+
     let sign_req = match req.parse_json::<SignInRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -100,7 +100,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &sign_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -139,7 +139,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 检查今日是否已签到 - 使用PHP的timeRange()逻辑
     // timeRange()返回今天0点的时间戳
     let start_of_day = get_time_range();
-    
+
     let s_res = sqlx::query_as::<_, (i64,)>(
         "SELECT id FROM u_logs WHERE ug = 'user' AND uid = ? AND type = 'signIn' AND state = 'y' AND time > ? AND appid = ?"
     )
@@ -160,7 +160,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // PHP: $addRes = $this->db->add(['ug'=>'user','uid'=>$this->user['id'],'type'=>'signIn','time'=>time(),'ip'=>$this->ip,'appid'=>$this->app['id']]);
     // 添加签到记录
     let add_res = sqlx::query(
-        "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
     .bind("user")
     .bind(uid)
@@ -198,25 +198,23 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                             render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                             return;
                         }
-                        
+
                         let new_vip = if user_vip > current_time {
                             user_vip + award_config.diary_award_val as i64
                         } else {
                             current_time + award_config.diary_award_val as i64
                         };
-                        
-                        let _ = sqlx::query(
-                            "UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?"
-                        )
-                        .bind(new_vip)
-                        .bind(uid)
-                        .bind(appid)
-                        .execute(app_state.get_db())
-                        .await;
+
+                        let _ = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?")
+                            .bind(new_vip)
+                            .bind(uid)
+                            .bind(appid)
+                            .execute(app_state.get_db())
+                            .await;
                     }
                     "fen" => {
                         let _ = sqlx::query(
-                            "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?"
+                            "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?",
                         )
                         .bind(award_config.diary_award_val)
                         .bind(uid)

@@ -1,5 +1,5 @@
 //! 高性能内存池 V2
-//! 
+//!
 //! 核心优化:
 //! 1. 分层内存池 - 按大小分类
 //! 2. 线程本地缓存 - 减少跨线程同步
@@ -7,9 +7,9 @@
 //! 4. 内存回收 - 避免内存泄漏
 //! 5. 大块内存管理 - 支持大对象分配
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{self, NonNull};
-use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
 
 // ============================================================================
 // 配置常量
@@ -52,19 +52,15 @@ struct BlockHeader {
 
 impl BlockHeader {
     const MAGIC: u64 = 0xDEADBEEF_CAFEBABE;
-    
+
     #[inline(always)]
     fn data_ptr(&self) -> *mut u8 {
-        unsafe {
-            (self as *const BlockHeader as *mut u8).add(std::mem::size_of::<BlockHeader>())
-        }
+        unsafe { (self as *const BlockHeader as *mut u8).add(std::mem::size_of::<BlockHeader>()) }
     }
 
     #[inline(always)]
     fn from_data_ptr(ptr: *mut u8) -> *mut BlockHeader {
-        unsafe {
-            ptr.sub(std::mem::size_of::<BlockHeader>()) as *mut BlockHeader
-        }
+        unsafe { ptr.sub(std::mem::size_of::<BlockHeader>()) as *mut BlockHeader }
     }
 
     #[inline(always)]
@@ -115,12 +111,11 @@ impl LockFreeStack {
             let head = self.head.load(Ordering::Acquire);
             unsafe { (*node).next.store(head, Ordering::Release) };
 
-            if self.head.compare_exchange_weak(
-                head,
-                node,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ).is_ok() {
+            if self
+                .head
+                .compare_exchange_weak(head, node, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 self.len.fetch_add(1, Ordering::Relaxed);
                 return;
             }
@@ -135,7 +130,7 @@ impl LockFreeStack {
     pub fn pop(&self) -> Option<NonNull<u8>> {
         loop {
             let head = self.head.load(Ordering::Acquire);
-            
+
             if head.is_null() {
                 return None;
             }
@@ -144,12 +139,11 @@ impl LockFreeStack {
                 let next = (*head).next.load(Ordering::Acquire);
                 let data = (*head).data;
 
-                if self.head.compare_exchange_weak(
-                    head,
-                    next,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ).is_ok() {
+                if self
+                    .head
+                    .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
                     // 释放节点
                     let _ = Box::from_raw(head);
                     self.len.fetch_sub(1, Ordering::Relaxed);
@@ -254,9 +248,9 @@ impl FixedSizePoolV2 {
 
         // 需要新分配
         self.stats.cache_misses.fetch_add(1, Ordering::Relaxed);
-        
-        let layout = Layout::from_size_align(self.total_size, CACHE_LINE_SIZE)
-            .expect("Invalid layout");
+
+        let layout =
+            Layout::from_size_align(self.total_size, CACHE_LINE_SIZE).expect("Invalid layout");
 
         unsafe {
             let raw = alloc(layout);
@@ -267,7 +261,9 @@ impl FixedSizePoolV2 {
             // 初始化头部
             let header = raw as *mut BlockHeader;
             (*header).size.store(self.total_size, Ordering::Relaxed);
-            (*header).pool_index.store(self.pool_index, Ordering::Relaxed);
+            (*header)
+                .pool_index
+                .store(self.pool_index, Ordering::Relaxed);
             (*header).next.store(ptr::null_mut(), Ordering::Relaxed);
             (*header).magic.store(BlockHeader::MAGIC, Ordering::Relaxed);
 
@@ -361,12 +357,12 @@ impl ThreadLocalCache {
     #[inline(always)]
     fn alloc(&mut self, size: usize) -> Option<NonNull<u8>> {
         let class_idx = Self::class_index(size)?;
-        
+
         if let Some(ptr) = self.caches[class_idx].pop() {
             self.hits += 1;
             return Some(ptr);
         }
-        
+
         self.misses += 1;
         None
     }
@@ -383,7 +379,7 @@ impl ThreadLocalCache {
             self.caches[class_idx].push(ptr);
             return true;
         }
-        
+
         false
     }
 
@@ -477,8 +473,7 @@ impl MemoryPoolV2 {
     /// 分配大块内存
     fn alloc_large(&self, size: usize) -> NonNull<u8> {
         let total_size = BlockHeader::total_size(size);
-        let layout = Layout::from_size_align(total_size, CACHE_LINE_SIZE)
-            .expect("Invalid layout");
+        let layout = Layout::from_size_align(total_size, CACHE_LINE_SIZE).expect("Invalid layout");
 
         unsafe {
             let raw = alloc(layout);
@@ -502,7 +497,7 @@ impl MemoryPoolV2 {
     pub fn free(&self, ptr: NonNull<u8>) {
         unsafe {
             let header = BlockHeader::from_data_ptr(ptr.as_ptr());
-            
+
             // 验证魔数
             debug_assert_eq!((*header).magic.load(Ordering::Relaxed), BlockHeader::MAGIC);
 
@@ -554,7 +549,7 @@ impl MemoryPoolV2 {
     /// 获取统计
     pub fn stats(&self) -> MemoryPoolStats {
         let mut stats = MemoryPoolStats::default();
-        
+
         for (i, pool) in self.pools.iter().enumerate() {
             let (allocs, frees, hits, misses, free) = pool.stats();
             stats.class_stats.push(ClassStats {
@@ -775,7 +770,7 @@ impl<T> ObjectPoolV2<T> {
         if let Some(ptr) = self.free_list.pop() {
             self.stats.cache_hits.fetch_add(1, Ordering::Relaxed);
             self.stats.current_free.fetch_sub(1, Ordering::Relaxed);
-            
+
             return PooledObjectV2 {
                 ptr: unsafe { NonNull::new_unchecked(ptr.as_ptr() as *mut T) },
                 pool: self as *const Self as *mut Self,
@@ -784,7 +779,10 @@ impl<T> ObjectPoolV2<T> {
 
         // 创建新对象
         let obj = Box::into_raw(Box::new((self.create_fn)()));
-        self.allocated.write().unwrap().push(unsafe { NonNull::new_unchecked(obj) });
+        self.allocated
+            .write()
+            .unwrap()
+            .push(unsafe { NonNull::new_unchecked(obj) });
 
         PooledObjectV2 {
             ptr: unsafe { NonNull::new_unchecked(obj) },
@@ -802,7 +800,8 @@ impl<T> ObjectPoolV2<T> {
             }
         }
 
-        self.free_list.push(unsafe { NonNull::new_unchecked(ptr.as_ptr() as *mut u8) });
+        self.free_list
+            .push(unsafe { NonNull::new_unchecked(ptr.as_ptr() as *mut u8) });
         self.stats.total_puts.fetch_add(1, Ordering::Relaxed);
         self.stats.current_free.fetch_add(1, Ordering::Relaxed);
     }
@@ -831,7 +830,7 @@ impl<T> Drop for ObjectPoolV2<T> {
     fn drop(&mut self) {
         // 释放空闲链表中的对象
         while self.free_list.pop().is_some() {}
-        
+
         // 释放所有已分配的对象
         for ptr in self.allocated.write().unwrap().drain(..) {
             unsafe {
@@ -956,13 +955,13 @@ mod tests {
     #[test]
     fn test_pooled_memory() {
         let mut mem = PooledMemory::new(1024);
-        
+
         assert_eq!(mem.size(), 1024);
-        
+
         let slice = mem.as_slice_mut();
         slice[0] = 42;
         slice[1] = 100;
-        
+
         assert_eq!(mem.as_slice()[0], 42);
         assert_eq!(mem.as_slice()[1], 100);
     }

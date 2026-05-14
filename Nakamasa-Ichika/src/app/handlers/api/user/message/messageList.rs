@@ -1,18 +1,20 @@
 //! 留言记录列表
-//! 
+//!
 //! 功能说明：
 //! 获取用户的留言工单列表，支持分页。
 
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::MessageListRequest;
 use crate::app::models::responses::{MessageItem, MessageListResponse};
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 const PAGE_SIZE: u32 = 10;
 
@@ -25,7 +27,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -35,7 +37,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let list_req = match req.parse_json::<MessageListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -47,7 +49,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // 验证参数
     let mut validator = Validator::new();
     validator.wordnum("token", &list_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -71,9 +73,10 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // 查询数据总量
     let count_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT COUNT(*) FROM u_message WHERE uid = ? AND reply_id IS NULL AND appid = ?"
+        "SELECT COUNT(*) FROM u_message WHERE uid = ? AND reply_id IS NULL AND appid = ?",
     )
-    .bind(uid).bind(appid)
+    .bind(uid)
+    .bind(appid)
     .fetch_one(app_state.get_db())
     .await;
 
@@ -99,17 +102,24 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     match result {
         Ok(rows) => {
-            let msg_list: Vec<MessageItem> = rows.into_iter().map(|(id, title, time, last_time, state)| {
-                MessageItem { id, title, time, last_time, state }
-            }).collect();
-            
+            let msg_list: Vec<MessageItem> = rows
+                .into_iter()
+                .map(|(id, title, time, last_time, state)| MessageItem {
+                    id,
+                    title,
+                    time,
+                    last_time,
+                    state,
+                })
+                .collect();
+
             let response = MessageListResponse {
                 currentPage: page,
                 dataTotal: data_total,
                 list: msg_list,
                 pageTotal: page_total,
             };
-            
+
             render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Err(e) => {

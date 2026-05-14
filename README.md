@@ -466,10 +466,12 @@ web/
 | 密码安全 | 解密后密码从内存清除（secure_zero） |
 | JWT 认证 | HMAC-SHA256 签名，支持 Token 过期与刷新 |
 | TLS 加密 | rustls + aws-lc-rs，支持自定义证书或内置自签证书 |
-| CORS 策略 | 可配置的跨域访问控制 |
+| CORS 策略 | 通过 `config.yaml` 配置跨域来源、请求头、方法和预检缓存 |
 | 参数校验 | 请求体验证器（validator 模块） |
 | IP 限制 | 注册/登录 IP 频率限制 |
 | 黑名单 | 设备 UDID / IP 维度封禁 |
+| 安全开关 | `security` 节集中控制 token 验证、admin IP 绑定、代理头信任策略 |
+| 数据迁移 | 启动时按 `app.ver` 与程序版本对比，自动执行跨版本数据库/配置迁移 |
 
 ---
 
@@ -921,6 +923,7 @@ https://127.0.0.1:8080/admin/install
 系统自动完成：
 - 生成 `config.yaml` 配置文件
 - 初始化数据库表结构
+- 初始化 `{mysql.prefix}_migration` 迁移记录表，并将新安装已内置的迁移标记为完成
 - 创建管理员账户
 - 跳转到管理后台登录页
 
@@ -1031,42 +1034,130 @@ curl -k https://127.0.0.1:8080/api/health
 
 ```yaml
 app:
-  host: http://127.0.0.1:8080   # 应用地址
-  code: "..."                    # 加密密钥（用于配置加密）
+  host: http://127.0.0.1:8080   # 应用地址；安装向导会按 TLS 状态生成 http/https
+  code: "..."                    # 配置加密主密钥，请勿泄露或频繁更换
   upload_dir: ./data/upload      # 上传目录
   upload_size: 2                 # 上传大小限制 (MB)
-  cache: false                   # 是否启用缓存
-  ver: 3.3                       # 配置版本
+  cache: false                   # 是否启用业务缓存
+  user_api_rewrite: false        # 用户 API 重写开关
+  output_msg: true               # 是否输出接口消息
+  ver: 1.0.1                     # 配置版本；启动迁移器会与程序版本比较
+  wx_appid: ""                   # 微信开放平台 AppID
+  wx_secret: ""                  # 微信开放平台 Secret
+  qq_appid: ""                   # QQ 互联 AppID
+  qq_appkey: ""                  # QQ 互联 AppKey
+  admin:
+    path: admin                  # 管理后台路径
+    keys: enc:...                # 管理员密码盐/密钥，安装时自动加密
+    token_exp: 86400             # admin JWT 有效期（秒）
+    token_key: enc:...           # admin JWT 签名密钥，安装时自动生成并加密
 
 server:
-  port: 8080                     # HTTP 端口
-  tls_enabled: true              # 是否启用 HTTPS
+  port: 8080                     # 服务端口
+  tls_enabled: true              # 是否启用 HTTPS；false 时以 HTTP 启动
+  cert_path: ./certs/cert.pem    # 可选，自定义证书路径；不填使用内置证书
+  key_path: ./certs/key.pem      # 可选，自定义私钥路径；不填使用内置私钥
 
 mysql:
   host: 127.0.0.1
   port: 3306
   user: root
-  password: "123456"             # 支持加密: enc:xxxxxx
+  password: "enc:..."            # 安装脚本会加密；未加密明文也兼容读取
   dbname: ce
-  prefix: u_                     # 表前缀
+  prefix: u                      # 表前缀，不需要末尾下划线；实际表名如 u_admin/u_app
+  charset: utf8mb4
+  log_level: debug
   max_open_conns: 150
   max_idle_conns: 20
 
 redis:
   host: 127.0.0.1
   port: 6379
-  password: ""                   # 支持加密
+  password: "enc:..."            # 空密码可为 ""；非空密码安装脚本会加密
   db: 0
-  prefix: re_                    # Key 前缀
+  prefix: re_                    # Redis key 前缀
+
+security:
+  admin_token_verify_enabled: true  # 是否启用 admin JWT 校验；默认 true
+  user_token_verify_enabled: true   # 是否启用 user token 校验；默认 true
+  admin_ip_bind_enabled: true       # 是否启用 admin 登录 IP 绑定；默认 true
+  trust_proxy_headers: false        # 是否信任 X-Forwarded-For/X-Real-IP；默认 false
+  trusted_proxies:                  # 只有来自这些代理时才应采信代理头
+    - "127.0.0.1"
+    - "::1"
+
+cors:
+  allowed_origins:                  # 允许跨域来源；生产环境建议写具体域名，不建议 "*"
+    - "http://127.0.0.1:8888"
+    - "https://127.0.0.1:8888"
+  allowed_headers:
+    - "content-type"
+    - "authorization"
+    - "accept-language"
+    - "token"
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allow_credentials: true           # 是否允许携带凭证；为 true 时来源应精确配置
+  max_age: 86400                    # OPTIONS 预检缓存秒数
 
 i18n:
   default_language: "zh-CN"
   supported_languages: ["zh-CN", "en", "ja"]
+  resources_path: "./Nakamasa-Ichika/locales"
+  cookie_name: "lang"
+  query_param: "lang"
+  header_name: "Accept-Language"
 
 log:
   path: ./log
+  max_size: 100
+  show_line: true
   level: debug
+
+debug:
+  debug: false
 ```
+
+### 新增 YAML 配置说明
+
+#### security
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `admin_token_verify_enabled` | bool | `true` | admin JWT 验证总开关。只控制是否跳过验证，不改变 admin JWT 签发、验签、续期核心逻辑。生产环境必须保持 `true`。 |
+| `user_token_verify_enabled` | bool | `true` | user token 验证总开关。生产环境必须保持 `true`。 |
+| `admin_ip_bind_enabled` | bool | `true` | admin 登录 IP 绑定开关。默认保持原有安全行为。 |
+| `trust_proxy_headers` | bool | `false` | 是否信任反向代理传入的 `X-Forwarded-For` / `X-Real-IP`。只有部署在可信 Nginx/CDN 后方时才开启。 |
+| `trusted_proxies` | array | `127.0.0.1`, `::1` | 可信代理 IP 列表，用于限制代理头来源。 |
+
+#### cors
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `allowed_origins` | array | 本地前端开发地址 | 允许的 Origin。开启 `allow_credentials` 时建议写精确域名，避免使用 `*`。 |
+| `allowed_headers` | array | content-type/authorization/accept-language/token | 允许的请求头。 |
+| `allowed_methods` | array | GET/POST/PUT/DELETE/OPTIONS | 允许的 HTTP 方法。 |
+| `allow_credentials` | bool | `true` | 是否允许 Cookie/Authorization 等凭证跨域。 |
+| `max_age` | u64 | `86400` | 预检请求缓存时间，单位秒。 |
+
+#### server TLS
+
+安装向导现在会写入：
+- `server.tls_enabled`：控制 HTTP/HTTPS。
+- `server.cert_path` / `server.key_path`：可选自定义证书；未填写时使用程序内置证书。
+
+#### 数据迁移版本
+
+- `app.ver` 由安装脚本写入当前程序版本。
+- 程序启动后会读取 `app.ver`，与 `Cargo.toml` 中的程序版本比较。
+- 如果程序版本更高，会按版本顺序执行 `Nakamasa-Ichika/src/core/migration.rs` 中定义的迁移。
+- 迁移记录存放在 `{mysql.prefix}_migration` 表，例如 `mysql.prefix: u` 时为 `u_migration`。
+- 新安装时，安装脚本会创建迁移记录表并标记已内置迁移为成功，避免首次重启重复执行历史 ALTER。
+
 
 ---
 

@@ -43,7 +43,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -84,25 +84,29 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 查询公告列表
     let query = "SELECT N.id, N.aid, N.visit, N.content, N.time, N.appid, A.notes FROM u_app_notice AS N LEFT JOIN u_admin AS A ON (N.aid=A.id) WHERE N.appid = ? OR N.appid IS NULL ORDER BY N.id DESC LIMIT ? OFFSET ?";
-    
-    let result = sqlx::query_as::<_, (u64, i64, i64, String, i64, Option<i64>, Option<String>)>(query)
-        .bind(appid)
-        .bind(page_size)
-        .bind(offset)
-        .fetch_all(app_state.get_db())
-        .await;
+
+    let result =
+        sqlx::query_as::<_, (u64, i64, i64, String, i64, Option<i64>, Option<String>)>(query)
+            .bind(appid)
+            .bind(page_size)
+            .bind(offset)
+            .fetch_all(app_state.get_db())
+            .await;
 
     match result {
         Ok(rows) => {
-            let list: Vec<NoticeItem> = rows.into_iter().map(|row| NoticeItem {
-                id: row.0,
-                aid: row.1,
-                visit: row.2,
-                content: row.3,
-                time: row.4,
-                appid: row.5,
-                notes: row.6,
-            }).collect();
+            let list: Vec<NoticeItem> = rows
+                .into_iter()
+                .map(|row| NoticeItem {
+                    id: row.0,
+                    aid: row.1,
+                    visit: row.2,
+                    content: row.3,
+                    time: row.4,
+                    appid: row.5,
+                    notes: row.6,
+                })
+                .collect();
 
             // 查询总数
             let count_query = "SELECT COUNT(*) FROM u_app_notice WHERE appid = ? OR appid IS NULL";
@@ -153,7 +157,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddNoticeRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -193,11 +197,15 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 判断是否全局公告
-    let appid_value = if add_req.all == "y" { None } else { Some(appid) };
+    let appid_value = if add_req.all == "y" {
+        None
+    } else {
+        Some(appid)
+    };
     let time = chrono::Utc::now().timestamp();
 
     let insert_result = sqlx::query(
-        "INSERT INTO u_app_notice (aid, visit, content, time, appid) VALUES (?, 0, ?, ?, ?)"
+        "INSERT INTO u_app_notice (aid, visit, content, time, appid) VALUES (?, 0, ?, ?, ?)",
     )
     .bind(admin_id)
     .bind(&add_req.content)
@@ -236,7 +244,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -280,7 +288,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -309,5 +317,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

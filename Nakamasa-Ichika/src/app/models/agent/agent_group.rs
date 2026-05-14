@@ -1,5 +1,5 @@
-use sqlx::FromRow;
 use serde_json::Value;
+use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
 pub struct AgentGroup {
@@ -16,7 +16,7 @@ impl AgentGroup {
     pub fn default_pay_divide(&self) -> i32 {
         self.pay_divide.unwrap_or(0)
     }
-    
+
     pub fn default_km_discount(&self) -> i32 {
         self.km_discount.unwrap_or(0)
     }

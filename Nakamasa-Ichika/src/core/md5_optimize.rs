@@ -24,11 +24,11 @@ const fn hex_char_high(nibble: u8) -> u8 {
 pub fn md5_hex(data: &[u8]) -> [u8; 32] {
     let digest = md5::compute(data);
     let mut hex = [0u8; 32];
-    
+
     // 展开循环以获得更好的优化
     // 编译器通常会自动向量化这个循环
     let digest_arr = &digest.0;
-    
+
     hex[0] = HEX_CHARS[(digest_arr[0] >> 4) as usize];
     hex[1] = HEX_CHARS[(digest_arr[0] & 0x0f) as usize];
     hex[2] = HEX_CHARS[(digest_arr[1] >> 4) as usize];
@@ -61,7 +61,7 @@ pub fn md5_hex(data: &[u8]) -> [u8; 32] {
     hex[29] = HEX_CHARS[(digest_arr[14] & 0x0f) as usize];
     hex[30] = HEX_CHARS[(digest_arr[15] >> 4) as usize];
     hex[31] = HEX_CHARS[(digest_arr[15] & 0x0f) as usize];
-    
+
     hex
 }
 
@@ -106,12 +106,12 @@ impl Md5Buffer {
     pub fn new() -> Self {
         Self { buffer: [0u8; 32] }
     }
-    
+
     /// 计算 MD5 并存储到内部缓冲区，返回字符串
     pub fn compute(&mut self, data: &[u8]) -> String {
         let digest = md5::compute(data);
         let digest_arr = &digest.0;
-        
+
         self.buffer[0] = HEX_CHARS[(digest_arr[0] >> 4) as usize];
         self.buffer[1] = HEX_CHARS[(digest_arr[0] & 0x0f) as usize];
         self.buffer[2] = HEX_CHARS[(digest_arr[1] >> 4) as usize];
@@ -144,26 +144,26 @@ impl Md5Buffer {
         self.buffer[29] = HEX_CHARS[(digest_arr[14] & 0x0f) as usize];
         self.buffer[30] = HEX_CHARS[(digest_arr[15] >> 4) as usize];
         self.buffer[31] = HEX_CHARS[(digest_arr[15] & 0x0f) as usize];
-        
+
         // 安全：MD5 输出总是有效的 UTF-8
         unsafe { std::str::from_utf8_unchecked(&self.buffer) }.to_string()
     }
-    
+
     /// 计算 MD5 并返回 &str 引用（生命周期与 self 相同）
     /// 零分配版本 - 适用于临时使用
     pub fn compute_ref(&mut self, data: &[u8]) -> &str {
         let digest = md5::compute(data);
         let digest_arr = &digest.0;
-        
+
         for (i, byte) in digest_arr.iter().enumerate() {
             self.buffer[i * 2] = HEX_CHARS[(byte >> 4) as usize];
             self.buffer[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
         }
-        
+
         // 安全：MD5 输出总是有效的 UTF-8
         unsafe { std::str::from_utf8_unchecked(&self.buffer) }
     }
-    
+
     /// 获取当前缓冲区的字符串副本
     pub fn as_string(&self) -> String {
         // 安全：MD5 输出总是有效的 UTF-8
@@ -194,7 +194,7 @@ impl BatchMd5 {
             buffers: vec![[0u8; 32]; capacity],
         }
     }
-    
+
     /// 批量计算多个输入的 MD5
     /// 返回结果字符串
     pub fn compute_batch(&mut self, inputs: &[&[u8]]) -> Vec<String> {
@@ -202,22 +202,22 @@ impl BatchMd5 {
         if self.buffers.len() < inputs.len() {
             self.buffers.resize(inputs.len(), [0u8; 32]);
         }
-        
+
         let mut results = Vec::with_capacity(inputs.len());
-        
+
         for (i, input) in inputs.iter().enumerate() {
             let digest = md5::compute(input);
             let digest_arr = &digest.0;
-            
+
             for (j, byte) in digest_arr.iter().enumerate() {
                 self.buffers[i][j * 2] = HEX_CHARS[(byte >> 4) as usize];
                 self.buffers[i][j * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
             }
-            
+
             // 安全：MD5 输出总是有效的 UTF-8
             results.push(unsafe { std::str::from_utf8_unchecked(&self.buffers[i]) }.to_string());
         }
-        
+
         results
     }
 }
@@ -294,33 +294,33 @@ pub fn md5_concat_ints(a: i64, b: i64, c: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_md5_hex() {
         let result = md5_hex(b"hello");
         let s = md5_to_str(&result);
         assert_eq!(s, "5d41402abc4b2a76b9719d911017c592");
     }
-    
+
     #[test]
     fn test_md5_hex_string() {
         let result = md5_hex_string(b"hello");
         assert_eq!(result, "5d41402abc4b2a76b9719d911017c592");
     }
-    
+
     #[test]
     fn test_md5_buffer() {
         let mut buf = Md5Buffer::new();
         let result = buf.compute(b"hello");
         assert_eq!(result, "5d41402abc4b2a76b9719d911017c592");
     }
-    
+
     #[test]
     fn test_md5_concat() {
         let result = md5_concat_2("hello", "world");
         assert_eq!(result, "fc5e038d38a57032085441e7fe7010b0");
     }
-    
+
     #[test]
     fn test_batch_md5() {
         let mut batch = BatchMd5::with_capacity(3);

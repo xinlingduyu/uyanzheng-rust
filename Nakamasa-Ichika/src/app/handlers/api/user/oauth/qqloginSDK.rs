@@ -1,5 +1,5 @@
 //! QQ SDK登录
-//! 
+//!
 //! 功能说明：
 //! 使用QQ互联SDK返回的access_token和openid进行登录。
 //! 如用户不存在则自动注册。
@@ -11,20 +11,23 @@
 //! 4. 如已存在则直接登录，不存在则注册新用户
 //! 5. 生成token并返回用户信息
 
-use salvo::prelude::*;
-use std::sync::Arc;
 use chrono::Utc;
 use rand::Rng;
+use salvo::prelude::*;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::md5_optimize::{md5_hex, md5_to_str, md5_str_from_str};
-use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_success_msg_data, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::WxLoginSDKRequest;
-use crate::app::models::responses::{UserInfo, LoginResponse};
-use crate::app::middleware::app_context::AppInfo;
 use super::super::auth::logon::lookup_ip_location;
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::models::requests::WxLoginSDKRequest;
+use crate::app::models::responses::{LoginResponse, UserInfo};
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_msg_data,
+    render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_str_from_str, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 /// QQ用户信息响应
 #[derive(Debug, serde::Deserialize)]
@@ -85,7 +88,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -95,7 +98,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
     let app_key = app_info.app_key.as_str();
-    
+
     let qq_req = match req.parse_json::<WxLoginSDKRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -111,7 +114,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         .wordnum("openid", &qq_req.openid, 1, 64)
         .udid("udid", &qq_req.udid, 1, 128);
     // invid 是可选的
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -142,8 +145,14 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     // PHP: if(!$qqConf || !isset($qqConf['appID']) || !isset($qqConf['state']) || !isset($qqConf['appKey']))$this->out->e(201,'QQ登录配置有误');
-    let state_config = qq_config.get("state").and_then(|v| v.as_str()).unwrap_or("");
-    let app_id_qq = qq_config.get("appID").and_then(|v| v.as_str()).unwrap_or("");
+    let state_config = qq_config
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let app_id_qq = qq_config
+        .get("appID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     // PHP: if($qqConf['state'] != 'on')$this->out->e(201,'QQ登录未开启');
     if state_config != "on" {
@@ -167,7 +176,9 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // 检查登录状态
     if logon_config.logon_state == "off" {
-        let msg = logon_config.logon_off_msg.unwrap_or_else(|| "登录功能已关闭".to_string());
+        let msg = logon_config
+            .logon_off_msg
+            .unwrap_or_else(|| "登录功能已关闭".to_string());
         render_error(res, msg, 103, app_key);
         return;
     }
@@ -198,16 +209,23 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // 检查QQ API是否返回错误
     if let Some(ret) = qq_info.ret
-        && ret != 0 {
-            let err_msg = qq_info.msg.clone().unwrap_or_else(|| "QQ API错误".to_string());
-            render_error(res, err_msg, 201, app_key);
-            return;
-        }
+        && ret != 0
+    {
+        let err_msg = qq_info
+            .msg
+            .clone()
+            .unwrap_or_else(|| "QQ API错误".to_string());
+        render_error(res, err_msg, 201, app_key);
+        return;
+    }
 
     let qq_openid = qq_req.openid.clone();
     let qq_nickname = qq_info.nickname.unwrap_or_else(|| "QQ用户".to_string());
     // PHP: 'avatars'=>$open_info['figureurl_qq'] 优先使用高清头像
-    let qq_figureurl = qq_info.figureurl_qq.or(qq_info.figureurl).unwrap_or_default();
+    let qq_figureurl = qq_info
+        .figureurl_qq
+        .or(qq_info.figureurl)
+        .unwrap_or_default();
 
     // PHP: 查询是否已有用户
     let existing_user = sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>)>(
@@ -220,56 +238,74 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     .await;
 
     match existing_user {
-        Ok(Some((id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq))) => {
+        Ok(Some((
+            id,
+            acctno,
+            phone,
+            email,
+            nickname,
+            avatars,
+            inviter_id,
+            vip,
+            fen,
+            ban,
+            sn_max,
+            extend,
+            ban_msg,
+            open_wx,
+            open_qq,
+        ))) => {
             // PHP: 已有用户，直接登录
             // 检查是否被禁用
             if let Some(ban_time) = ban
-                && ban_time > current_time {
-                    let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
-                    render_error(res, msg, 127, app_key);
-                    return;
-                }
+                && ban_time > current_time
+            {
+                let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
+                render_error(res, msg, 127, app_key);
+                return;
+            }
 
             let sn_max_val = sn_max.unwrap_or(0);
-            
+
             // 获取当前设备的sn_list用于判断是否已绑定
-            let sn_list_result = sqlx::query_as::<_, (Option<String>,)>(
-                "SELECT sn_list FROM u_user WHERE id = ?"
-            )
-            .bind(id)
-            .fetch_one(app_state.get_db())
-            .await;
+            let sn_list_result =
+                sqlx::query_as::<_, (Option<String>,)>("SELECT sn_list FROM u_user WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(app_state.get_db())
+                    .await;
 
             let sn_list_str = sn_list_result.ok().and_then(|r| r.0);
-            let sn_list_empty = sn_list_str.is_none() || sn_list_str.as_ref().map(|s| s.is_empty()).unwrap_or(true);
-            
+            let sn_list_empty =
+                sn_list_str.is_none() || sn_list_str.as_ref().map(|s| s.is_empty()).unwrap_or(true);
+
             let mut token_state = "y".to_string();
-            
+
             if sn_list_empty {
                 // 没有绑定任何设备，直接绑定
                 let new_sn_list = serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]);
                 let new_sn_list_str = serde_json::to_string(&new_sn_list).unwrap();
-                
+
                 let update_result = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                     .bind(&new_sn_list_str)
                     .bind(id)
                     .execute(app_state.get_db())
                     .await;
-                    
+
                 if update_result.is_err() {
                     render_error(res, "登录失败，请重试", 201, app_key);
                     return;
                 }
             } else {
                 // 解析已有设备列表
-                let sn_list: Vec<serde_json::Value> = match serde_json::from_str(&sn_list_str.unwrap()) {
-                    Ok(list) => list,
-                    Err(_) => {
-                        render_error(res, "设备列表解析失败", 201, app_key);
-                        return;
-                    }
-                };
-                
+                let sn_list: Vec<serde_json::Value> =
+                    match serde_json::from_str(&sn_list_str.unwrap()) {
+                        Ok(list) => list,
+                        Err(_) => {
+                            render_error(res, "设备列表解析失败", 201, app_key);
+                            return;
+                        }
+                    };
+
                 // 检查当前设备是否已绑定
                 let found = sn_list.iter().any(|item| {
                     item.get("udid")
@@ -277,19 +313,20 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         .map(|u| u == qq_req.udid)
                         .unwrap_or(false)
                 });
-                
+
                 if found {
                     // 已绑定设备登录 - 检查同设备多开
                     if logon_config.logon_sn_dk != "y"
-                        && let Some(redis_pool) = app_state.redis_pool.as_ref() {
-                            let udid_hash_bytes = md5_hex(qq_req.udid.as_bytes());
-                            let udid_hash = md5_to_str(&udid_hash_bytes);
-                            let logon_key = format!("logon_{}_{}_{}", appid, id, udid_hash);
-                            if let Ok(Some(_)) = redis_util.get(redis_pool, &logon_key).await {
-                                render_error(res, "已经登录了", 201, app_key);
-                                return;
-                            }
+                        && let Some(redis_pool) = app_state.redis_pool.as_ref()
+                    {
+                        let udid_hash_bytes = md5_hex(qq_req.udid.as_bytes());
+                        let udid_hash = md5_to_str(&udid_hash_bytes);
+                        let logon_key = format!("logon_{}_{}_{}", appid, id, udid_hash);
+                        if let Ok(Some(_)) = redis_util.get(redis_pool, &logon_key).await {
+                            render_error(res, "已经登录了", 201, app_key);
+                            return;
                         }
+                    }
                 } else {
                     // 新设备登录
                     if logon_config.logon_sn_num > 0 {
@@ -298,15 +335,18 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             token_state = "n".to_string();
                         } else {
                             let mut new_list = sn_list.clone();
-                            new_list.push(serde_json::json!({"udid": &qq_req.udid, "time": current_time}));
+                            new_list.push(
+                                serde_json::json!({"udid": &qq_req.udid, "time": current_time}),
+                            );
                             let new_list_str = serde_json::to_string(&new_list).unwrap();
-                            
-                            let update_result = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
-                                .bind(&new_list_str)
-                                .bind(id)
-                                .execute(app_state.get_db())
-                                .await;
-                                
+
+                            let update_result =
+                                sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
+                                    .bind(&new_list_str)
+                                    .bind(id)
+                                    .execute(app_state.get_db())
+                                    .await;
+
                             if update_result.is_err() {
                                 render_error(res, "登录失败，请重试", 201, app_key);
                                 return;
@@ -314,15 +354,17 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         }
                     } else {
                         // logon_sn_num为0时，替换所有设备
-                        let new_sn_list = serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]);
+                        let new_sn_list =
+                            serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]);
                         let new_sn_list_str = serde_json::to_string(&new_sn_list).unwrap();
-                        
-                        let update_result = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
-                            .bind(&new_sn_list_str)
-                            .bind(id)
-                            .execute(app_state.get_db())
-                            .await;
-                            
+
+                        let update_result =
+                            sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
+                                .bind(&new_sn_list_str)
+                                .bind(id)
+                                .execute(app_state.get_db())
+                                .await;
+
                         if update_result.is_err() {
                             render_error(res, "登录失败，请重试", 201, app_key);
                             return;
@@ -338,24 +380,25 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let token = md5_to_str(&token_bytes).to_string();
 
             // VIP过期日期格式化
-            let vip_exp_date = vip.map(|v| {
-                if v > 0 {
-                    let dt = chrono::DateTime::<Utc>::from_timestamp(v, 0).unwrap();
-                    dt.format("%Y-%m-%d %H:%M:%S").to_string()
-                } else {
-                    "未开通".to_string()
-                }
-            }).unwrap_or_else(|| "未开通".to_string());
+            let vip_exp_date = vip
+                .map(|v| {
+                    if v > 0 {
+                        let dt = chrono::DateTime::<Utc>::from_timestamp(v, 0).unwrap();
+                        dt.format("%Y-%m-%d %H:%M:%S").to_string()
+                    } else {
+                        "未开通".to_string()
+                    }
+                })
+                .unwrap_or_else(|| "未开通".to_string());
 
             // 获取邀请码
-            let inv_code = sqlx::query_as::<_, (Option<String>,)>(
-                "SELECT inv_code FROM u_user WHERE id = ?"
-            )
-            .bind(id)
-            .fetch_one(app_state.get_db())
-            .await
-            .ok()
-            .and_then(|r| r.0);
+            let inv_code =
+                sqlx::query_as::<_, (Option<String>,)>("SELECT inv_code FROM u_user WHERE id = ?")
+                    .bind(id)
+                    .fetch_one(app_state.get_db())
+                    .await
+                    .ok()
+                    .and_then(|r| r.0);
 
             let info = UserInfo {
                 uid: id,
@@ -378,20 +421,34 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                 let token_pre = format!("{}_{}_", &app_info.app_type, appid);
                 let token_key = format!("{}{}", token_pre, token);
-                
+
                 let token_data = serde_json::json!({
                     "uid": id,
                     "udid": &qq_req.udid,
                     "appid": appid
                 });
-                
-                let _ = redis_util.set(redis_pool, &token_key, &token_data.to_string(), Some(logon_config.logon_token_exp as u64)).await;
-                
+
+                let _ = redis_util
+                    .set(
+                        redis_pool,
+                        &token_key,
+                        &token_data.to_string(),
+                        Some(logon_config.logon_token_exp as u64),
+                    )
+                    .await;
+
                 // 设置设备在线状态
                 let udid_hash_bytes = md5_hex(qq_req.udid.as_bytes());
                 let udid_hash = md5_to_str(&udid_hash_bytes);
                 let online_key = format!("{}online_{}_{}", token_pre, id, udid_hash);
-                let _ = redis_util.set(redis_pool, &online_key, &token, Some(logon_config.logon_token_exp as u64)).await;
+                let _ = redis_util
+                    .set(
+                        redis_pool,
+                        &online_key,
+                        &token,
+                        Some(logon_config.logon_token_exp as u64),
+                    )
+                    .await;
             }
 
             // 记录日志
@@ -452,7 +509,11 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let password = md5_str_from_str(&pwd.to_string());
 
             // PHP: $acctno = (time()-1727712001).str_pad(rand(0, 99), 2, '0', STR_PAD_LEFT); 随机账号
-            let acctno = format!("{}{:02}", current_time - 1727712001, rand::thread_rng().r#gen_range(0..100));
+            let acctno = format!(
+                "{}{:02}",
+                current_time - 1727712001,
+                rand::thread_rng().r#gen_range(0..100)
+            );
 
             // PHP: $regData = ['acctno'=>$acctno,'open_qq'=>$open_info['openid'],'password'=>md5($pwd),'nickname'=>$open_info['nickname'],'avatars'=>$open_info['figureurl_qq'],...];
             let mut reg_vip: i64 = 0;
@@ -472,7 +533,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             if let Some(inv_id) = qq_req.invid {
                 // 查询邀请人是否存在
                 let inv_res = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
-                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?"
+                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?",
                 )
                 .bind(inv_id)
                 .bind(appid)
@@ -574,20 +635,34 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                         let token_pre = format!("{}_{}_", &app_info.app_type, appid);
                         let token_key = format!("{}{}", token_pre, token);
-                        
+
                         let token_data = serde_json::json!({
                             "uid": reg_id,
                             "udid": &qq_req.udid,
                             "appid": appid
                         });
-                        
-                        let _ = redis_util.set(redis_pool, &token_key, &token_data.to_string(), Some(logon_config.logon_token_exp as u64)).await;
-                        
+
+                        let _ = redis_util
+                            .set(
+                                redis_pool,
+                                &token_key,
+                                &token_data.to_string(),
+                                Some(logon_config.logon_token_exp as u64),
+                            )
+                            .await;
+
                         // 设置设备在线状态
                         let udid_hash_bytes = md5_hex(qq_req.udid.as_bytes());
                         let udid_hash = md5_to_str(&udid_hash_bytes);
                         let online_key = format!("{}online_{}_{}", token_pre, reg_id, udid_hash);
-                        let _ = redis_util.set(redis_pool, &online_key, &token, Some(logon_config.logon_token_exp as u64)).await;
+                        let _ = redis_util
+                            .set(
+                                redis_pool,
+                                &online_key,
+                                &token,
+                                Some(logon_config.logon_token_exp as u64),
+                            )
+                            .await;
                     }
 
                     // 记录日志

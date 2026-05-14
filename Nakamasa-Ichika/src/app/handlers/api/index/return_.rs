@@ -1,5 +1,5 @@
 //! 支付同步回调（用户支付后跳转页面）
-//! 
+//!
 //! 与异步通知(notify)的区别：
 //! - notify: 支付平台服务器调用，负责实际业务处理，返回"fail"/"success"
 //! - return_: 用户浏览器跳转，**只读查询**订单状态并展示结果页面，不执行任何业务处理
@@ -9,8 +9,8 @@
 //! 实际订单处理和资产变更仅在 notify (服务器端异步通知) 中完成。
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use sqlx::Row;
+use std::sync::Arc;
 
 use crate::core::AppState;
 
@@ -21,8 +21,9 @@ fn render_result(state: i32, msg: &str) -> String {
     } else {
         ("✗", "#f5222d")
     };
-    
-    format!(r#"<!DOCTYPE html>
+
+    format!(
+        r#"<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -45,11 +46,20 @@ fn render_result(state: i32, msg: &str) -> String {
         <p>{}</p>
     </div>
 </body>
-</html>"#, color, icon, if state > 0 { "支付成功" } else { "支付失败" }, msg)
+</html>"#,
+        color,
+        icon,
+        if state > 0 {
+            "支付成功"
+        } else {
+            "支付失败"
+        },
+        msg
+    )
 }
 
 /// 仅查询订单状态并展示结果页面
-/// 
+///
 /// # 安全说明
 /// - 不做订单更新（见 notify.rs 异步通知处理）
 /// - 不加载支付插件（避免执行第三方插件代码）

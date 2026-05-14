@@ -87,7 +87,7 @@ impl OllamaProvider {
             .unwrap_or_else(|| "http://localhost:11434".to_string());
 
         let mut headers = HeaderMap::new();
-        
+
         // Ollama 通常不需要认证，但支持自定义头部
         for (key, value) in &config.extra_headers {
             headers.insert(
@@ -164,7 +164,11 @@ impl AiProvider for OllamaProvider {
                 content: response.message.content,
                 name: None,
             },
-            finish_reason: if response.done { Some("stop".to_string()) } else { None },
+            finish_reason: if response.done {
+                Some("stop".to_string())
+            } else {
+                None
+            },
         }];
 
         Ok(CompletionResponse {
@@ -174,7 +178,8 @@ impl AiProvider for OllamaProvider {
             usage: Some(Usage {
                 prompt_tokens: response.prompt_eval_count.unwrap_or(0),
                 completion_tokens: response.eval_count.unwrap_or(0),
-                total_tokens: response.prompt_eval_count.unwrap_or(0) + response.eval_count.unwrap_or(0),
+                total_tokens: response.prompt_eval_count.unwrap_or(0)
+                    + response.eval_count.unwrap_or(0),
             }),
         })
     }
@@ -223,12 +228,12 @@ impl AiProvider for OllamaProvider {
 
     async fn list_models(&self) -> Result<Vec<String>> {
         let url = format!("{}/api/tags", self.api_base);
-        
+
         #[derive(Deserialize)]
         struct ModelsResponse {
             models: Vec<ModelData>,
         }
-        
+
         #[derive(Deserialize)]
         struct ModelData {
             name: String,
@@ -252,7 +257,7 @@ fn parse_ollama_stream_chunk(text: &str) -> Result<StreamChunk> {
     if line.is_empty() {
         return Ok(StreamChunk::text(""));
     }
-    
+
     match serde_json::from_str::<OllamaStreamChunk>(line) {
         Ok(chunk) => {
             if chunk.done {

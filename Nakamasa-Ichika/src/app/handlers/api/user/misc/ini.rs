@@ -3,13 +3,15 @@
 //! 注意: tokenCheck=false，不需要认证
 
 use salvo::prelude::*;
-use std::sync::Arc;
-use std::collections::HashMap;
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::core::AppState;
 use crate::app::middleware::app_context::AppInfo;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::core::AppState;
 
 /// 版本信息
 #[derive(Serialize)]
@@ -66,7 +68,7 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -88,16 +90,19 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .await;
 
     // 获取当前客户端版本（从请求参数或默认）
-    let current_version = depot.get::<String>("app_version")
+    let current_version = depot
+        .get::<String>("app_version")
         .map(|s| s.as_str())
         .unwrap_or("1.0.0");
 
     // 解析最新版本信息
     let (latest, latest_content, latest_url) = match latest_version_result {
-        Ok(Some((ver_val, content, url))) => {
-            (ver_val, content.unwrap_or_default(), url.unwrap_or_default())
-        }
-        _ => (current_version.to_string(), String::new(), String::new())
+        Ok(Some((ver_val, content, url))) => (
+            ver_val,
+            content.unwrap_or_default(),
+            url.unwrap_or_default(),
+        ),
+        _ => (current_version.to_string(), String::new(), String::new()),
     };
 
     // 构建版本数据
@@ -144,7 +149,7 @@ async fn fetch_notice(pool: &sqlx::MySqlPool, appid: u64) -> Option<NoticeData> 
             )
             .fetch_optional(pool)
             .await;
-            
+
             match global {
                 Ok(Some(row)) => row,
                 _ => return None,
@@ -194,7 +199,10 @@ async fn fetch_extend(pool: &sqlx::MySqlPool, appid: u64) -> Option<serde_json::
     let mut extend = serde_json::Map::new();
     for (k, v) in app_exten {
         if v.len() > 1 {
-            extend.insert(k, serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect()));
+            extend.insert(
+                k,
+                serde_json::Value::Array(v.into_iter().map(serde_json::Value::String).collect()),
+            );
         } else if let Some(first) = v.into_iter().next() {
             extend.insert(k, serde_json::Value::String(first));
         }

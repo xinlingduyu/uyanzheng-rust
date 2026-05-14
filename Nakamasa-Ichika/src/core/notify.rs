@@ -4,12 +4,12 @@
 //!
 //! 注意：此模块目前未使用，保留供未来扩展。
 
+use anyhow::Result;
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::{RwLock, mpsc};
-use notify::{RecommendedWatcher, Event, RecursiveMode, Watcher};
-use tracing::{info, error};
-use anyhow::Result;
+use tracing::{error, info};
 
 use crate::config::AppConfig;
 
@@ -69,5 +69,7 @@ pub async fn watch_config(shared_config: Arc<RwLock<AppConfig>>, path: &str) -> 
         }
     }
 
-    Err(anyhow::anyhow!("Config watcher channel closed unexpectedly"))
+    Err(anyhow::anyhow!(
+        "Config watcher channel closed unexpectedly"
+    ))
 }

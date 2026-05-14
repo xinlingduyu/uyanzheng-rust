@@ -149,8 +149,8 @@ pub mod connect;
 // ============================================================================
 
 pub use admin_auth::*;
-pub use user_auth::*;
 pub use app_context::*;
-pub use cors::*;
 pub use body_reader::*;
 pub use connect::*;
+pub use cors::*;
+pub use user_auth::*;

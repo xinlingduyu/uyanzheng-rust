@@ -94,6 +94,6 @@ pub struct UserListRequest {
 #[derive(Debug, Deserialize)]
 pub struct SearchOptions {
     pub status: Option<String>, // n=ban, other=normal
-    pub ug: Option<i32>, // 1=normal, 2=vip, 3=svip
+    pub ug: Option<i32>,        // 1=normal, 2=vip, 3=svip
     pub keyword: Option<String>,
 }

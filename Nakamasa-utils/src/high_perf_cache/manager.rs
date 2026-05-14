@@ -1,5 +1,5 @@
 //! 缓存管理器模块
-//! 
+//!
 //! 提供缓存生命周期管理、后台任务、预热等功能
 
 use std::collections::HashMap;
@@ -7,13 +7,10 @@ use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use tokio::sync::{RwLock, broadcast};
 use serde::{Serialize, de::DeserializeOwned};
+use tokio::sync::{RwLock, broadcast};
 
-use super::{
-    ShardedCache, CacheConfig, CacheStats, CacheMetrics,
-    stats::CacheMonitor,
-};
+use super::{CacheConfig, CacheMetrics, CacheStats, ShardedCache, stats::CacheMonitor};
 
 // ============================================================================
 // 缓存事件
@@ -85,19 +82,19 @@ where
 {
     /// 缓存实例
     cache: Arc<ShardedCache<K, V>>,
-    
+
     /// 配置
     config: CacheConfig,
-    
+
     /// 监控器
     monitor: Arc<CacheMonitor>,
-    
+
     /// 事件发送器
     event_tx: Option<broadcast::Sender<CacheEvent<K, V>>>,
-    
+
     /// 停止信号
     stop_tx: Option<broadcast::Sender<()>>,
-    
+
     /// 启动时间
     start_time: Instant,
 }
@@ -140,7 +137,7 @@ where
                         let start = Instant::now();
                         let cleaned = cache.cleanup_expired().await;
                         let latency = start.elapsed();
-                        
+
                         if cleaned > 0 {
                             monitor.record_write(cleaned * 8, latency);
                         }
@@ -178,10 +175,10 @@ where
         let start = Instant::now();
         let result = self.cache.get(key).await;
         let latency = start.elapsed();
-        
+
         let size = result.as_ref().map(std::mem::size_of_val).unwrap_or(0);
         self.monitor.record_read(size, latency);
-        
+
         result
     }
 
@@ -190,12 +187,12 @@ where
     pub async fn set(&self, key: K, value: V) {
         let start = Instant::now();
         let size = std::mem::size_of_val(&value);
-        
+
         self.cache.set(key.clone(), value.clone()).await;
-        
+
         let latency = start.elapsed();
         self.monitor.record_write(size, latency);
-        
+
         // 发送事件
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(CacheEvent::Insert { key, value });
@@ -207,12 +204,14 @@ where
     pub async fn set_with_ttl(&self, key: K, value: V, ttl: Duration) {
         let start = Instant::now();
         let size = std::mem::size_of_val(&value);
-        
-        self.cache.set_with_ttl(key.clone(), value.clone(), ttl).await;
-        
+
+        self.cache
+            .set_with_ttl(key.clone(), value.clone(), ttl)
+            .await;
+
         let latency = start.elapsed();
         self.monitor.record_write(size, latency);
-        
+
         // 发送事件
         if let Some(tx) = &self.event_tx {
             let _ = tx.send(CacheEvent::Insert { key, value });
@@ -223,12 +222,11 @@ where
     #[inline(always)]
     pub async fn remove(&self, key: &K) -> bool {
         let result = self.cache.remove(key).await;
-        
-        if result
-            && let Some(tx) = &self.event_tx {
-                let _ = tx.send(CacheEvent::Remove { key: key.clone() });
-            }
-        
+
+        if result && let Some(tx) = &self.event_tx {
+            let _ = tx.send(CacheEvent::Remove { key: key.clone() });
+        }
+
         result
     }
 
@@ -273,13 +271,9 @@ where
         let stats = self.stats().await;
         let memory_used = stats.entries * std::mem::size_of::<(K, V)>();
         let memory_capacity = self.config.max_entries * std::mem::size_of::<(K, V)>();
-        
-        self.monitor.metrics(
-            stats,
-            memory_used,
-            memory_capacity,
-            self.config.shard_count,
-        )
+
+        self.monitor
+            .metrics(stats, memory_used, memory_capacity, self.config.shard_count)
     }
 
     /// 获取运行时间
@@ -341,13 +335,13 @@ where
     /// 批量预热
     pub async fn warm_many(&self, keys: Vec<K>) -> usize {
         let mut loaded = 0;
-        
+
         for key in keys {
             if self.warm_one(key).await {
                 loaded += 1;
             }
         }
-        
+
         loaded
     }
 }
@@ -380,14 +374,18 @@ impl MultiCacheManager {
         V: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     {
         let mut caches = self.caches.write().await;
-        
+
         if let Some(cache) = caches.get(name)
-            && let Ok(typed) = cache.clone().downcast::<CacheManager<K, V>>() {
-                return typed;
-            }
+            && let Ok(typed) = cache.clone().downcast::<CacheManager<K, V>>()
+        {
+            return typed;
+        }
 
         let manager = Arc::new(CacheManager::new(self.default_config.clone()));
-        caches.insert(name.to_string(), manager.clone() as Arc<dyn std::any::Any + Send + Sync>);
+        caches.insert(
+            name.to_string(),
+            manager.clone() as Arc<dyn std::any::Any + Send + Sync>,
+        );
         manager
     }
 

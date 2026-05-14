@@ -2,25 +2,18 @@ use regex::Regex;
 use std::sync::LazyLock;
 
 // 预编译所有正则表达式 - 避免每次调用都重新编译
-static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap()
-});
+static EMAIL_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").unwrap());
 
-static PHONE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^1[3-9]\d{9}$").unwrap()
-});
+static PHONE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^1[3-9]\d{9}$").unwrap());
 
-static WORDNUM_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9]+$").unwrap()
-});
+static WORDNUM_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9]+$").unwrap());
 
-static TABLE_PREFIX_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap()
-});
+static TABLE_PREFIX_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap());
 
-static PASSWORD_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._*\-]{6,}$").unwrap()
-});
+static PASSWORD_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9._*\-]{6,}$").unwrap());
 
 // 预分配常用错误消息
 static ERR_EMAIL_FORMAT: &str = "邮箱格式不正确";
@@ -49,7 +42,12 @@ impl Validator {
 
     /// 必填验证 - 引用版本，避免clone
     #[inline]
-    pub fn required_ref(&mut self, _field: &str, value: &str, field_name: &'static str) -> &mut Self {
+    pub fn required_ref(
+        &mut self,
+        _field: &str,
+        value: &str,
+        field_name: &'static str,
+    ) -> &mut Self {
         if value.is_empty() {
             self.error = Some(format!("{}{}", field_name, ERR_EMPTY));
         }
@@ -57,7 +55,12 @@ impl Validator {
     }
 
     #[inline]
-    pub fn required(&mut self, _field: &str, value: &Option<String>, field_name: &str) -> &mut Self {
+    pub fn required(
+        &mut self,
+        _field: &str,
+        value: &Option<String>,
+        field_name: &str,
+    ) -> &mut Self {
         if value.is_none() || value.as_ref().unwrap().is_empty() {
             self.error = Some(format!("{}{}", field_name, ERR_EMPTY));
         }
@@ -65,7 +68,12 @@ impl Validator {
     }
 
     #[inline]
-    pub fn required_i64(&mut self, _field: &str, value: &Option<i64>, field_name: &str) -> &mut Self {
+    pub fn required_i64(
+        &mut self,
+        _field: &str,
+        value: &Option<i64>,
+        field_name: &str,
+    ) -> &mut Self {
         if value.is_none() {
             self.error = Some(format!("{}{}", field_name, ERR_EMPTY));
         }
@@ -73,7 +81,12 @@ impl Validator {
     }
 
     #[inline]
-    pub fn required_u64(&mut self, _field: &str, value: &Option<u64>, field_name: &str) -> &mut Self {
+    pub fn required_u64(
+        &mut self,
+        _field: &str,
+        value: &Option<u64>,
+        field_name: &str,
+    ) -> &mut Self {
         if value.is_none() {
             self.error = Some(format!("{}{}", field_name, ERR_EMPTY));
         }
@@ -81,7 +94,12 @@ impl Validator {
     }
 
     #[inline]
-    pub fn required_vec(&mut self, _field: &str, value: &Option<Vec<i64>>, field_name: &str) -> &mut Self {
+    pub fn required_vec(
+        &mut self,
+        _field: &str,
+        value: &Option<Vec<i64>>,
+        field_name: &str,
+    ) -> &mut Self {
         if value.is_none() || value.as_ref().unwrap().is_empty() {
             self.error = Some(format!("{}{}", field_name, ERR_EMPTY));
         }
@@ -139,7 +157,10 @@ impl Validator {
         match value.parse::<i64>() {
             Ok(num) => {
                 if num < min || num > max {
-                    self.error = Some(format!("{}{}{}-{}{}", field, ERR_RANGE, min, max, ERR_BETWEEN));
+                    self.error = Some(format!(
+                        "{}{}{}-{}{}",
+                        field, ERR_RANGE, min, max, ERR_BETWEEN
+                    ));
                 }
             }
             Err(_) => {
@@ -154,7 +175,10 @@ impl Validator {
         match value.parse::<u64>() {
             Ok(num) => {
                 if num < min || num > max {
-                    self.error = Some(format!("{}{}{}-{}{}", field, ERR_RANGE, min, max, ERR_BETWEEN));
+                    self.error = Some(format!(
+                        "{}{}{}-{}{}",
+                        field, ERR_RANGE, min, max, ERR_BETWEEN
+                    ));
                 }
             }
             Err(_) => {
@@ -167,7 +191,10 @@ impl Validator {
     #[inline]
     pub fn int(&mut self, field: &str, value: i64, min: i64, max: i64) -> &mut Self {
         if value < min || value > max {
-            self.error = Some(format!("{}{}{}-{}{}", field, ERR_RANGE, min, max, ERR_BETWEEN));
+            self.error = Some(format!(
+                "{}{}{}-{}{}",
+                field, ERR_RANGE, min, max, ERR_BETWEEN
+            ));
         }
         self
     }
@@ -175,7 +202,10 @@ impl Validator {
     #[inline]
     pub fn int_u64(&mut self, field: &str, value: u64, min: u64, max: u64) -> &mut Self {
         if value < min || value > max {
-            self.error = Some(format!("{}{}{}-{}{}", field, ERR_RANGE, min, max, ERR_BETWEEN));
+            self.error = Some(format!(
+                "{}{}{}-{}{}",
+                field, ERR_RANGE, min, max, ERR_BETWEEN
+            ));
         }
         self
     }
@@ -212,9 +242,10 @@ impl Validator {
     #[inline]
     pub fn reg(&mut self, field: &str, value: &str, pattern: &str) -> &mut Self {
         if let Ok(regex) = Regex::new(pattern)
-            && !regex.is_match(value) {
-                self.error = Some(format!("{}{}", field, ERR_FORMAT));
-            }
+            && !regex.is_match(value)
+        {
+            self.error = Some(format!("{}{}", field, ERR_FORMAT));
+        }
         self
     }
 

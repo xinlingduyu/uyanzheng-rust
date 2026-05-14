@@ -90,7 +90,7 @@ pub struct ModifyNameRequest {
 #[derive(Debug, Deserialize)]
 pub struct ModifyPicRequest {
     pub token: String,
-    pub file: String,  // 通过上传接口获取的文件URL
+    pub file: String, // 通过上传接口获取的文件URL
 }
 
 #[derive(Debug, Deserialize)]
@@ -213,7 +213,7 @@ pub struct MessageAddRequest {
     pub title: String,
     pub content: String,
     #[serde(default)]
-    pub file: Option<serde_json::Value>,  // JSON数组格式的文件URL列表
+    pub file: Option<serde_json::Value>, // JSON数组格式的文件URL列表
 }
 
 #[derive(Debug, Deserialize)]

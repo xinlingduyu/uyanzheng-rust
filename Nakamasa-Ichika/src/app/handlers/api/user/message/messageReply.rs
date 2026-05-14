@@ -1,18 +1,20 @@
 //! 留言回复
-//! 
+//!
 //! 功能说明：
 //! 用户对留言工单进行回复，继续与管理员对话。
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::MessageReplyRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::MessageReplyRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 #[handler]
 pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -23,7 +25,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -33,7 +35,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let reply_req = match req.parse_json::<MessageReplyRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -48,7 +50,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
         .wordnum("token", &reply_req.token, 32, 32)
         .int("mid", reply_req.mid, 1, 11)
         .string("content", &reply_req.content, 4, 255);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -69,21 +71,30 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
 
     // 检查留言是否存在
     let m_res = sqlx::query_as::<_, (i32,)>(
-        "SELECT state FROM u_message WHERE id = ? AND uid = ? AND appid = ?"
+        "SELECT state FROM u_message WHERE id = ? AND uid = ? AND appid = ?",
     )
-    .bind(reply_req.mid).bind(uid).bind(appid)
+    .bind(reply_req.mid)
+    .bind(uid)
+    .bind(appid)
     .fetch_optional(app_state.get_db())
     .await;
 
     match m_res {
         Ok(Some((state,))) => {
             if state == 2 {
-                render_error(res, "您已关闭该留言，若问题为解决，请创建新的留言", 201, app_key);
+                render_error(
+                    res,
+                    "您已关闭该留言，若问题为解决，请创建新的留言",
+                    201,
+                    app_key,
+                );
                 return;
             }
 
             // 处理文件参数（可选）
-            let file_json = reply_req.file.as_ref()
+            let file_json = reply_req
+                .file
+                .as_ref()
                 .filter(|f| f.is_array() && !f.as_array().is_none_or(|a| a.is_empty()))
                 .map(|f| f.to_string());
 
@@ -109,10 +120,12 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
                     if r.rows_affected() > 0 {
                         // 更新留言的last_time和state
                         let _ = sqlx::query(
-                            "UPDATE u_message SET last_time = ?, state = 0 WHERE id = ?"
+                            "UPDATE u_message SET last_time = ?, state = 0 WHERE id = ?",
                         )
-                        .bind(current_time).bind(reply_req.mid)
-                        .execute(app_state.get_db()).await;
+                        .bind(current_time)
+                        .bind(reply_req.mid)
+                        .execute(app_state.get_db())
+                        .await;
 
                         render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                     } else {

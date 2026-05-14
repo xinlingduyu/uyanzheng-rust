@@ -1,12 +1,12 @@
 //! SMTP邮件发送插件
 //! 使用 lettre 库实现，支持 TLS/SSL 加密连接
 
-use super::trait_def::{MailerConfig, MailerPlugin, MailResult};
+use super::trait_def::{MailResult, MailerConfig, MailerPlugin};
 use async_trait::async_trait;
 use lettre::{
-    message::{header::ContentType, Message},
-    transport::smtp::authentication::Credentials,
     AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
+    message::{Message, header::ContentType},
+    transport::smtp::authentication::Credentials,
 };
 use serde_json::json;
 
@@ -90,17 +90,29 @@ impl MailerPlugin for SmtpMailer {
         Ok(())
     }
 
-    async fn send(&self, to: &str, subject: &str, body: &str, is_html: bool) -> Result<MailResult, String> {
-        let config = self.config.as_ref()
+    async fn send(
+        &self,
+        to: &str,
+        subject: &str,
+        body: &str,
+        is_html: bool,
+    ) -> Result<MailResult, String> {
+        let config = self
+            .config
+            .as_ref()
             .ok_or_else(|| "邮件插件未初始化".to_string())?;
 
         // 构建发件人地址
         let from_name = config.from_name.as_deref().unwrap_or(&config.username);
         let from_addr = format!("{} <{}>", from_name, config.username);
-        
+
         // 构建邮件
         let mut email_builder = Message::builder()
-            .from(from_addr.parse().map_err(|e| format!("发件人地址错误: {}", e))?)
+            .from(
+                from_addr
+                    .parse()
+                    .map_err(|e| format!("发件人地址错误: {}", e))?,
+            )
             .to(to.parse().map_err(|e| format!("收件人地址错误: {}", e))?)
             .subject(subject);
 

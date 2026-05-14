@@ -24,8 +24,8 @@
 //! | `/api/admin/flamegraph/pprof` | GET | 获取 pprof 格式数据 |
 //! | `/api/admin/flamegraph/status` | GET | 获取当前状态 |
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use ::pprof::ProfilerGuard;
@@ -80,7 +80,9 @@ pub fn start_profiler(frequency: Option<i32>) -> anyhow::Result<String> {
 
     // 存储 Guard
     {
-        let mut profiler = PROFILER_GUARD.lock().map_err(|_| anyhow::anyhow!("锁获取失败"))?;
+        let mut profiler = PROFILER_GUARD
+            .lock()
+            .map_err(|_| anyhow::anyhow!("锁获取失败"))?;
         *profiler = Some(guard);
     }
 
@@ -88,7 +90,10 @@ pub fn start_profiler(frequency: Option<i32>) -> anyhow::Result<String> {
 
     tracing::info!("火焰图性能分析已启动，采样频率: {} Hz", freq);
 
-    Ok(format!("性能分析已启动，采样频率: {} Hz，请在一段时间后调用 /stop 停止分析", freq))
+    Ok(format!(
+        "性能分析已启动，采样频率: {} Hz，请在一段时间后调用 /stop 停止分析",
+        freq
+    ))
 }
 
 /// 停止性能分析
@@ -125,18 +130,22 @@ pub fn get_status() -> ProfilerStatus {
 /// SVG 格式的火焰图字符串
 pub fn generate_flamegraph_svg() -> anyhow::Result<String> {
     let profiler_guard = {
-        let mut profiler = PROFILER_GUARD.lock().map_err(|_| anyhow::anyhow!("锁获取失败"))?;
-        profiler.take().ok_or_else(|| anyhow::anyhow!("没有性能分析数据，请先启动分析"))?
+        let mut profiler = PROFILER_GUARD
+            .lock()
+            .map_err(|_| anyhow::anyhow!("锁获取失败"))?;
+        profiler
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("没有性能分析数据，请先启动分析"))?
     };
 
     // 生成火焰图
     let report = profiler_guard.report().build()?;
-    
+
     let mut svg_data = Vec::new();
     report.flamegraph(&mut svg_data)?;
-    
-    let svg_string = String::from_utf8(svg_data)
-        .map_err(|e| anyhow::anyhow!("SVG 生成失败: {}", e))?;
+
+    let svg_string =
+        String::from_utf8(svg_data).map_err(|e| anyhow::anyhow!("SVG 生成失败: {}", e))?;
 
     Ok(svg_string)
 }
@@ -148,13 +157,17 @@ pub fn generate_flamegraph_svg() -> anyhow::Result<String> {
 /// protobuf 编码的 pprof 数据
 pub fn generate_pprof_data() -> anyhow::Result<Vec<u8>> {
     let profiler_guard = {
-        let mut profiler = PROFILER_GUARD.lock().map_err(|_| anyhow::anyhow!("锁获取失败"))?;
-        profiler.take().ok_or_else(|| anyhow::anyhow!("没有性能分析数据，请先启动分析"))?
+        let mut profiler = PROFILER_GUARD
+            .lock()
+            .map_err(|_| anyhow::anyhow!("锁获取失败"))?;
+        profiler
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("没有性能分析数据，请先启动分析"))?
     };
 
     // 生成 pprof 格式
     let report = profiler_guard.report().build()?;
-    
+
     let profile = report.pprof()?;
     let pprof_data = profile.write_to_bytes()?;
 
@@ -196,7 +209,7 @@ pub async fn profile_for_duration(
 #[handler]
 pub async fn flame_start(req: &mut Request) -> Json<serde_json::Value> {
     let frequency: Option<i32> = req.form("frequency").await;
-    
+
     match start_profiler(frequency) {
         Ok(msg) => Json(serde_json::json!({
             "code": 0,
@@ -260,8 +273,10 @@ pub async fn flame_pprof(res: &mut Response) {
         Ok(data) => {
             res.headers_mut()
                 .insert("Content-Type", "application/octet-stream".parse().unwrap());
-            res.headers_mut()
-                .insert("Content-Disposition", "attachment; filename=profile.pb".parse().unwrap());
+            res.headers_mut().insert(
+                "Content-Disposition",
+                "attachment; filename=profile.pb".parse().unwrap(),
+            );
             res.body(data);
         }
         Err(e) => {
@@ -279,9 +294,9 @@ pub async fn flame_pprof(res: &mut Response) {
 pub async fn flame_auto_profile(req: &mut Request) -> Json<serde_json::Value> {
     let duration: Option<u64> = req.form("duration").await;
     let frequency: Option<i32> = req.form("frequency").await;
-    
+
     let duration_secs = duration.unwrap_or(DEFAULT_DURATION_SECS);
-    
+
     // 检查是否已在运行
     if PROFILER_RUNNING.load(Ordering::SeqCst) {
         return Json(serde_json::json!({
@@ -291,9 +306,7 @@ pub async fn flame_auto_profile(req: &mut Request) -> Json<serde_json::Value> {
     }
 
     // 在后台线程执行采样
-    let _handle = tokio::spawn(async move {
-        profile_for_duration(duration_secs, frequency).await
-    });
+    let _handle = tokio::spawn(async move { profile_for_duration(duration_secs, frequency).await });
 
     Json(serde_json::json!({
         "code": 0,

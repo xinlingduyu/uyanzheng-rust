@@ -1,5 +1,5 @@
 //! 微信SDK绑定
-//! 
+//!
 //! 功能说明：
 //! 已登录用户绑定微信账号，使用微信SDK返回的access_token和openid。
 //! 绑定后可使用微信快捷登录。
@@ -13,12 +13,14 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::WxBindSDKRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::WxBindSDKRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 #[handler]
 pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -29,10 +31,13 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取 app_key
-    let app_key = depot.get::<AppInfo>("app_info").map(|i| i.app_key.as_str()).unwrap_or("");
-    
+    let app_key = depot
+        .get::<AppInfo>("app_info")
+        .map(|i| i.app_key.as_str())
+        .unwrap_or("");
+
     let bind_req = match req.parse_json::<WxBindSDKRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -46,7 +51,7 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     validator.wordnum("token", &bind_req.token, 32, 32);
     validator.wordnum("access_token", &bind_req.access_token, 1, 64);
     validator.wordnum("openid", &bind_req.openid, 1, 64);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -81,7 +86,7 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     // 检查该openid是否已被其他用户绑定
     let existing_user = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE open_wx = ? AND appid = ? AND id != ?"
+        "SELECT id FROM u_user WHERE open_wx = ? AND appid = ? AND id != ?",
     )
     .bind(&bind_req.openid)
     .bind(appid)
@@ -110,14 +115,12 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     });
     let wx_bind_str = wx_bind_data.to_string();
 
-    let update_result = sqlx::query(
-        "UPDATE u_user SET open_wx = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(&wx_bind_str)
-    .bind(uid)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let update_result = sqlx::query("UPDATE u_user SET open_wx = ? WHERE id = ? AND appid = ?")
+        .bind(&wx_bind_str)
+        .bind(uid)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
 
     match update_result {
         Ok(result) => {

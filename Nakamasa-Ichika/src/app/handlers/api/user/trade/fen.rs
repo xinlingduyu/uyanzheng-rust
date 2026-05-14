@@ -1,5 +1,5 @@
 //! 积分验证
-//! 
+//!
 //! 功能说明：
 //! 扣除用户积分，支持普通用户和卡密用户。
 //! 可用于消费积分解锁功能、购买虚拟商品等场景。
@@ -14,22 +14,24 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::app_state::FenEventCache;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::FenRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::FenRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::app_state::FenEventCache;
+use crate::core::middleware::get_client_ip;
 
 /// 积分事件配置（本地结构，用于处理）
 struct FenEvent {
     name: String,
     fen: i64,
     vip: i64,
-    vip_free: String,  // 'y' or 'n'
-    state: String,     // 'on' or 'off'
+    vip_free: String, // 'y' or 'n'
+    state: String,    // 'on' or 'off'
 }
 
 /// 获取积分事件配置 - 使用高性能缓存
@@ -48,10 +50,10 @@ async fn get_fen_event(app_state: &Arc<AppState>, fenid: u64, appid: u64) -> Opt
         }
         return None;
     }
-    
+
     // 缓存未命中，从数据库查询
     let result = sqlx::query_as::<_, (String, i64, i64, Option<String>, Option<String>)>(
-        "SELECT name, fen, vip, vip_free, state FROM u_fen_event WHERE id = ? AND appid = ?"
+        "SELECT name, fen, vip, vip_free, state FROM u_fen_event WHERE id = ? AND appid = ?",
     )
     .bind(fenid)
     .bind(appid)
@@ -60,9 +62,15 @@ async fn get_fen_event(app_state: &Arc<AppState>, fenid: u64, appid: u64) -> Opt
 
     match result {
         Ok(Some((name, fen, vip, vip_free, state))) => {
-            let vip_free_str = vip_free.as_deref().map(|s| s.to_string()).unwrap_or_else(|| "n".to_string());
-            let state_str = state.as_deref().map(|s| s.to_string()).unwrap_or_else(|| "on".to_string());
-            
+            let vip_free_str = vip_free
+                .as_deref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "n".to_string());
+            let state_str = state
+                .as_deref()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "on".to_string());
+
             // 存入缓存
             let cached = FenEventCache {
                 id: fenid,
@@ -73,7 +81,7 @@ async fn get_fen_event(app_state: &Arc<AppState>, fenid: u64, appid: u64) -> Opt
                 state: state_str.clone(),
             };
             app_state.fen_event_cache.set(fenid, cached);
-            
+
             Some(FenEvent {
                 name,
                 fen,
@@ -95,7 +103,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -122,10 +130,11 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     validator.int_u64("fenid", fen_req.fenid, 1, 99_999_999_999);
     // fenmark 是可选参数，只在有值时验证长度
     if let Some(ref mark) = fen_req.fenmark
-        && !mark.is_empty() {
-            validator.string("fenmark", mark, 1, 128);
-        }
-    
+        && !mark.is_empty()
+    {
+        validator.string("fenmark", mark, 1, 128);
+    }
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -168,29 +177,31 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     if user_type == "user" {
         // 普通用户积分验证
         handle_user_fen_verify(
-            app_state, 
+            app_state,
             res,
-            user_info, 
-            &fen_event, 
-            &fen_req, 
-            current_time, 
+            user_info,
+            &fen_event,
+            &fen_req,
+            current_time,
             ip,
             app_key,
-            app_info.mi.as_ref()
-        ).await;
+            app_info.mi.as_ref(),
+        )
+        .await;
     } else if user_type == "kami" {
         // 卡密用户积分验证
         handle_kami_fen_verify(
-            app_state, 
+            app_state,
             res,
-            user_info, 
-            &fen_event, 
-            &fen_req, 
-            current_time, 
+            user_info,
+            &fen_event,
+            &fen_req,
+            current_time,
             ip,
             app_key,
-            app_info.mi.as_ref()
-        ).await;
+            app_info.mi.as_ref(),
+        )
+        .await;
     } else {
         render_error(res, "用户类型错误", 201, app_key);
     }
@@ -238,10 +249,11 @@ async fn handle_user_fen_verify(
             render_error(res, "永久VIP不能兑换", 199, app_key);
             return;
         }
-        
+
         // 检查fenmark是否已兑换
         if let Some(mark) = fo_mark {
-            let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+            let exists =
+                check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
             if exists {
                 render_error(res, "已经兑换过一次了", 147, app_key);
                 return;
@@ -250,7 +262,8 @@ async fn handle_user_fen_verify(
     } else {
         // 非VIP兑换，检查fenmark
         if let Some(mark) = fo_mark {
-            let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+            let exists =
+                check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
             if exists {
                 render_success_with_msg(res, "验证成功", app_key);
                 return;
@@ -303,24 +316,20 @@ async fn handle_user_fen_verify(
         } else {
             current_time + fen_event.vip
         };
-        sqlx::query(
-            "UPDATE u_user SET fen = ?, vip = ? WHERE id = ? AND appid = ?"
-        )
-        .bind(user_fen - fen_event.fen)
-        .bind(new_vip)
-        .bind(uid)
-        .bind(appid)
-        .execute(app_state.get_db())
-        .await
+        sqlx::query("UPDATE u_user SET fen = ?, vip = ? WHERE id = ? AND appid = ?")
+            .bind(user_fen - fen_event.fen)
+            .bind(new_vip)
+            .bind(uid)
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await
     } else {
-        sqlx::query(
-            "UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?"
-        )
-        .bind(fen_event.fen)
-        .bind(uid)
-        .bind(appid)
-        .execute(app_state.get_db())
-        .await
+        sqlx::query("UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?")
+            .bind(fen_event.fen)
+            .bind(uid)
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await
     };
 
     match update_result {
@@ -385,7 +394,8 @@ async fn handle_kami_fen_verify(
     //     $foData['mark'] = $_POST['fenmark'];
     // }
     if let Some(mark) = fo_mark {
-        let exists = check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+        let exists =
+            check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
         if exists {
             render_success_with_msg(res, "验证成功", app_key);
             return;
@@ -423,14 +433,13 @@ async fn handle_kami_fen_verify(
 
     // PHP: $res = $this->db->where('id = ? and appid = ?',[$this->user['id'],$this->app['id']])->field(['val'=>-$fenRes['fen']]);
     // 更新卡密积分
-    let update_result = sqlx::query(
-        "UPDATE u_cdk_kami SET val = val - ? WHERE id = ? AND appid = ?"
-    )
-    .bind(fen_event.fen)
-    .bind(uid)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let update_result =
+        sqlx::query("UPDATE u_cdk_kami SET val = val - ? WHERE id = ? AND appid = ?")
+            .bind(fen_event.fen)
+            .bind(uid)
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await;
 
     match update_result {
         Ok(_) => {
@@ -459,9 +468,15 @@ async fn handle_kami_fen_verify(
 
 /// 检查 fen_order 是否存在
 #[inline]
-async fn check_fen_order_exists(pool: &sqlx::MySqlPool, fenid: u64, uid: u64, mark: &str, appid: u64) -> bool {
+async fn check_fen_order_exists(
+    pool: &sqlx::MySqlPool,
+    fenid: u64,
+    uid: u64,
+    mark: &str,
+    appid: u64,
+) -> bool {
     sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM u_fen_order WHERE fid = ? AND uid = ? AND mark = ? AND appid = ?"
+        "SELECT id FROM u_fen_order WHERE fid = ? AND uid = ? AND mark = ? AND appid = ?",
     )
     .bind(fenid)
     .bind(uid)

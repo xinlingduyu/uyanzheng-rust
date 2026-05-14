@@ -1,5 +1,5 @@
 //! QQ扫码登录回调
-//! 
+//!
 //! 功能说明：
 //! QQ互联授权后的回调处理，用于完成登录或注册。
 //! 通过code换取access_token，获取用户信息。
@@ -12,14 +12,14 @@
 //! 5. 查询或创建用户账号
 //! 6. 更新Redis登录状态供轮询接口使用
 
-use salvo::prelude::*;
-use std::sync::Arc;
 use chrono::Utc;
 use rand::Rng;
+use salvo::prelude::*;
+use std::sync::Arc;
 
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// QQ登录信息 - 存储在Redis中
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,9 +67,14 @@ struct QqUserInfo {
 /// HTML模板
 fn render_result_page(title: &str, state: i32, msg: &str) -> String {
     let state_class = if state == 2 { "success" } else { "error" };
-    let script = if state == 2 { "<script>setTimeout(function(){window.close();},2000);</script>" } else { "" };
-    
-    format!(r#"
+    let script = if state == 2 {
+        "<script>setTimeout(function(){window.close();},2000);</script>"
+    } else {
+        ""
+    };
+
+    format!(
+        r#"
 <!DOCTYPE html>
 <html>
 <head>
@@ -97,18 +102,34 @@ fn render_result_page(title: &str, state: i32, msg: &str) -> String {
     {}
 </body>
 </html>
-"#, title, state_class, if state == 2 { "✓" } else { "✗" }, title, msg, script)
+"#,
+        title,
+        state_class,
+        if state == 2 { "✓" } else { "✗" },
+        title,
+        msg,
+        script
+    )
 }
 
 #[handler]
 pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
-    
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.render(render_result_page("登录失败", 0, "系统错误"));
+            return;
+        }
+    };
+
     // PHP: $checkRules = ['code' => ['wordnum','32,32','CODE参数不规范'], 'state' => ['wordnum','32,32','状态标识参数不规范']];
     let code = match req.query::<String>("code") {
         Some(c) if c.len() >= 10 && c.len() <= 64 => c,
         _ => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "CODE参数不规范"));
             return;
         }
@@ -117,7 +138,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let state = match req.query::<String>("state") {
         Some(s) if s.len() == 32 => s,
         _ => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "状态标识参数不规范"));
             return;
         }
@@ -127,7 +149,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let redis_pool = match app_state.redis_pool.as_ref() {
         Some(pool) => pool,
         None => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "系统错误"));
             return;
         }
@@ -138,12 +161,14 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
         Ok(None) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "缺少参数"));
             return;
         }
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "系统错误"));
             return;
         }
@@ -153,7 +178,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let logon_info: QqLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "登录失败，缺少参数"));
             return;
         }
@@ -163,7 +189,7 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
 
     // 获取QQ配置
     let qq_config = match sqlx::query_as::<_, (Option<String>,)>(
-        "SELECT logon_qqopen_config FROM u_app WHERE id = ?"
+        "SELECT logon_qqopen_config FROM u_app WHERE id = ?",
     )
     .bind(appid)
     .fetch_optional(app_state.get_db())
@@ -171,7 +197,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     {
         Ok(Some(config)) => config.0,
         _ => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "应用配置错误"));
             return;
         }
@@ -180,7 +207,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let qq_config_str = match qq_config {
         Some(config) => config,
         None => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "QQ登录未配置"));
             return;
         }
@@ -189,41 +217,61 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let qq_config_json = match serde_json::from_str::<serde_json::Value>(&qq_config_str) {
         Ok(json) => json,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "配置解析失败"));
             return;
         }
     };
 
-    let qq_appid = qq_config_json.get("appID").and_then(|v| v.as_str()).unwrap_or("");
-    let qq_key = qq_config_json.get("appKey").and_then(|v| v.as_str()).unwrap_or("");
+    let qq_appid = qq_config_json
+        .get("appID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let qq_key = qq_config_json
+        .get("appKey")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     // PHP: redirect_uri='.$qqConf['APP_URL'] - QQ互联要求redirect_uri必须与申请应用时填写的一致
-    let qq_callback_url = qq_config_json.get("APP_URL").and_then(|v| v.as_str()).unwrap_or("");
+    let qq_callback_url = qq_config_json
+        .get("APP_URL")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     if qq_appid.is_empty() || qq_key.is_empty() {
-        res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+        res.headers_mut()
+            .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
         res.render(render_result_page("登录失败", 0, "QQ配置不完整"));
         return;
     }
 
     // QQ互联要求redirect_uri必须与申请应用时填写的一致，APP_URL不能为空
     if qq_callback_url.is_empty() {
-        res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
-        res.render(render_result_page("登录失败", 0, "QQ登录回调地址(APP_URL)未配置，请在应用配置中添加APP_URL字段"));
+        res.headers_mut()
+            .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+        res.render(render_result_page(
+            "登录失败",
+            0,
+            "QQ登录回调地址(APP_URL)未配置，请在应用配置中添加APP_URL字段",
+        ));
         return;
     }
 
-    // PHP: $url='https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id='.$qqConf['appID'].'&client_secret='.$qqConf['appKey'].'&code='.$_GET['code'].'&redirect_uri='.$qqConf['APP_URL'].'&fmt=json&need_openid=1';
+    // PHP: $url='https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id='.$qqConf['appID'].'&client_secret=***&code=***&redirect_uri='.$qqConf['APP_URL'].'&fmt=json&need_openid=1';
     let token_url = format!(
         "https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id={}&client_secret={}&code={}&redirect_uri={}&fmt=json&need_openid=1",
-        qq_appid, qq_key, code, urlencoding::encode(qq_callback_url)
+        qq_appid,
+        qq_key,
+        code,
+        urlencoding::encode(qq_callback_url)
     );
 
     // 请求QQ API获取access_token
     let token_response = match reqwest::get(&token_url).await {
         Ok(resp) => resp,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "QQ API请求失败"));
             return;
         }
@@ -232,7 +280,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let token_result: QqTokenResponse = match token_response.json().await {
         Ok(json) => json,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "QQ API响应解析失败"));
             return;
         }
@@ -242,8 +291,11 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let access_token = match token_result.access_token {
         Some(token) => token,
         None => {
-            let err_msg = token_result.error_description.unwrap_or_else(|| "登录失败，缺少access_token参数".to_string());
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            let err_msg = token_result
+                .error_description
+                .unwrap_or_else(|| "登录失败，缺少access_token参数".to_string());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, &err_msg));
             return;
         }
@@ -252,13 +304,14 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let openid = match token_result.openid {
         Some(id) => id,
         None => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "获取QQ OpenID失败"));
             return;
         }
     };
 
-    // PHP: $apiUrl = "https://graph.qq.com/user/get_user_info?access_token={$tokenData['access_token']}&oauth_consumer_key={$qqConf['appID']}&openid=".$tokenData['openid'];
+    // PHP: $apiUrl = "https://graph.qq.com/user/get_user_info?access_token=***&oauth_consumer_key={$qqConf['appID']}&openid=".$tokenData['openid'];
     let user_info_url = format!(
         "https://graph.qq.com/user/get_user_info?access_token={}&oauth_consumer_key={}&openid={}",
         access_token, qq_appid, openid
@@ -268,7 +321,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let user_response = match reqwest::get(&user_info_url).await {
         Ok(resp) => resp,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "获取QQ用户信息失败"));
             return;
         }
@@ -277,7 +331,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let qq_info: QqUserInfo = match user_response.json().await {
         Ok(json) => json,
         Err(_) => {
-            res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+            res.headers_mut()
+                .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
             res.render(render_result_page("登录失败", 0, "解析QQ用户信息失败"));
             return;
         }
@@ -286,7 +341,8 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     // 检查QQ API返回是否成功
     if qq_info.ret.map(|r| r != 0).unwrap_or(false) {
         let err_msg = qq_info.msg.unwrap_or_else(|| "QQ API错误".to_string());
-        res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+        res.headers_mut()
+            .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
         res.render(render_result_page("登录失败", 0, &err_msg));
         return;
     }
@@ -295,15 +351,24 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let qq_nickname = qq_info.nickname.unwrap_or_else(|| "QQ用户".to_string());
     // PHP: $regData['avatars']=$open_info['figureurl_qq']
     let qq_figureurl = qq_info.figureurl_qq.unwrap_or_else(|| {
-        qq_info.figureurl_qq_1.unwrap_or_else(|| {
-            qq_info.figureurl_2.unwrap_or_default()
-        })
+        qq_info
+            .figureurl_qq_1
+            .unwrap_or_else(|| qq_info.figureurl_2.unwrap_or_default())
     });
 
     // PHP: $this->__logon($_GET['state'],$logonInfo,$open_info);
-    let result = __logon(app_state, &state, &logon_info, &qq_openid, &qq_nickname, &qq_figureurl).await;
+    let result = __logon(
+        app_state,
+        &state,
+        &logon_info,
+        &qq_openid,
+        &qq_nickname,
+        &qq_figureurl,
+    )
+    .await;
 
-    res.headers_mut().insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
+    res.headers_mut()
+        .insert("Content-Type", "text/html; charset=utf-8".parse().unwrap());
     res.render(render_result_page(&result.0, result.1, &result.2));
 }
 
@@ -322,19 +387,20 @@ async fn __logon(
     let appid = logon_info.appid;
 
     // PHP: $Ures = $this->db->where('open_qq = ? and appid = ?', [$open_info['openid'],$logon_info['appid']])->fetch('id');
-    let existing_user = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE open_qq = ? AND appid = ?"
-    )
-    .bind(qq_openid)
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let existing_user =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE open_qq = ? AND appid = ?")
+            .bind(qq_openid)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match existing_user {
         Ok(Some((uid,))) => {
             // PHP: 已有用户，直接登录
             let logon_key = format!("logon_{}", uuid);
-            let _ = redis_util.setex(redis_pool, &logon_key, 600, &uid.to_string()).await;
+            let _ = redis_util
+                .setex(redis_pool, &logon_key, 600, &uid.to_string())
+                .await;
             ("登录成功".to_string(), 2, "登录成功".to_string())
         }
         Ok(None) => {
@@ -349,7 +415,13 @@ async fn __logon(
 
             let app_cfg = match app_result {
                 Ok(Some(row)) => row,
-                Ok(None) => return ("登录失败".to_string(), 0, "登录失败，应用不存在".to_string()),
+                Ok(None) => {
+                    return (
+                        "登录失败".to_string(),
+                        0,
+                        "登录失败，应用不存在".to_string(),
+                    );
+                }
                 Err(_) => return ("登录失败".to_string(), 0, "系统错误".to_string()),
             };
 
@@ -368,7 +440,11 @@ async fn __logon(
             };
 
             // PHP: $acctno = (time()-1727712001).str_pad(rand(0, 99), 2, '0', STR_PAD_LEFT);
-            let acctno = format!("{}{:02}", current_time - 1727712001, rand::thread_rng().r#gen_range(0..99));
+            let acctno = format!(
+                "{}{:02}",
+                current_time - 1727712001,
+                rand::thread_rng().r#gen_range(0..99)
+            );
 
             // PHP: $regData = ['acctno'=>$acctno,'open_qq'=>$open_info['openid'],'password'=>md5($pwd),'nickname'=>$open_info['nickname'],'avatars'=>$open_info['figureurl_qq'],'vip'=>0,'fen'=>0,'reg_time'=>time(),'reg_ip'=>'127.0.0.1','reg_sn'=>$logon_info['udid'],'appid'=>$logon_info['appid']];
             let mut reg_vip: i64 = 0;
@@ -388,7 +464,7 @@ async fn __logon(
             if let Some(inv_id) = logon_info.invid {
                 // 查询邀请人是否存在
                 let inv_res = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
-                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?"
+                    "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?",
                 )
                 .bind(inv_id)
                 .bind(appid)
@@ -454,12 +530,22 @@ async fn __logon(
                 Ok(result) => {
                     let reg_id = result.last_insert_id() as i64;
                     let logon_key = format!("logon_{}", uuid);
-                    let _ = redis_util.setex(redis_pool, &logon_key, 600, &reg_id.to_string()).await;
-                    ("登录成功".to_string(), 2, format!("登录成功，您的初始密码为：{}", pwd))
+                    let _ = redis_util
+                        .setex(redis_pool, &logon_key, 600, &reg_id.to_string())
+                        .await;
+                    (
+                        "登录成功".to_string(),
+                        2,
+                        format!("登录成功，您的初始密码为：{}", pwd),
+                    )
                 }
                 Err(e) => {
                     tracing::error!("注册失败: {}", e);
-                    ("登录失败".to_string(), 0, "账号注册失败，请重试".to_string())
+                    (
+                        "登录失败".to_string(),
+                        0,
+                        "账号注册失败，请重试".to_string(),
+                    )
                 }
             }
         }

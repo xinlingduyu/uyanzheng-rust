@@ -1,10 +1,10 @@
 //! Admin Order controller
 //! 管理员订单控制器
 
+use chrono::{Duration, Utc};
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
-use chrono::{Utc, Duration};
 
 use crate::app::utils::response::ApiResponse;
 
@@ -118,13 +118,11 @@ pub async fn statistics(req: &mut Request, depot: &mut Depot, res: &mut Response
     // 获取appid（从Header获取，必须）
     let appid: u64 = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => {
-                match s.parse::<u64>() {
-                    Ok(num) => num,
-                    Err(_) => {
-                        res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
-                        return;
-                    }
+            Ok(s) => match s.parse::<u64>() {
+                Ok(num) => num,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
                 }
             },
             Err(_) => {
@@ -248,13 +246,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 获取appid（从Header获取，必须）
     let appid: u64 = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => {
-                match s.parse::<u64>() {
-                    Ok(num) => num,
-                    Err(_) => {
-                        res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
-                        return;
-                    }
+            Ok(s) => match s.parse::<u64>() {
+                Ok(num) => num,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
                 }
             },
             Err(_) => {
@@ -281,10 +277,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if let Some(so) = list_req.so {
         // status 过滤: 0=未支付, 1=已支付
         if !so.status.is_empty()
-            && let Ok(state) = so.status.parse::<i32>() {
-                where_conditions.push("O.state = ?".to_string());
-                where_params_i64.push(state as i64);
-            }
+            && let Ok(state) = so.status.parse::<i32>()
+        {
+            where_conditions.push("O.state = ?".to_string());
+            where_params_i64.push(state as i64);
+        }
 
         // type 过滤
         if !so.r#type.is_empty() {
@@ -325,21 +322,24 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
 
         // date 日期范围过滤
-        if !so.date.is_empty() && so.date.len() >= 2
-            && let (Ok(start_time), Ok(end_time)) = (
-                so.date[0].parse::<i64>(),
-                so.date[1].parse::<i64>()
-            ) {
-                where_conditions.push("O.add_time >= ? AND O.add_time <= ?".to_string());
-                where_params_i64.push(start_time);
-                where_params_i64.push(end_time);
-            }
+        if !so.date.is_empty()
+            && so.date.len() >= 2
+            && let (Ok(start_time), Ok(end_time)) =
+                (so.date[0].parse::<i64>(), so.date[1].parse::<i64>())
+        {
+            where_conditions.push("O.add_time >= ? AND O.add_time <= ?".to_string());
+            where_params_i64.push(start_time);
+            where_params_i64.push(end_time);
+        }
     }
 
     let where_clause = where_conditions.join(" AND ");
 
     // 先查询总数
-    let count_query = format!("SELECT COUNT(*) as total FROM u_order AS O WHERE {}", where_clause);
+    let count_query = format!(
+        "SELECT COUNT(*) as total FROM u_order AS O WHERE {}",
+        where_clause
+    );
 
     let mut count_sql_query = sqlx::query(&count_query);
     for param in &where_params_i64 {
@@ -378,27 +378,34 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<OrderItem> = rows.into_iter().map(|row| OrderItem {
-                id: row.try_get("id").unwrap_or(0),
-                uid: row.try_get("uid").unwrap_or(0),
-                gid: row.try_get("gid").unwrap_or(0),
-                inviter_id: row.try_get("inviter_id").ok(),
-                order_no: row.try_get("order_no").unwrap_or_default(),
-                trade_no: row.try_get("trade_no").ok(),
-                name: row.try_get("name").unwrap_or_default(),
-                money: row.try_get("money").unwrap_or(0.0),
-                divide_money: row.try_get("divide_money").ok(),
-                r#type: row.try_get("type").unwrap_or_default(),
-                val: row.try_get("val").unwrap_or(0),
-                payment: row.try_get("payment").ok(),
-                add_time: row.try_get("add_time").unwrap_or(0),
-                end_time: row.try_get("end_time").ok(),
-                state: row.try_get("state").unwrap_or(0),
-                appid: row.try_get("appid").unwrap_or(0),
-                user: row.try_get("user").ok(),
-            }).collect();
+            let list: Vec<OrderItem> = rows
+                .into_iter()
+                .map(|row| OrderItem {
+                    id: row.try_get("id").unwrap_or(0),
+                    uid: row.try_get("uid").unwrap_or(0),
+                    gid: row.try_get("gid").unwrap_or(0),
+                    inviter_id: row.try_get("inviter_id").ok(),
+                    order_no: row.try_get("order_no").unwrap_or_default(),
+                    trade_no: row.try_get("trade_no").ok(),
+                    name: row.try_get("name").unwrap_or_default(),
+                    money: row.try_get("money").unwrap_or(0.0),
+                    divide_money: row.try_get("divide_money").ok(),
+                    r#type: row.try_get("type").unwrap_or_default(),
+                    val: row.try_get("val").unwrap_or(0),
+                    payment: row.try_get("payment").ok(),
+                    add_time: row.try_get("add_time").unwrap_or(0),
+                    end_time: row.try_get("end_time").ok(),
+                    state: row.try_get("state").unwrap_or(0),
+                    appid: row.try_get("appid").unwrap_or(0),
+                    user: row.try_get("user").ok(),
+                })
+                .collect();
 
-            let page_total = if total == 0 { 0 } else { ((total as f64) / (size as f64)).ceil() as u32 };
+            let page_total = if total == 0 {
+                0
+            } else {
+                ((total as f64) / (size as f64)).ceil() as u32
+            };
 
             let response = PageResponse {
                 current_page: page,
@@ -464,5 +471,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

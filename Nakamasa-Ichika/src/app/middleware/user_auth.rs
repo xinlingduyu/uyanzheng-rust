@@ -1,19 +1,20 @@
 //! 用户认证中间件
 //! 一比一还原PHP base/user.php 的 __init, __dataCheck, __TokenCheck 方法
 
-use salvo::prelude::*;
-use crate::core::AppState;
-use crate::core::md5_optimize::{md5_to_str, md5_hex, md5_str_from_str, md5_concat_2};
-use crate::core::json_optimize::FastJson;
-use crate::app::utils::response::ApiResponse;
-use crate::app::plugins::encryption::{self, EncryptionConfig, Encryption, txt_to_arr, arr_sign};
-use std::sync::Arc;
-use std::collections::HashMap;
-use std::borrow::Cow;
-use std::fmt::Write;
-use sqlx::Row;
-use serde::{Deserialize, Serialize};
 use super::app_context::AppInfo;
+use crate::app::plugins::encryption::{self, Encryption, EncryptionConfig, arr_sign, txt_to_arr};
+use crate::app::utils::response::ApiResponse;
+use crate::core::AppState;
+use crate::core::json_optimize::FastJson;
+use crate::core::md5_optimize::{md5_concat_2, md5_hex, md5_str_from_str, md5_to_str};
+use crate::core::middleware::get_client_ip;
+use salvo::prelude::*;
+use serde::{Deserialize, Serialize};
+use sqlx::Row;
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::fmt::Write;
+use std::sync::Arc;
 
 /// 常量时间比较 - 防止时序攻击
 #[inline]
@@ -38,8 +39,8 @@ pub struct UserInfo {
     pub udid: String,
     pub appid: u64,
     #[serde(rename = "type")]
-    pub user_type: String,      // 'user' or 'kami'
-    pub agent: bool,            // 是否是代理
+    pub user_type: String, // 'user' or 'kami'
+    pub agent: bool, // 是否是代理
     pub phone: Option<String>,
     pub email: Option<String>,
     pub acctno: Option<String>,
@@ -50,17 +51,17 @@ pub struct UserInfo {
     pub ban_msg: Option<String>,
     pub password: String,
     pub sn_list: Option<serde_json::Value>,
-    pub sn_max: i32,            // 额外设备绑定数量
-    pub token_state: String,    // 'y' or 'n'
+    pub sn_max: i32,         // 额外设备绑定数量
+    pub token_state: String, // 'y' or 'n'
     pub inviter_id: Option<u64>,
     pub avatars: Option<String>,
     pub extend: Option<String>,
     // 卡密用户特有字段
     pub card_no: Option<String>,
     pub kami_type: Option<String>, // 卡密类型: 'vip', 'fen', 'addsn'
-    pub val: Option<i64>,       // 卡密面值/积分
-    pub vip_exp: Option<i64>,   // 卡密VIP过期时间
-    pub use_id: Option<u64>,    // 被对冲使用的用户ID
+    pub val: Option<i64>,          // 卡密面值/积分
+    pub vip_exp: Option<i64>,      // 卡密VIP过期时间
+    pub use_id: Option<u64>,       // 被对冲使用的用户ID
 }
 
 /// Token数据（存储在Redis中）
@@ -72,7 +73,7 @@ pub struct TokenData {
     pub appid: u64,
     #[serde(rename = "type", default)]
     pub user_type: Option<String>, // 'user' or 'kami', 默认为user
-    pub p: String,                 // 密码hash
+    pub p: String, // 密码hash
 }
 
 /// 用户认证中间件
@@ -109,13 +110,13 @@ impl UserAuth {
         self.allow_udid_check = true;
         self
     }
-    
+
     /// 跳过登录状态检查
     pub fn skip_logon_state_check(mut self) -> Self {
         self.check_logon_state = false;
         self
     }
-    
+
     /// 跳过数据校验
     pub fn skip_data_check(mut self) -> Self {
         self.data_check = false;
@@ -131,7 +132,13 @@ impl Default for UserAuth {
 
 #[async_trait]
 impl Handler for UserAuth {
-    async fn handle(&self, req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
+    async fn handle(
+        &self,
+        req: &mut Request,
+        depot: &mut Depot,
+        res: &mut Response,
+        ctrl: &mut FlowCtrl,
+    ) {
         // 先获取 Arc<AppState> 引用
         let app_state = match depot.obtain::<Arc<AppState>>() {
             Ok(s) => s.clone(),
@@ -152,8 +159,10 @@ impl Handler for UserAuth {
             }
         };
 
+        let security_conf = app_state.config().security();
+
         // 获取客户端IP
-        let client_ip = get_client_ip(req);
+        let client_ip = get_client_ip(req).to_string();
 
         // 获取应用信息并提取需要的字段（在单独作用域中完成）
         let (logon_state, logon_off_msg, app_type, app_key, app_id) = {
@@ -197,7 +206,10 @@ impl Handler for UserAuth {
                 None => return,
             }
         } else {
-            let body = req.parse_json::<serde_json::Value>().await.unwrap_or(serde_json::Value::Object(Default::default()));
+            let body = req
+                .parse_json::<serde_json::Value>()
+                .await
+                .unwrap_or(serde_json::Value::Object(Default::default()));
             let params = json_to_hashmap(&body);
             (params, None)
         };
@@ -206,8 +218,21 @@ impl Handler for UserAuth {
         depot.insert("post_params", post_params.clone());
 
         // Token 检查
-        if self.check_token {
-            match self.token_check_internal(&*req, depot, res, ctrl, &app_state, app_id, &app_key, &token_pre, &post_params).await {
+        if self.check_token && security_conf.user_token_verify_enabled() {
+            match self
+                .token_check_internal(
+                    &*req,
+                    depot,
+                    res,
+                    ctrl,
+                    &app_state,
+                    app_id,
+                    &app_key,
+                    &token_pre,
+                    &post_params,
+                )
+                .await
+            {
                 Some(()) => {}
                 None => return,
             }
@@ -224,32 +249,32 @@ impl UserAuth {
     fn extract_token(&self, req: &Request, post_params: &HashMap<String, String>) -> String {
         // 1. 优先从 POST 参数获取
         if let Some(t) = post_params.get("token")
-            && !t.is_empty() {
-                return t.clone();
-            }
-        
+            && !t.is_empty()
+        {
+            return t.clone();
+        }
+
         // 2. 从 Header Authorization 获取 (Bearer token)
         if let Some(header_token) = req.headers().get("Authorization")
-            && let Ok(token_str) = header_token.to_str() {
-                let token = token_str.strip_prefix("Bearer ").unwrap_or(token_str);
-                if !token.is_empty() {
-                    return token.to_string();
-                }
+            && let Ok(token_str) = header_token.to_str()
+        {
+            let token = token_str.strip_prefix("Bearer ").unwrap_or(token_str);
+            if !token.is_empty() {
+                return token.to_string();
             }
-        
+        }
+
         // 3. 从 Header token 字段获取
         if let Some(header_token) = req.headers().get("token")
             && let Ok(token_str) = header_token.to_str()
-                && !token_str.is_empty() {
-                    return token_str.to_string();
-                }
-        
-        // 4. 从 Query 参数获取
-        if let Some(query_token) = req.query::<String>("token")
-            && !query_token.is_empty() {
-                return query_token;
-            }
-        
+            && !token_str.is_empty()
+        {
+            return token_str.to_string();
+        }
+
+        // 4. 从 Query 参数获取已禁用，避免 token 泄漏到访问日志、浏览器历史和 Referer。
+        // 兼容客户端应使用 POST 参数、Authorization: Bearer 或 token Header。
+
         String::new()
     }
 
@@ -263,21 +288,23 @@ impl UserAuth {
         ctrl: &mut FlowCtrl,
     ) -> Option<(HashMap<String, String>, Option<String>)> {
         // 检测 Content-Type
-        let content_type = req.headers().get("content-type")
+        let content_type = req
+            .headers()
+            .get("content-type")
             .and_then(|v| v.to_str().ok())
             .unwrap_or("");
-        
+
         // 根据Content-Type解析参数
         if content_type.contains("multipart/form-data") {
             // multipart/form-data 格式：直接从表单字段提取参数
             tracing::debug!("UserAuth: 检测到 multipart/form-data 格式");
-            
+
             // 重要：设置足够大的 secure_max_size，否则 Salvo 会拒绝大文件
             // 默认值可能很小（如 0 或几 KB），导致解析失败
             // 这里设置为 100MB，与 admin/upload.rs 保持一致
             req.set_secure_max_size(100 * 1024 * 1024);
             tracing::debug!("UserAuth: 已设置 secure_max_size = 100MB");
-            
+
             match req.form_data().await {
                 Ok(form) => {
                     let mut params = HashMap::new();
@@ -288,7 +315,10 @@ impl UserAuth {
                             params.insert(key.clone(), value.clone());
                         }
                     }
-                    tracing::debug!("UserAuth: multipart 解析成功，字段: {:?}", params.keys().collect::<Vec<_>>());
+                    tracing::debug!(
+                        "UserAuth: multipart 解析成功，字段: {:?}",
+                        params.keys().collect::<Vec<_>>()
+                    );
                     return Some((params, None));
                 }
                 Err(e) => {
@@ -299,7 +329,7 @@ impl UserAuth {
                 }
             }
         }
-        
+
         // JSON 格式处理
         let body_data = match req.parse_json::<serde_json::Value>().await {
             Ok(data) => data,
@@ -330,9 +360,10 @@ impl UserAuth {
         };
 
         // 创建加密器并解密
-        let config = EncryptionConfig::from_json_value(&encryption_info.config, &encryption_info.enc_type);
+        let config =
+            EncryptionConfig::from_json_value(&encryption_info.config, &encryption_info.enc_type);
         let encryptor = encryption::create_encryption(&config);
-        
+
         let decrypted_data = match encryptor.decode(&encrypted_data) {
             Ok(data) => data,
             Err(e) => {
@@ -351,24 +382,28 @@ impl UserAuth {
 
         // PHP: $_POST = array_merge($_POST, $encryption->txtArr($dedata));
         let mut post_params = txt_to_arr(&decrypted_data);
-        
+
         // 添加原始POST参数（除了data和sign）- 优化遍历
         if let Some(obj) = body_data.as_object() {
             for (k, v) in obj {
-                if k != "data" && k != "sign" && !post_params.contains_key(k)
-                    && let serde_json::Value::String(s) = v {
-                        // 避免克隆 key，使用引用
-                        post_params.insert(k.clone(), s.clone());
-                    }
+                if k != "data"
+                    && k != "sign"
+                    && !post_params.contains_key(k)
+                    && let serde_json::Value::String(s) = v
+                {
+                    // 避免克隆 key，使用引用
+                    post_params.insert(k.clone(), s.clone());
+                }
             }
         }
 
         // 时间戳验证 - 修复：使用绝对值防止时间倒流
         if encryption_info.time > 0 {
-            let client_time = post_params.get("time")
+            let client_time = post_params
+                .get("time")
                 .and_then(|t| t.parse::<i64>().ok())
                 .unwrap_or(0);
-            
+
             let now = chrono::Utc::now().timestamp();
             let diff = (now - client_time).abs();
             if diff > encryption_info.time as i64 {
@@ -391,14 +426,15 @@ impl UserAuth {
 
             // 计算签名
             let calculated_sign = arr_sign(&post_params, &app_info.app_key);
-            
+
             if !constant_time_eq(&client_sign, &calculated_sign) {
                 // 使用栈上计算避免分配
-                let mut alt_data = String::with_capacity(decrypted_data.len() + app_info.app_key.len());
+                let mut alt_data =
+                    String::with_capacity(decrypted_data.len() + app_info.app_key.len());
                 alt_data.push_str(&decrypted_data);
                 alt_data.push_str(&app_info.app_key);
                 let alt_sign = md5_str_from_str(&alt_data);
-                
+
                 if !constant_time_eq(&client_sign, &alt_sign) {
                     res.render(Json(ApiResponse::<()>::error_static("签名验证失败", 109)));
                     ctrl.skip_rest();
@@ -426,13 +462,13 @@ impl UserAuth {
         post_params: &HashMap<String, String>,
     ) -> Option<()> {
         let redis_util = &app_state.redis_util;
-        
+
         // 只调用一次时间获取
         let current_time = chrono::Utc::now().timestamp();
 
         // 获取Token - 按优先级从多个位置获取
         let token_str = self.extract_token(req, post_params);
-        
+
         if token_str.is_empty() {
             res.render(Json(ApiResponse::<()>::error_static("Token不能为空", 128)));
             ctrl.skip_rest();
@@ -441,33 +477,36 @@ impl UserAuth {
 
         // ========== 性能优化：先查 L1 Token 缓存 ==========
         let token_cache_key = AppState::token_cache_key(&token_str);
-        
+
         // 检查 L1 缓存
         if let Some(cached) = app_state.token_cache.get(&token_cache_key) {
             // 验证缓存是否仍然有效（app_id 匹配已确保 token 属于当前应用）
             if cached.is_valid(current_time) && cached.appid == app_id {
                 // 缓存命中，直接使用缓存数据
                 tracing::trace!("Token缓存命中: uid={}", cached.uid);
-                
+
                 // 确定用户类型
                 let user_type: &str = cached.user_type.as_str();
-                
+
                 // 查询用户信息（会尝试使用用户信息缓存）
-                let user_info = match fetch_user_info_optimized(app_state, cached.uid, cached.appid, user_type).await {
-                    Ok(Some(info)) => info,
-                    Ok(None) => {
-                        res.render(Json(ApiResponse::<()>::error_static("用户不存在", 129)));
-                        ctrl.skip_rest();
-                        return None;
-                    }
-                    Err(e) => {
-                        tracing::error!("数据库查询失败: {}", e);
-                        res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
-                        ctrl.skip_rest();
-                        return None;
-                    }
-                };
-                
+                let user_info =
+                    match fetch_user_info_optimized(app_state, cached.uid, cached.appid, user_type)
+                        .await
+                    {
+                        Ok(Some(info)) => info,
+                        Ok(None) => {
+                            res.render(Json(ApiResponse::<()>::error_static("用户不存在", 129)));
+                            ctrl.skip_rest();
+                            return None;
+                        }
+                        Err(e) => {
+                            tracing::error!("数据库查询失败: {}", e);
+                            res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
+                            ctrl.skip_rest();
+                            return None;
+                        }
+                    };
+
                 // 验证密码（防止密码被修改后缓存仍有效）
                 if !constant_time_eq(&user_info.password, &cached.password) {
                     // 密码已修改，失效缓存
@@ -476,32 +515,36 @@ impl UserAuth {
                     ctrl.skip_rest();
                     return None;
                 }
-                
+
                 // 检查封禁状态
                 if let Some(ban_time) = user_info.ban
-                    && ban_time > current_time {
-                        let msg = user_info.ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
-                        res.render(Json(ApiResponse::<()>::error(msg, 127)));
-                        ctrl.skip_rest();
-                        return None;
-                    }
-                
+                    && ban_time > current_time
+                {
+                    let msg = user_info
+                        .ban_msg
+                        .clone()
+                        .unwrap_or_else(|| "账号已被禁用".to_string());
+                    res.render(Json(ApiResponse::<()>::error(msg, 127)));
+                    ctrl.skip_rest();
+                    return None;
+                }
+
                 // 检查设备绑定
                 let token_state = check_device_binding(&user_info.sn_list, &cached.udid);
-                
+
                 if !self.allow_udid_check && token_state != "y" {
                     res.render(Json(ApiResponse::<()>::error_static("设备不匹配", 130)));
                     ctrl.skip_rest();
                     return None;
                 }
-                
+
                 // 存储到 Depot
                 depot.insert("user_uid", user_info.uid);
                 depot.insert("user_udid", cached.udid.clone());
                 depot.insert("user_appid", user_info.appid);
                 depot.insert("user_info", user_info);
                 depot.insert("token", token_str);
-                
+
                 return Some(());
             }
         }
@@ -519,7 +562,7 @@ impl UserAuth {
                 return None;
             }
         };
-        
+
         let token_data_str = match redis_util.get(redis_pool, &token_key).await {
             Ok(Some(data)) => data,
             Ok(None) => {
@@ -560,29 +603,36 @@ impl UserAuth {
         };
 
         // 查询用户信息（使用优化版本）
-        let user_info = match fetch_user_info_optimized(app_state, token_data.uid, token_data.appid, user_type).await {
-            Ok(Some(info)) => info,
-            Ok(None) => {
-                res.render(Json(ApiResponse::<()>::error_static("用户不存在", 129)));
-                ctrl.skip_rest();
-                return None;
-            }
-            Err(e) => {
-                tracing::error!("数据库查询失败: {}", e);
-                res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
-                ctrl.skip_rest();
-                return None;
-            }
-        };
+        let user_info =
+            match fetch_user_info_optimized(app_state, token_data.uid, token_data.appid, user_type)
+                .await
+            {
+                Ok(Some(info)) => info,
+                Ok(None) => {
+                    res.render(Json(ApiResponse::<()>::error_static("用户不存在", 129)));
+                    ctrl.skip_rest();
+                    return None;
+                }
+                Err(e) => {
+                    tracing::error!("数据库查询失败: {}", e);
+                    res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
+                    ctrl.skip_rest();
+                    return None;
+                }
+            };
 
         // PHP: if($Ures['ban'] > time())$this->out->e(127,$Ures['ban_msg']);
         if let Some(ban_time) = user_info.ban
-            && ban_time > current_time {
-                let msg = user_info.ban_msg.clone().unwrap_or_else(|| "账号已被禁用".to_string());
-                res.render(Json(ApiResponse::<()>::error(msg, 127)));
-                ctrl.skip_rest();
-                return None;
-            }
+            && ban_time > current_time
+        {
+            let msg = user_info
+                .ban_msg
+                .clone()
+                .unwrap_or_else(|| "账号已被禁用".to_string());
+            res.render(Json(ApiResponse::<()>::error(msg, 127)));
+            ctrl.skip_rest();
+            return None;
+        }
 
         // PHP: if($Ures['password'] != $tokenParam['p'])$this->out->e(131);
         // 使用常量时间比较防止时序攻击
@@ -591,7 +641,7 @@ impl UserAuth {
         } else {
             constant_time_eq(&user_info.password, &token_data.p)
         };
-        
+
         if !password_valid {
             res.render(Json(ApiResponse::<()>::error_static("Token已过期", 131)));
             ctrl.skip_rest();
@@ -600,7 +650,7 @@ impl UserAuth {
 
         // 检查设备绑定 - 直接传递引用
         let token_state = check_device_binding(&user_info.sn_list, &token_data.udid);
-        
+
         // 如果设备不匹配且不允许设备检查接口，则拒绝
         if !self.allow_udid_check && token_state != "y" {
             res.render(Json(ApiResponse::<()>::error_static("设备不匹配", 130)));
@@ -646,21 +696,20 @@ pub async fn set_token(
     token_exp: i32,
 ) -> Result<bool, String> {
     let token_key = format!("{}{}", token_pre, token);
-    let data_json = serde_json::to_string(token_data)
-        .map_err(|e| format!("序列化失败: {}", e))?;
-    
+    let data_json = serde_json::to_string(token_data).map_err(|e| format!("序列化失败: {}", e))?;
+
     // PHP: $this->redis->setex($this->tokenPre.$token,$this->app['logon_token_exp'],json_encode($data));
     // 优化：并行设置 token 和 online 状态
     let udid_md5_bytes = md5_hex(token_data.udid.as_bytes());
     let udid_md5 = md5_to_str(&udid_md5_bytes);
     let online_key = format!("{}online_{}_{}", token_pre, token_data.uid, udid_md5);
-    
+
     tokio::try_join!(
         redis_util.setex(redis_pool, &token_key, token_exp, &data_json),
         redis_util.setex(redis_pool, &online_key, token_exp, token)
     )
-        .map_err(|e| format!("Redis存储失败: {}", e))?;
-    
+    .map_err(|e| format!("Redis存储失败: {}", e))?;
+
     Ok(true)
 }
 
@@ -674,11 +723,12 @@ pub async fn del_token(
 ) -> Result<(), String> {
     // PHP: $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
     let pattern = format!("online_{}_*", uid);
-    
-    let keys = redis_util.keys(redis_pool, &pattern)
+
+    let keys = redis_util
+        .keys(redis_pool, &pattern)
         .await
         .map_err(|e| format!("Redis查询失败: {}", e))?;
-    
+
     // PHP: foreach ($keys as $key) { ... }
     for key in keys {
         // 获取token
@@ -690,7 +740,7 @@ pub async fn del_token(
         // 删除online记录
         let _ = redis_util.del(redis_pool, &key).await;
     }
-    
+
     Ok(())
 }
 
@@ -705,36 +755,44 @@ pub async fn freeze_ip(
     let ip_md5 = md5_to_str(&ip_md5_bytes);
     let num_key = format!("fail_ip_{}_num", ip_md5);
     let freeze_key = format!("fail_ip_{}", ip_md5);
-    
+
     // 检查是否已被冻结
-    if redis_util.exists(redis_pool, &freeze_key).await.unwrap_or(false) {
+    if redis_util
+        .exists(redis_pool, &freeze_key)
+        .await
+        .unwrap_or(false)
+    {
         return Ok(true); // 已被冻结
     }
-    
+
     // 获取失败次数
-    let fail_num: i32 = redis_util.get(redis_pool, &num_key)
+    let fail_num: i32 = redis_util
+        .get(redis_pool, &num_key)
         .await
         .map_err(|e| format!("Redis查询失败: {}", e))?
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    
+
     if fail_num >= 10 {
         // PHP: $this->redis->setex('fail_ip_'.md5($this->ip),30*60,time()+(30*60));
-        redis_util.setex(redis_pool, &freeze_key, 30 * 60, "frozen")
+        redis_util
+            .setex(redis_pool, &freeze_key, 30 * 60, "frozen")
             .await
             .map_err(|e| format!("Redis存储失败: {}", e))?;
     } else if fail_num >= 5 {
         // PHP: $this->redis->setex('fail_ip_'.md5($this->ip),10*60,time()+(10*60));
-        redis_util.setex(redis_pool, &freeze_key, 10 * 60, "frozen")
+        redis_util
+            .setex(redis_pool, &freeze_key, 10 * 60, "frozen")
             .await
             .map_err(|e| format!("Redis存储失败: {}", e))?;
     } else {
         // PHP: $fail_ip_num++; $this->redis->setex('fail_ip_'.md5($this->ip).'_num',10*60,$fail_ip_num);
-        redis_util.setex(redis_pool, &num_key, 10 * 60, &(fail_num + 1).to_string())
+        redis_util
+            .setex(redis_pool, &num_key, 10 * 60, &(fail_num + 1).to_string())
             .await
             .map_err(|e| format!("Redis存储失败: {}", e))?;
     }
-    
+
     Ok(false)
 }
 
@@ -747,41 +805,25 @@ pub async fn is_frozen(
     let ip_md5_bytes = md5_hex(client_ip.as_bytes());
     let ip_md5 = md5_to_str(&ip_md5_bytes);
     let freeze_key = format!("fail_ip_{}", ip_md5);
-    
-    redis_util.exists(redis_pool, &freeze_key).await.unwrap_or(false)
+
+    redis_util
+        .exists(redis_pool, &freeze_key)
+        .await
+        .unwrap_or(false)
 }
 
 // ============================================================================
 // 辅助函数
 // ============================================================================
 
-/// 获取客户端IP
-fn get_client_ip(req: &Request) -> String {
-    // 尝试从 X-Forwarded-For 获取
-    if let Some(forwarded) = req.headers().get("X-Forwarded-For")
-        && let Ok(forwarded_str) = forwarded.to_str()
-            && let Some(first_ip) = forwarded_str.split(',').next() {
-                return first_ip.trim().to_string();
-            }
-    
-    // 尝试从 X-Real-IP 获取
-    if let Some(real_ip) = req.headers().get("X-Real-IP")
-        && let Ok(ip_str) = real_ip.to_str() {
-            return ip_str.to_string();
-        }
-    
-    // 从连接获取
-    req.remote_addr().to_string()
-}
-
 /// JSON Value 转 HashMap (优化版，减少分配)
 fn json_to_hashmap(value: &serde_json::Value) -> HashMap<String, String> {
     let mut result = HashMap::new();
-    
+
     if let Some(obj) = value.as_object() {
         // 预分配容量
         result.reserve(obj.len());
-        
+
         for (k, v) in obj {
             match v {
                 serde_json::Value::String(s) => {
@@ -798,95 +840,100 @@ fn json_to_hashmap(value: &serde_json::Value) -> HashMap<String, String> {
             }
         }
     }
-    
+
     result
 }
 
 /// 查询用户信息 - 优化版（带缓存）
-/// 
+///
 /// 优化策略：
 /// 1. 先查 L1 用户信息缓存
 /// 2. 缓存未命中再查数据库
 /// 3. 查询结果写入缓存
 async fn fetch_user_info_optimized(
-    app_state: &Arc<AppState>, 
-    uid: u64, 
-    appid: u64, 
-    user_type: &str
+    app_state: &Arc<AppState>,
+    uid: u64,
+    appid: u64,
+    user_type: &str,
 ) -> Result<Option<UserInfo>, sqlx::Error> {
     // ========== 先尝试从缓存获取 ==========
     if user_type == "user"
-        && let Some(cached) = app_state.user_info_cache.get(&uid) {
-            // 缓存命中，检查 appid 匹配
-            if cached.uid == uid {
-                tracing::trace!("用户信息缓存命中: uid={}", uid);
-                return Ok(Some(UserInfo {
-                    uid: cached.uid,
-                    udid: String::new(), // udid 由 token 提供
-                    appid,
-                    user_type: "user".to_string(),
-                    agent: false,
-                    phone: cached.phone.clone(),
-                    email: cached.email.clone(),
-                    acctno: cached.acctno.clone(),
-                    nickname: cached.nickname.clone(),
-                    vip: cached.vip,
-                    fen: cached.fen,
-                    ban: cached.ban,
-                    ban_msg: cached.ban_msg.clone(),
-                    password: cached.password.clone(),
-                    sn_list: parse_sn_list(&cached.sn_list),
-                    sn_max: cached.sn_max,
-                    token_state: String::new(),
-                    inviter_id: cached.inviter_id,
-                    avatars: cached.avatars.clone(),
-                    extend: cached.extend.clone(),
-                    card_no: None,
-                    kami_type: None,
-                    val: None,
-                    vip_exp: None,
-                    use_id: None,
-                }));
-            }
+        && let Some(cached) = app_state.user_info_cache.get(&uid)
+    {
+        // 缓存命中，检查 appid 匹配
+        if cached.uid == uid {
+            tracing::trace!("用户信息缓存命中: uid={}", uid);
+            return Ok(Some(UserInfo {
+                uid: cached.uid,
+                udid: String::new(), // udid 由 token 提供
+                appid,
+                user_type: "user".to_string(),
+                agent: false,
+                phone: cached.phone.clone(),
+                email: cached.email.clone(),
+                acctno: cached.acctno.clone(),
+                nickname: cached.nickname.clone(),
+                vip: cached.vip,
+                fen: cached.fen,
+                ban: cached.ban,
+                ban_msg: cached.ban_msg.clone(),
+                password: cached.password.clone(),
+                sn_list: parse_sn_list(&cached.sn_list),
+                sn_max: cached.sn_max,
+                token_state: String::new(),
+                inviter_id: cached.inviter_id,
+                avatars: cached.avatars.clone(),
+                extend: cached.extend.clone(),
+                card_no: None,
+                kami_type: None,
+                val: None,
+                vip_exp: None,
+                use_id: None,
+            }));
         }
-    
+    }
+
     // ========== 缓存未命中，查询数据库 ==========
     let result = fetch_user_info_from_db(app_state, uid, appid, user_type).await?;
-    
+
     // ========== 写入缓存（仅普通用户）==========
     if let Some(ref info) = result
-        && user_type == "user" {
-            use crate::core::app_state::UserInfoCache;
-            let cached = UserInfoCache {
-                uid: info.uid,
-                phone: info.phone.clone(),
-                email: info.email.clone(),
-                acctno: info.acctno.clone(),
-                nickname: info.nickname.clone(),
-                vip: info.vip,
-                fen: info.fen,
-                ban: info.ban,
-                ban_msg: info.ban_msg.clone(),
-                password: info.password.clone(),
-                sn_list: info.sn_list.as_ref().and_then(|v| serde_json::to_string(v).ok()),
-                sn_max: info.sn_max,
-                inviter_id: info.inviter_id,
-                avatars: info.avatars.clone(),
-                extend: info.extend.clone(),
-            };
-            app_state.user_info_cache.set(uid, cached);
-            tracing::trace!("用户信息已缓存: uid={}", uid);
-        }
-    
+        && user_type == "user"
+    {
+        use crate::core::app_state::UserInfoCache;
+        let cached = UserInfoCache {
+            uid: info.uid,
+            phone: info.phone.clone(),
+            email: info.email.clone(),
+            acctno: info.acctno.clone(),
+            nickname: info.nickname.clone(),
+            vip: info.vip,
+            fen: info.fen,
+            ban: info.ban,
+            ban_msg: info.ban_msg.clone(),
+            password: info.password.clone(),
+            sn_list: info
+                .sn_list
+                .as_ref()
+                .and_then(|v| serde_json::to_string(v).ok()),
+            sn_max: info.sn_max,
+            inviter_id: info.inviter_id,
+            avatars: info.avatars.clone(),
+            extend: info.extend.clone(),
+        };
+        app_state.user_info_cache.set(uid, cached);
+        tracing::trace!("用户信息已缓存: uid={}", uid);
+    }
+
     Ok(result)
 }
 
 /// 从数据库查询用户信息
 async fn fetch_user_info_from_db(
-    app_state: &Arc<AppState>, 
-    uid: u64, 
-    appid: u64, 
-    user_type: &str
+    app_state: &Arc<AppState>,
+    uid: u64,
+    appid: u64,
+    user_type: &str,
 ) -> Result<Option<UserInfo>, sqlx::Error> {
     if user_type == "kami" {
         let row = sqlx::query(
@@ -896,7 +943,7 @@ async fn fetch_user_info_from_db(
                 K.sn_list, K.sn_max, K.val, K.type as kami_type, K.cardNo, K.use_id
             FROM u_cdk_kami as K
             WHERE K.id = ? AND K.appid = ?
-            "#
+            "#,
         )
         .bind(uid)
         .bind(appid)
@@ -919,7 +966,10 @@ async fn fetch_user_info_from_db(
                 ban: r.try_get(4)?,
                 ban_msg: r.try_get(5)?,
                 password: r.try_get::<Option<String>, _>(2)?.unwrap_or_default(),
-                sn_list: r.try_get::<Option<Vec<u8>>, _>(6)?.and_then(|b| String::from_utf8(b).ok()).and_then(|s| FastJson::parse_borrowed(&s).ok()),
+                sn_list: r
+                    .try_get::<Option<Vec<u8>>, _>(6)?
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .and_then(|s| FastJson::parse_borrowed(&s).ok()),
                 sn_max: r.try_get::<Option<i32>, _>(7)?.unwrap_or(0),
                 token_state: String::new(),
                 inviter_id: None,
@@ -943,7 +993,7 @@ async fn fetch_user_info_from_db(
                 U.inviter_id, U.avatars, U.extend
             FROM u_user as U
             WHERE U.id = ? AND U.appid = ?
-            "#
+            "#,
         )
         .bind(uid)
         .bind(appid)
@@ -968,7 +1018,10 @@ async fn fetch_user_info_from_db(
                 ban: r.try_get(7)?,
                 ban_msg: r.try_get(8)?,
                 password: r.try_get(9)?,
-                sn_list: r.try_get::<Option<Vec<u8>>, _>(10)?.and_then(|b| String::from_utf8(b).ok()).and_then(|s| FastJson::parse_borrowed(&s).ok()),
+                sn_list: r
+                    .try_get::<Option<Vec<u8>>, _>(10)?
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .and_then(|s| FastJson::parse_borrowed(&s).ok()),
                 sn_max: r.try_get::<Option<i32>, _>(11)?.unwrap_or(0),
                 token_state: String::new(),
                 inviter_id: r.try_get::<Option<u64>, _>(12)?,
@@ -987,7 +1040,11 @@ async fn fetch_user_info_from_db(
 }
 
 /// 查询用户信息 - 原版（保持兼容）
-async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user_type: &str) -> Result<Option<UserInfo>, sqlx::Error> {
+async fn fetch_user_info(
+    app_state: &Arc<AppState>,
+    token_data: &TokenData,
+    user_type: &str,
+) -> Result<Option<UserInfo>, sqlx::Error> {
     // 直接使用 token_data 的字段引用，避免克隆
     if user_type == "kami" {
         let row = sqlx::query(
@@ -997,7 +1054,7 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
                 K.sn_list, K.sn_max, K.val, K.type as kami_type, K.cardNo, K.use_id
             FROM u_cdk_kami as K
             WHERE K.id = ? AND K.appid = ?
-            "#
+            "#,
         )
         .bind(token_data.uid)
         .bind(token_data.appid)
@@ -1020,7 +1077,10 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
                 ban: r.try_get(4)?,
                 ban_msg: r.try_get(5)?,
                 password: r.try_get::<Option<String>, _>(2)?.unwrap_or_default(),
-                sn_list: r.try_get::<Option<Vec<u8>>, _>(6)?.and_then(|b| String::from_utf8(b).ok()).and_then(|s| FastJson::parse_borrowed(&s).ok()),
+                sn_list: r
+                    .try_get::<Option<Vec<u8>>, _>(6)?
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .and_then(|s| FastJson::parse_borrowed(&s).ok()),
                 sn_max: r.try_get::<Option<i32>, _>(7)?.unwrap_or(0),
                 token_state: String::new(),
                 inviter_id: None,
@@ -1044,7 +1104,7 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
                 U.inviter_id, U.avatars, U.extend
             FROM u_user as U
             WHERE U.id = ? AND U.appid = ?
-            "#
+            "#,
         )
         .bind(token_data.uid)
         .bind(token_data.appid)
@@ -1069,7 +1129,10 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
                 ban: r.try_get(7)?,
                 ban_msg: r.try_get(8)?,
                 password: r.try_get(9)?,
-                sn_list: r.try_get::<Option<Vec<u8>>, _>(10)?.and_then(|b| String::from_utf8(b).ok()).and_then(|s| FastJson::parse_borrowed(&s).ok()),
+                sn_list: r
+                    .try_get::<Option<Vec<u8>>, _>(10)?
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .and_then(|s| FastJson::parse_borrowed(&s).ok()),
                 sn_max: r.try_get::<Option<i32>, _>(11)?.unwrap_or(0),
                 token_state: String::new(),
                 inviter_id: r.try_get::<Option<u64>, _>(12)?,
@@ -1090,20 +1153,23 @@ async fn fetch_user_info(app_state: &Arc<AppState>, token_data: &TokenData, user
 /// 检查设备绑定 - 返回 &'static str 避免分配
 fn check_device_binding(sn_list: &Option<serde_json::Value>, udid: &str) -> &'static str {
     if let Some(list) = sn_list
-        && let Some(arr) = list.as_array() {
-            for item in arr {
-                if let Some(device_udid) = item.get("udid").and_then(|v| v.as_str())
-                    && device_udid == udid {
-                        return "y";
-                    }
+        && let Some(arr) = list.as_array()
+    {
+        for item in arr {
+            if let Some(device_udid) = item.get("udid").and_then(|v| v.as_str())
+                && device_udid == udid
+            {
+                return "y";
             }
         }
+    }
     "n"
 }
-
 
 /// 解析 sn_list JSON (使用 FastJson 零拷贝)
 #[inline]
 fn parse_sn_list(sn_list_str: &Option<String>) -> Option<serde_json::Value> {
-    sn_list_str.as_ref().and_then(|s| FastJson::parse_borrowed(s).ok())
+    sn_list_str
+        .as_ref()
+        .and_then(|s| FastJson::parse_borrowed(s).ok())
 }

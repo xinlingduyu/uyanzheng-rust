@@ -3,15 +3,107 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 use sqlx::Column;
+use sqlx::Row;
 use std::sync::Arc;
 
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::core::zero_copy::StringBuilder;
-use crate::core::app_state::AppState;
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::app_state::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::zero_copy::StringBuilder;
+
+const APP_FIELD_WHITELIST: &[&str] = &[
+    "id",
+    "app_key",
+    "app_type",
+    "app_name",
+    "app_logo",
+    "app_mode",
+    "app_state",
+    "app_off_msg",
+    "reg_state",
+    "reg_off_msg",
+    "reg_way",
+    "reg_is_inviter",
+    "reg_time_sn",
+    "reg_time_ip",
+    "reg_award",
+    "reg_award_val",
+    "logon_state",
+    "logon_off_msg",
+    "logon_open_wxconfig",
+    "logon_open_qqconfig",
+    "logon_token_exp",
+    "logon_ban_expire",
+    "logon_sn_dk",
+    "logon_sn_num",
+    "logon_sn_over_ban",
+    "login_prevent_brute_force",
+    "logon_sn_unbde_auto",
+    "logon_sn_unbde_type",
+    "logon_sn_unbde_val",
+    "invitee_award",
+    "invitee_award_val",
+    "inviter_award",
+    "inviter_award_val",
+    "diary_award",
+    "diary_award_val",
+    "smtp_state",
+    "smtp_host",
+    "smtp_user",
+    "smtp_pass",
+    "smtp_port",
+    "sms_state",
+    "sms_type",
+    "sms_config",
+    "vc_time",
+    "vc_length",
+    "vc_frequency",
+    "vc_maximum",
+    "pay_ali_state",
+    "pay_ali_type",
+    "pay_ali_config",
+    "pay_wx_state",
+    "pay_wx_type",
+    "pay_wx_config",
+    "ai_state",
+    "ai_provider",
+    "ai_api_base",
+    "ai_api_key",
+    "ai_model",
+    "ai_temperature",
+    "ai_max_tokens",
+];
+
+fn normalize_app_field(field: &str) -> Option<&'static str> {
+    match field {
+        "login_prevent_brute_force" => Some("logon_sn_over_ban"),
+        f => APP_FIELD_WHITELIST.iter().copied().find(|allowed| *allowed == f),
+    }
+}
+
+fn build_app_select_fields(fields: &[String]) -> Result<String, String> {
+    if fields.is_empty() {
+        return Ok(APP_FIELD_WHITELIST.join(", "));
+    }
+
+    let mut selected = Vec::with_capacity(fields.len());
+    for field in fields {
+        let Some(db_field) = normalize_app_field(field.as_str()) else {
+            return Err(format!("非法字段: {}", field));
+        };
+        if !selected.contains(&db_field) {
+            selected.push(db_field);
+        }
+    }
+
+    if selected.is_empty() {
+        Err("没有可查询字段".to_string())
+    } else {
+        Ok(selected.join(", "))
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct GetInfoRequest {
@@ -61,10 +153,12 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 获取字段列表，如果为空则使用 * 查询所有字段
     let fields = get_req.field.unwrap_or_default();
-    let field_str = if fields.is_empty() {
-        "*".to_string()
-    } else {
-        fields.join(", ")
+    let field_str = match build_app_select_fields(&fields) {
+        Ok(s) => s,
+        Err(msg) => {
+            res.render(Json(ApiResponse::<()>::error(msg, 201)));
+            return;
+        }
     };
 
     // 查询应用信息
@@ -89,7 +183,10 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 // 处理字段映射：logon_sn_over_ban -> login_prevent_brute_force
                 if col_name == "logon_sn_over_ban" {
                     if let Ok(val) = row.try_get::<bool, _>(col_name) {
-                        data.insert("login_prevent_brute_force".to_string(), serde_json::Value::Bool(val));
+                        data.insert(
+                            "login_prevent_brute_force".to_string(),
+                            serde_json::Value::Bool(val),
+                        );
                     }
                 } else if col_name == "logon_open_wxconfig" || col_name == "logon_open_qqconfig" {
                     if let Ok(val) = row.try_get::<Option<serde_json::Value>, _>(col_name) {
@@ -98,22 +195,37 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 } else {
                     // 通用处理：尝试获取字符串值
                     if let Ok(val) = row.try_get::<Option<String>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
+                        data.insert(
+                            col_name.to_string(),
+                            val.map(serde_json::Value::String)
+                                .unwrap_or(serde_json::Value::Null),
+                        );
                     } else if let Ok(val) = row.try_get::<String, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::String(val));
                     } else if let Ok(val) = row.try_get::<Option<i64>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.map(|v| serde_json::Value::Number(v.into())).unwrap_or(serde_json::Value::Null));
+                        data.insert(
+                            col_name.to_string(),
+                            val.map(|v| serde_json::Value::Number(v.into()))
+                                .unwrap_or(serde_json::Value::Null),
+                        );
                     } else if let Ok(val) = row.try_get::<i64, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::Number(val.into()));
                     } else if let Ok(val) = row.try_get::<Option<bool>, _>(col_name) {
-                        data.insert(col_name.to_string(), val.map(serde_json::Value::Bool).unwrap_or(serde_json::Value::Null));
+                        data.insert(
+                            col_name.to_string(),
+                            val.map(serde_json::Value::Bool)
+                                .unwrap_or(serde_json::Value::Null),
+                        );
                     } else if let Ok(val) = row.try_get::<bool, _>(col_name) {
                         data.insert(col_name.to_string(), serde_json::Value::Bool(val));
                     }
                 }
             }
 
-            res.render(Json(ApiResponse::success("成功", Some(serde_json::Value::Object(data)))));
+            res.render(Json(ApiResponse::success(
+                "成功",
+                Some(serde_json::Value::Object(data)),
+            )));
         }
         Ok(None) => {
             res.render(Json(ApiResponse::<()>::error("应用不存在", 201)));
@@ -140,10 +252,8 @@ pub async fn get_url(_req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
     let app_url = app_state.config().app().host().to_string();
-    
-    let response = GetUrlResponse {
-        url: app_url,
-    };
+
+    let response = GetUrlResponse { url: app_url };
 
     res.render(Json(ApiResponse::success("成功", Some(response))));
 }
@@ -233,7 +343,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         configured_host.to_string()
     };
 
-    let mut query = String::from("SELECT id, app_key, app_type, app_name, IF(app_logo IS NOT NULL AND app_logo != '', CONCAT(?, app_logo), '') AS app_logo, app_state FROM u_app");
+    let mut query = String::from(
+        "SELECT id, app_key, app_type, app_name, IF(app_logo IS NOT NULL AND app_logo != '', CONCAT(?, app_logo), '') AS app_logo, app_state FROM u_app",
+    );
     let mut count_query = String::from("SELECT COUNT(*) FROM u_app");
     let mut params: Vec<String> = vec![app_url.clone()];
     let mut count_params: Vec<String> = vec![];
@@ -244,27 +356,29 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
         // app_type 条件
         if let Some(app_type) = so.app_type
-            && !app_type.is_empty() {
-                conditions.push("app_type = ?");
-                params.push(app_type.clone());
-                count_params.push(app_type);
-            }
+            && !app_type.is_empty()
+        {
+            conditions.push("app_type = ?");
+            params.push(app_type.clone());
+            count_params.push(app_type);
+        }
 
         // keyword 条件: id = ? or app_name LIKE ?
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                conditions.push("(id = ? OR app_name LIKE ?)");
-                params.push(keyword.clone());
-                // 使用 StringBuilder 构建 LIKE 模式
-                let like_pattern = {
-                    let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
-                    sb.append("%").append(&keyword).append("%");
-                    sb.finish()
-                };
-                params.push(like_pattern.clone());
-                count_params.push(keyword);
-                count_params.push(like_pattern);
-            }
+            && !keyword.is_empty()
+        {
+            conditions.push("(id = ? OR app_name LIKE ?)");
+            params.push(keyword.clone());
+            // 使用 StringBuilder 构建 LIKE 模式
+            let like_pattern = {
+                let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
+                sb.append("%").append(&keyword).append("%");
+                sb.finish()
+            };
+            params.push(like_pattern.clone());
+            count_params.push(keyword);
+            count_params.push(like_pattern);
+        }
 
         if !conditions.is_empty() {
             let condition_str = conditions.join(" AND ");
@@ -288,16 +402,17 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<AppListItem> = rows.into_iter().map(|row| {
-                AppListItem {
+            let list: Vec<AppListItem> = rows
+                .into_iter()
+                .map(|row| AppListItem {
                     id: row.0,
                     app_key: row.1,
                     app_type: row.2,
                     app_name: row.3,
                     app_logo: row.4,
                     app_state: row.5,
-                }
-            }).collect();
+                })
+                .collect();
 
             // 查询总数
             let mut count_sql = sqlx::query_as::<_, (u64,)>(&count_query);
@@ -353,24 +468,34 @@ pub async fn get_inherit(_req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    let kami_result = sqlx::query_as::<_, (u64, String)>(
-        "SELECT id, app_name FROM u_app WHERE app_type = ?"
-    )
-    .bind("kami")
-    .fetch_all(app_state.get_db())
-    .await;
+    let kami_result =
+        sqlx::query_as::<_, (u64, String)>("SELECT id, app_name FROM u_app WHERE app_type = ?")
+            .bind("kami")
+            .fetch_all(app_state.get_db())
+            .await;
 
-    let user_result = sqlx::query_as::<_, (u64, String)>(
-        "SELECT id, app_name FROM u_app WHERE app_type = ?"
-    )
-    .bind("user")
-    .fetch_all(app_state.get_db())
-    .await;
+    let user_result =
+        sqlx::query_as::<_, (u64, String)>("SELECT id, app_name FROM u_app WHERE app_type = ?")
+            .bind("user")
+            .fetch_all(app_state.get_db())
+            .await;
 
     match (kami_result, user_result) {
         (Ok(kami), Ok(user)) => {
-            let kami_list: Vec<InheritItem> = kami.into_iter().map(|r| InheritItem { id: r.0, app_name: r.1 }).collect();
-            let user_list: Vec<InheritItem> = user.into_iter().map(|r| InheritItem { id: r.0, app_name: r.1 }).collect();
+            let kami_list: Vec<InheritItem> = kami
+                .into_iter()
+                .map(|r| InheritItem {
+                    id: r.0,
+                    app_name: r.1,
+                })
+                .collect();
+            let user_list: Vec<InheritItem> = user
+                .into_iter()
+                .map(|r| InheritItem {
+                    id: r.0,
+                    app_name: r.1,
+                })
+                .collect();
 
             let response = GetInheritResponse {
                 kami: kami_list,
@@ -412,7 +537,7 @@ pub async fn get_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 根据请求协议动态生成 app_url
     let configured_host = app_state.config().app().host();
     let app_url = if let Some(forwarded_proto) = req.headers().get("X-Forwarded-Proto") {
@@ -432,32 +557,35 @@ pub async fn get_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let result = sqlx::query_as::<_, (u64, String, String, String, Option<String>, String)>(
-        "SELECT id, app_key, app_type, app_name, app_logo, app_state FROM u_app ORDER BY id DESC"
+        "SELECT id, app_key, app_type, app_name, app_logo, app_state FROM u_app ORDER BY id DESC",
     )
     .fetch_all(app_state.get_db())
     .await;
 
     match result {
         Ok(rows) => {
-            let list: Vec<GetAllItem> = rows.into_iter().map(|row| {
-                let app_logo = if let Some(logo) = row.4 {
-                    if !logo.is_empty() {
-                        StringBuilder::build_prefixed_key(&app_url, &logo, "")
+            let list: Vec<GetAllItem> = rows
+                .into_iter()
+                .map(|row| {
+                    let app_logo = if let Some(logo) = row.4 {
+                        if !logo.is_empty() {
+                            StringBuilder::build_prefixed_key(&app_url, &logo, "")
+                        } else {
+                            String::new()
+                        }
                     } else {
                         String::new()
+                    };
+                    GetAllItem {
+                        id: row.0,
+                        app_key: row.1,
+                        app_type: row.2,
+                        app_logo,
+                        app_name: row.3,
+                        app_state: row.5,
                     }
-                } else {
-                    String::new()
-                };
-                GetAllItem {
-                    id: row.0,
-                    app_key: row.1,
-                    app_type: row.2,
-                    app_logo,
-                    app_name: row.3,
-                    app_state: row.5,
-                }
-            }).collect();
+                })
+                .collect();
 
             let data_total = list.len() as u64;
             let page_total = if data_total == 0 { 0 } else { 1 };
@@ -498,7 +626,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddAppRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -514,19 +642,17 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .string("app_name", &add_req.app_name, 2, 64)
         .required("app_type", &Some(add_req.app_type.clone()), "应用类型")
         .sameone("app_type", &add_req.app_type, vec!["user", "kami"]);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
     }
 
     // 检查应用名称是否重复
-    let check_result = sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM u_app WHERE app_name = ?"
-    )
-    .bind(add_req.app_name.clone())
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result = sqlx::query_as::<_, (u64,)>("SELECT id FROM u_app WHERE app_name = ?")
+        .bind(add_req.app_name.clone())
+        .fetch_optional(app_state.get_db())
+        .await;
 
     match check_result {
         Ok(Some(_)) => {
@@ -544,51 +670,52 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 使用栈上MD5生成app_key
     let seed = {
         let mut sb = StringBuilder::with_capacity(30);
-        sb.append(&generate_code(10)).append_int(chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
+        sb.append(&generate_code(10))
+            .append_int(chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0));
         sb.finish()
     };
     let app_key_bytes = md5_hex(seed.as_bytes());
     let app_key = md5_to_str(&app_key_bytes).to_string();
 
-    let data = [("app_name", add_req.app_name.clone()),
+    let data = [
+        ("app_name", add_req.app_name.clone()),
         ("app_key", app_key),
-        ("app_type", add_req.app_type.clone())];
+        ("app_type", add_req.app_type.clone()),
+    ];
 
     // 处理继承
     if let Some(inherit_id) = add_req.app_inherit
-        && inherit_id > 0 {
-            let inherit_result = sqlx::query(
-                "SELECT * FROM u_app WHERE id = ?"
-            )
+        && inherit_id > 0
+    {
+        let inherit_result = sqlx::query("SELECT * FROM u_app WHERE id = ?")
             .bind(inherit_id)
             .fetch_optional(app_state.get_db())
             .await;
 
-            match inherit_result {
-                Ok(Some(_)) => {
-                    // 继承配置（简化处理）
-                }
-                Ok(None) => {
-                    res.render(Json(ApiResponse::<()>::error("继承应用不存在", 201)));
-                    return;
-                }
-                Err(e) => {
-                    tracing::error!("数据库查询失败: {}", e);
-                    res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
-                    return;
-                }
+        match inherit_result {
+            Ok(Some(_)) => {
+                // 继承配置（简化处理）
+            }
+            Ok(None) => {
+                res.render(Json(ApiResponse::<()>::error("继承应用不存在", 201)));
+                return;
+            }
+            Err(e) => {
+                tracing::error!("数据库查询失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
+                return;
             }
         }
+    }
 
     // 插入应用
-    let insert_result = sqlx::query(
-        "INSERT INTO u_app (app_name, app_key, app_type) VALUES (?, ?, ?)"
-    )
-    .bind(add_req.app_name.clone())
-    .bind(&data[1].1)
-    .bind(add_req.app_type.clone())
-    .execute(app_state.get_db())
-    .await;
+    let insert_result =
+        sqlx::query("INSERT INTO u_app (app_name, app_key, app_type) VALUES (?, ?, ?)")
+            .bind(add_req.app_name.clone())
+            .bind(&data[1].1)
+            .bind(add_req.app_type.clone())
+            .execute(app_state.get_db())
+            .await;
 
     match insert_result {
         Ok(result) => {
@@ -614,7 +741,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取appid
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
@@ -652,15 +779,25 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if let serde_json::Value::Object(map) = post_data {
         for (key, value) in map {
             if key != "id" && key != "appid" {
-                // 处理字段映射：login_prevent_brute_force -> logon_sn_over_ban
-                let db_key = if key == "login_prevent_brute_force" {
-                    "logon_sn_over_ban"
-                } else {
-                    key.as_str()
+                // 处理字段映射并强制白名单：前端字段名不能直接进入 SQL 标识符位置
+                let Some(db_key) = normalize_app_field(key.as_str()) else {
+                    res.render(Json(ApiResponse::<()>::error(
+                        format!("非法字段: {}", key),
+                        201,
+                    )));
+                    return;
                 };
-                
+
+                if db_key == "id" || db_key == "app_key" {
+                    res.render(Json(ApiResponse::<()>::error(
+                        format!("字段不允许修改: {}", key),
+                        201,
+                    )));
+                    return;
+                }
+
                 updates.push(format!("{} = ?", db_key));
-                
+
                 // 处理不同类型的值
                 if value.is_string() {
                     params.push(value.as_str().unwrap().to_string());
@@ -668,7 +805,11 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     params.push("NULL".to_string());
                 } else if value.is_boolean() {
                     // 布尔值转换为整数 1 或 0
-                    params.push(if value.as_bool().unwrap() { "1".to_string() } else { "0".to_string() });
+                    params.push(if value.as_bool().unwrap() {
+                        "1".to_string()
+                    } else {
+                        "0".to_string()
+                    });
                 } else if value.is_number() {
                     params.push(value.to_string());
                 } else {
@@ -689,7 +830,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let query = format!("UPDATE u_app SET {} WHERE id = ?", updates.join(", "));
-    
+
     let mut sql_query = sqlx::query(&query);
     for param in params {
         sql_query = sql_query.bind(param);
@@ -703,7 +844,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if r.rows_affected() > 0 {
                 // 失效应用配置缓存
                 app_state.invalidate_app_cache(appid);
-                
+
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
@@ -730,7 +871,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -741,8 +882,10 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 参数验证
     let mut validator = Validator::new();
-    validator.required_u64("id", &Some(del_req.id), "删除ID").int_u64("id", del_req.id, 1, 11);
-    
+    validator
+        .required_u64("id", &Some(del_req.id), "删除ID")
+        .int_u64("id", del_req.id, 1, 11);
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -759,11 +902,25 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let tables = vec![
-        "u_user", "u_agent", "u_agent_cash", "u_agent_group", 
-        "u_app_extend", "u_app_function", "u_app_mi", "u_app_notice",
-        "u_app_ver", "u_cdk_group", "u_cdk_kami", "u_cdk_user",
-        "u_fen_event", "u_fen_order", "u_goods", "u_logs",
-        "u_message", "u_order", "u_app"
+        "u_user",
+        "u_agent",
+        "u_agent_cash",
+        "u_agent_group",
+        "u_app_extend",
+        "u_app_function",
+        "u_app_mi",
+        "u_app_notice",
+        "u_app_ver",
+        "u_cdk_group",
+        "u_cdk_kami",
+        "u_cdk_user",
+        "u_fen_event",
+        "u_fen_order",
+        "u_goods",
+        "u_logs",
+        "u_message",
+        "u_order",
+        "u_app",
     ];
 
     let mut success = true;
@@ -772,7 +929,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(del_req.id)
             .execute(&mut *tx)
             .await;
-        
+
         if result.is_err() {
             success = false;
             break;
@@ -796,7 +953,6 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 }
 
 fn generate_code(length: usize) -> String {
-    
     use rand::Rng;
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let mut rng = rand::thread_rng();

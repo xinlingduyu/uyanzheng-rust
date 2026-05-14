@@ -1,5 +1,5 @@
 //! AArch64 平台优化模块
-//! 
+//!
 //! 使用 ARM NEON 和其他 AArch64 特定指令优化
 
 #[cfg(target_arch = "aarch64")]
@@ -10,13 +10,13 @@ use std::arch::aarch64::*;
 // ============================================================================
 
 /// 使用 NEON 的快速内存复制
-/// 
+///
 /// # Safety
 /// 调用者必须确保 src 和 dst 指针有效，且 count 是 16 的倍数
 #[target_feature(enable = "neon")]
 pub unsafe fn memcpy_neon_16(dst: *mut u8, src: *const u8, count: usize) {
     debug_assert!(count.is_multiple_of(16));
-    
+
     let mut i = 0;
     while i < count {
         unsafe {
@@ -28,19 +28,19 @@ pub unsafe fn memcpy_neon_16(dst: *mut u8, src: *const u8, count: usize) {
 }
 
 /// 使用 NEON 的快速内存比较
-/// 
+///
 /// # Safety
 /// 调用者必须确保指针有效
 #[target_feature(enable = "neon")]
 pub unsafe fn memcmp_neon(a: *const u8, b: *const u8, len: usize) -> bool {
     let mut i = 0;
-    
+
     while i + 16 <= len {
         unsafe {
             let va = vld1q_u8(a.add(i));
             let vb = vld1q_u8(b.add(i));
             let cmp = vceqq_u8(va, vb);
-            
+
             // 检查是否所有字节都相等
             let result = vreinterpretq_u64_u8(cmp);
             if vgetq_lane_u64(result, 0) != u64::MAX || vgetq_lane_u64(result, 1) != u64::MAX {
@@ -49,7 +49,7 @@ pub unsafe fn memcmp_neon(a: *const u8, b: *const u8, len: usize) -> bool {
         }
         i += 16;
     }
-    
+
     // 处理剩余字节
     while i < len {
         unsafe {
@@ -59,7 +59,7 @@ pub unsafe fn memcmp_neon(a: *const u8, b: *const u8, len: usize) -> bool {
         }
         i += 1;
     }
-    
+
     true
 }
 
@@ -68,24 +68,24 @@ pub unsafe fn memcmp_neon(a: *const u8, b: *const u8, len: usize) -> bool {
 // ============================================================================
 
 /// 使用 PMULL 的快速哈希（如果支持）
-/// 
+///
 /// # Safety
 /// 调用者必须确保 data 指针有效
 #[target_feature(enable = "neon")]
 pub unsafe fn hash_pmull(data: *const u8, len: usize, seed: u64) -> u64 {
     let mut hash = seed;
     let mut i = 0;
-    
+
     while i + 16 <= len {
         unsafe {
             // 加载 16 字节
             let chunk = vld1q_u8(data.add(i));
-            
+
             // 转换为 u64 对
             let chunk_u64 = vreinterpretq_u64_u8(chunk);
             let low = vgetq_lane_u64(chunk_u64, 0);
             let high = vgetq_lane_u64(chunk_u64, 1);
-            
+
             // 混合
             hash = hash.wrapping_add(low);
             hash = hash.wrapping_mul(0x100000001b3);
@@ -94,7 +94,7 @@ pub unsafe fn hash_pmull(data: *const u8, len: usize, seed: u64) -> u64 {
         }
         i += 16;
     }
-    
+
     // 处理剩余字节
     while i < len {
         unsafe {
@@ -103,7 +103,7 @@ pub unsafe fn hash_pmull(data: *const u8, len: usize, seed: u64) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
         i += 1;
     }
-    
+
     hash
 }
 
@@ -118,13 +118,13 @@ unsafe extern "C" {
 }
 
 /// 使用 ARM CRC32 指令计算 CRC32
-/// 
+///
 /// # Safety
 /// 需要 ARMv8 CRC32 扩展
 #[target_feature(enable = "crc")]
 pub unsafe fn crc32_arm(data: *const u8, len: usize, mut crc: u32) -> u32 {
     let mut i = 0;
-    
+
     // 处理 8 字节块
     while i + 8 <= len {
         unsafe {
@@ -133,7 +133,7 @@ pub unsafe fn crc32_arm(data: *const u8, len: usize, mut crc: u32) -> u32 {
         }
         i += 8;
     }
-    
+
     // 处理 4 字节
     if i + 4 <= len {
         unsafe {
@@ -142,7 +142,7 @@ pub unsafe fn crc32_arm(data: *const u8, len: usize, mut crc: u32) -> u32 {
         }
         i += 4;
     }
-    
+
     // 处理剩余字节
     while i < len {
         unsafe {
@@ -150,7 +150,7 @@ pub unsafe fn crc32_arm(data: *const u8, len: usize, mut crc: u32) -> u32 {
         }
         i += 1;
     }
-    
+
     crc
 }
 
@@ -223,7 +223,7 @@ impl SpinLock {
 // ============================================================================
 
 /// 清理数据缓存到内存
-/// 
+///
 /// # Safety
 /// 需要 AArch64 平台
 #[inline(always)]
@@ -231,9 +231,9 @@ pub unsafe fn dc_clean_by_va(ptr: *const u8, size: usize) {
     const CACHE_LINE_SIZE: usize = 64;
     let mut addr = ptr as usize;
     let end = addr + size;
-    
+
     addr &= !(CACHE_LINE_SIZE - 1);
-    
+
     while addr < end {
         unsafe {
             std::arch::asm!(
@@ -244,7 +244,7 @@ pub unsafe fn dc_clean_by_va(ptr: *const u8, size: usize) {
         }
         addr += CACHE_LINE_SIZE;
     }
-    
+
     // 数据同步屏障
     unsafe {
         std::arch::asm!("dsb sy", options(nostack, preserves_flags));
@@ -252,7 +252,7 @@ pub unsafe fn dc_clean_by_va(ptr: *const u8, size: usize) {
 }
 
 /// 使数据缓存失效
-/// 
+///
 /// # Safety
 /// 需要 AArch64 平台
 #[inline(always)]
@@ -260,9 +260,9 @@ pub unsafe fn dc_invalidate_by_va(ptr: *const u8, size: usize) {
     const CACHE_LINE_SIZE: usize = 64;
     let mut addr = ptr as usize;
     let end = addr + size;
-    
+
     addr &= !(CACHE_LINE_SIZE - 1);
-    
+
     while addr < end {
         unsafe {
             std::arch::asm!(
@@ -273,7 +273,7 @@ pub unsafe fn dc_invalidate_by_va(ptr: *const u8, size: usize) {
         }
         addr += CACHE_LINE_SIZE;
     }
-    
+
     // 数据同步屏障
     unsafe {
         std::arch::asm!("dsb sy", options(nostack, preserves_flags));
@@ -359,9 +359,9 @@ mod tests {
             unsafe {
                 let src = [1u8; 64];
                 let mut dst = [0u8; 64];
-                
+
                 memcpy_neon_16(dst.as_mut_ptr(), src.as_ptr(), 64);
-                
+
                 assert_eq!(src, dst);
             }
         }
@@ -374,7 +374,7 @@ mod tests {
                 let a = [1u8; 64];
                 let b = [1u8; 64];
                 let c = [2u8; 64];
-                
+
                 assert!(memcmp_neon(a.as_ptr(), b.as_ptr(), 64));
                 assert!(!memcmp_neon(a.as_ptr(), c.as_ptr(), 64));
             }
@@ -386,7 +386,7 @@ mod tests {
         let t1 = timestamp_ns();
         std::thread::sleep(std::time::Duration::from_millis(10));
         let t2 = timestamp_ns();
-        
+
         assert!(t2 > t1);
     }
 }

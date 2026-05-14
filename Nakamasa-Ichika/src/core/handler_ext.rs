@@ -1,6 +1,6 @@
 // src/core/handler_ext.rs
-use salvo::prelude::*;
 use crate::core::AppState;
+use salvo::prelude::*;
 use std::sync::Arc;
 
 pub trait HandlerExt {

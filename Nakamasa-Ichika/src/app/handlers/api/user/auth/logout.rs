@@ -1,18 +1,20 @@
 //! 退出登录
-//! 
+//!
 //! 功能说明：
 //! 用户退出登录，清除token和设备在线状态。
 
 use salvo::prelude::*;
-use std::sync::Arc;
-use std::fmt::Write;
 use serde::Deserialize;
+use std::fmt::Write;
+use std::sync::Arc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::middleware::app_context::AppInfo;
 
 /// 退出登录请求参数
 #[derive(Deserialize)]
@@ -29,7 +31,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -73,7 +75,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // token前缀（预分配容量）
     let mut token_pre = String::with_capacity(16);
     let _ = write!(&mut token_pre, "{}_{}_", app_type, appid);
-    
+
     // token_key
     let mut token_key = String::with_capacity(48);
     let _ = write!(&mut token_key, "{}{}", token_pre, logout_req.token);
@@ -125,7 +127,7 @@ pub async fn logout(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let udid_hash = md5_to_str(&udid_hash_bytes);
     let mut online_key = String::with_capacity(64);
     let _ = write!(&mut online_key, "{}online_{}_{}", token_pre, uid, udid_hash);
-    
+
     let _ = app_state.redis_util.del(redis_pool, &online_key).await;
 
     render_success_msg(res, app_key);

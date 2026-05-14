@@ -1,13 +1,13 @@
 //! 短信插件模块
 //! 支持热插拔的短信插件系统
 
-pub mod trait_def;
-pub mod manager;
-pub mod jie;
 pub mod ali;
+pub mod jie;
+pub mod manager;
 pub mod tencent;
+pub mod trait_def;
 
-pub use trait_def::SmsPlugin;
-pub use jie::JieSmsPlugin;
 pub use ali::AliSmsPlugin;
+pub use jie::JieSmsPlugin;
 pub use tencent::TencentSmsPlugin;
+pub use trait_def::SmsPlugin;

@@ -53,25 +53,25 @@ macro_rules! auto_crud {
     ($struct_name:ident, $table_name:expr) => {
         impl $struct_name {
             pub const TABLE_NAME: &'static str = $table_name;
-            
+
             pub async fn find_by_id(
-                pool: &sqlx::AnyPool, 
-                id: i64
-            ) -> Result<Option<Self>, sqlx::Error> 
+                pool: &sqlx::AnyPool,
+                id: i64,
+            ) -> Result<Option<Self>, sqlx::Error>
             where
                 Self: Sized + for<'a> sqlx::FromRow<'a, sqlx::any::AnyRow>,
             {
                 let sql = format!("SELECT * FROM {} WHERE id = ?", Self::TABLE_NAME);
                 sqlx::query_as(&sql).bind(id).fetch_optional(pool).await
             }
-            
+
             pub async fn insert(&self, pool: &sqlx::AnyPool) -> Result<i64, sqlx::Error> {
                 // 简化实现 - 实际需要反射字段
                 let sql = format!("INSERT INTO {} DEFAULT VALUES", Self::TABLE_NAME);
                 let result = sqlx::query(&sql).execute(pool).await?;
                 Ok(result.last_insert_id())
             }
-            
+
             pub async fn delete_by_id(pool: &sqlx::AnyPool, id: i64) -> Result<bool, sqlx::Error> {
                 let sql = format!("DELETE FROM {} WHERE id = ?", Self::TABLE_NAME);
                 let result = sqlx::query(&sql).bind(id).execute(pool).await?;
@@ -87,12 +87,12 @@ macro_rules! cached {
     ($key:expr, $ttl:expr, $block:block) => {{
         use std::collections::HashMap;
         use std::sync::Arc;
+        use std::time::{Duration, Instant};
         use tokio::sync::RwLock;
-        use std::time::{Instant, Duration};
-        
-        static CACHE: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, (Instant, String)>>>> = 
+
+        static CACHE: once_cell::sync::Lazy<Arc<RwLock<HashMap<String, (Instant, String)>>>> =
             once_cell::sync::Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
-        
+
         let cache_key = $key.to_string();
         {
             let cache = CACHE.read().await;
@@ -105,14 +105,14 @@ macro_rules! cached {
                 }
             }
         }
-        
+
         let result = $block;
         // 序列化失败时不缓存
         if let Ok(serialized) = serde_json::to_string(&result) {
             let mut cache = CACHE.write().await;
             cache.insert(cache_key, (Instant::now(), serialized));
         }
-        
+
         result
     }};
 }
@@ -124,26 +124,26 @@ macro_rules! build_sql {
     (SELECT $table:expr) => {
         format!("SELECT * FROM {}", $table)
     };
-    
+
     (SELECT $table:expr; WHERE $condition:expr) => {
         format!("SELECT * FROM {} WHERE {}", $table, $condition)
     };
-    
+
     (SELECT $table:expr; WHERE $condition:expr; ORDER BY $order:expr; LIMIT $limit:expr) => {
         format!("SELECT * FROM {} WHERE {} ORDER BY {} LIMIT {}", $table, $condition, $order, $limit)
     };
-    
+
     // INSERT 语句
     (INSERT INTO $table:expr; VALUES $values:expr) => {
         format!("INSERT INTO {} VALUES {}", $table, $values)
     };
-    
+
     // UPDATE 语句 - 使用不同的语法结构
     (UPDATE $table:expr; SET $fields:tt; WHERE $condition:expr) => {{
         let set_clause = build_sql!(@process_fields $fields);
         format!("UPDATE {} SET {} WHERE {}", $table, set_clause, $condition)
     }};
-    
+
     // 内部规则：处理 SET 子句中的字段
     (@process_fields [ $($field:expr => $value:expr),* ]) => {{
         let mut parts = Vec::new();

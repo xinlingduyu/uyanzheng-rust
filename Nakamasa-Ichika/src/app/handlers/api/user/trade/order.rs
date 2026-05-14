@@ -1,5 +1,5 @@
 //! 订单列表
-//! 
+//!
 //! 功能说明：
 //! 获取用户的充值订单列表，支持分页查询。
 //!
@@ -9,15 +9,17 @@
 //! 3. 返回订单列表（订单号、商品名、金额、状态等）
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use serde::Serialize;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::OrderRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::OrderRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 /// 订单项 - 匹配JSON响应格式
 #[derive(Debug, Serialize)]
@@ -50,7 +52,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -60,7 +62,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let order_req = match req.parse_json::<OrderRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -73,7 +75,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // PHP: 'pg' => ['int','1,11','页面有误',1]
     let mut validator = Validator::new();
     validator.wordnum("token", &order_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -103,13 +105,12 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let (uid, appid) = (user_info.uid, user_info.appid);
 
     // 获取总数
-    let count_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT COUNT(*) FROM u_order WHERE uid = ? AND appid = ?"
-    )
-    .bind(uid)
-    .bind(appid)
-    .fetch_one(app_state.get_db())
-    .await;
+    let count_result =
+        sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM u_order WHERE uid = ? AND appid = ?")
+            .bind(uid)
+            .bind(appid)
+            .fetch_one(app_state.get_db())
+            .await;
 
     let data_total = match count_result {
         Ok(row) => row.0 as u32,
@@ -130,25 +131,28 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(rows) => {
-            let order_list: Vec<OrderItem> = rows.into_iter().map(|row| {
-                // state: "0"=未支付, "1"=已支付, "2"=已关闭
-                let state = match row.7.as_str() {
-                    "0" => 0,
-                    "1" => 1,
-                    "2" => 2,
-                    _ => 0,
-                };
-                OrderItem {
-                    order_no: row.0,
-                    trade_no: row.1,
-                    name: row.2,
-                    payment: row.4,  // ptype -> payment
-                    money: row.3,
-                    add_time: row.5,
-                    end_time: row.6.unwrap_or(0),
-                    state,
-                }
-            }).collect();
+            let order_list: Vec<OrderItem> = rows
+                .into_iter()
+                .map(|row| {
+                    // state: "0"=未支付, "1"=已支付, "2"=已关闭
+                    let state = match row.7.as_str() {
+                        "0" => 0,
+                        "1" => 1,
+                        "2" => 2,
+                        _ => 0,
+                    };
+                    OrderItem {
+                        order_no: row.0,
+                        trade_no: row.1,
+                        name: row.2,
+                        payment: row.4, // ptype -> payment
+                        money: row.3,
+                        add_time: row.5,
+                        end_time: row.6.unwrap_or(0),
+                        state,
+                    }
+                })
+                .collect();
 
             let page_total = data_total.div_ceil(PAGE_SIZE);
 

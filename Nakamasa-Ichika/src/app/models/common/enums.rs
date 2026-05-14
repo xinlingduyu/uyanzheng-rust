@@ -1,14 +1,14 @@
 // src/models/enums.rs
-use sqlx::Type;
 use serde::{Deserialize, Serialize};
+use sqlx::Type;
 
 /// 支付方式枚举 - 对应 u_agent_cash.way
 #[derive(Debug, Type, PartialEq, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('ali','wx')")]
 #[sqlx(rename_all = "lowercase")]
 pub enum CashWay {
-    Ali,    // 支付宝
-    Wx,     // 微信支付
+    Ali, // 支付宝
+    Wx,  // 微信支付
 }
 
 /// 代理状态枚举 - 对应 u_agent.state
@@ -16,16 +16,16 @@ pub enum CashWay {
 #[sqlx(type_name = "enum('on','off')")]
 #[sqlx(rename_all = "lowercase")]
 pub enum AgentStatus {
-    On,     // 启用
-    Off,    // 禁用
+    On,  // 启用
+    Off, // 禁用
 }
 
 /// 提现状态枚举 - 对应 u_agent_cash.state (int类型，但这里作为枚举使用)
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub enum CashState {
-    Pending,   // 0 - 待处理
-    Approved,  // 1 - 已批准
-    Rejected,  // 2 - 已拒绝
+    Pending,  // 0 - 待处理
+    Approved, // 1 - 已批准
+    Rejected, // 2 - 已拒绝
 }
 
 impl CashState {
@@ -66,7 +66,6 @@ pub enum YesNoStatus {
     N,
 }
 
-
 /// Yes/No 状态枚举 - 用于 sign 字段
 #[derive(Debug, Type, Clone, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
@@ -77,7 +76,6 @@ pub enum SignStatus {
     #[default]
     N,
 }
-
 
 /// 商品类型枚举 - 对应 u_goods.type, u_order.type
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]

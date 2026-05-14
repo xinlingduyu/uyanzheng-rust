@@ -1,5 +1,5 @@
 //! 统计采样模块
-//! 
+//!
 //! 在高并发场景下，每次操作都更新统计会带来性能开销。
 //! 采样统计通过概率采样来降低开销，同时保持统计的准确性。
 
@@ -72,13 +72,11 @@ impl SamplingCounter {
 
         // 递减计数器
         let counter = self.sample_counter.fetch_sub(1, Ordering::Relaxed);
-        
+
         if counter == 1 {
             // 重置计数器
-            self.sample_counter.store(
-                self.sample_rate.load(Ordering::Relaxed),
-                Ordering::Relaxed,
-            );
+            self.sample_counter
+                .store(self.sample_rate.load(Ordering::Relaxed), Ordering::Relaxed);
 
             // 自适应调整
             if self.config.adaptive && total.is_multiple_of(self.config.adjust_interval) {
@@ -127,7 +125,7 @@ impl SamplingCounter {
     fn adjust_sample_rate(&self, total: u64) {
         let current_rate = self.sample_rate.load(Ordering::Relaxed);
         let sampled = self.sampled_value.load(Ordering::Relaxed);
-        
+
         // 计算实际采样率
         let actual_rate = if sampled > 0 {
             total / sampled
@@ -153,10 +151,8 @@ impl SamplingCounter {
     pub fn reset(&self) {
         self.total_ops.store(0, Ordering::Relaxed);
         self.sampled_value.store(0, Ordering::Relaxed);
-        self.sample_counter.store(
-            self.config.sample_rate,
-            Ordering::Relaxed,
-        );
+        self.sample_counter
+            .store(self.config.sample_rate, Ordering::Relaxed);
     }
 }
 
@@ -171,7 +167,7 @@ impl Default for SamplingCounter {
 // ============================================================================
 
 /// 分位数估计器（使用 P² 算法）
-/// 
+///
 /// 在不存储所有样本的情况下估计分位数
 pub struct QuantileEstimator {
     /// 分位数点（如 0.5, 0.9, 0.99）
@@ -197,7 +193,7 @@ impl QuantileEstimator {
     pub fn new(quantiles: &[f64]) -> Self {
         let num_markers = 2 * quantiles.len() + 3;
         let mut markers = Vec::with_capacity(num_markers);
-        
+
         // 初始化标记点
         for i in 0..num_markers {
             markers.push(Marker {
@@ -222,11 +218,13 @@ impl QuantileEstimator {
         if self.n <= self.markers.len() as u64 {
             // 初始阶段，直接存储
             self.markers[(self.n - 1) as usize].height = value;
-            
+
             if self.n == self.markers.len() as u64 {
                 // 初始阶段结束，排序
                 self.markers.sort_by(|a, b| {
-                    a.height.partial_cmp(&b.height).unwrap_or(std::cmp::Ordering::Equal)
+                    a.height
+                        .partial_cmp(&b.height)
+                        .unwrap_or(std::cmp::Ordering::Equal)
                 });
             }
             return;
@@ -234,7 +232,7 @@ impl QuantileEstimator {
 
         // 找到插入位置
         let insert_pos = self.find_insert_position(value);
-        
+
         // 更新标记点
         for (i, marker) in self.markers.iter_mut().enumerate() {
             if i >= insert_pos {
@@ -263,10 +261,10 @@ impl QuantileEstimator {
 
         // 找到最接近的标记点
         let target_pos = q * self.n as f64;
-        
+
         let mut best_idx = 0;
         let mut best_diff = f64::MAX;
-        
+
         for (i, marker) in self.markers.iter().enumerate() {
             let diff = (marker.position - target_pos).abs();
             if diff < best_diff {
@@ -290,10 +288,10 @@ impl QuantileEstimator {
     fn adjust_markers(&mut self) {
         // 简化的调整算法
         let n = self.n as f64;
-        
+
         for i in 1..(self.markers.len() - 1) {
             let desired = self.compute_desired_position(i, n);
-            
+
             // 先读取需要的值
             let prev_height = self.markers[i - 1].height;
             let next_height = self.markers[i + 1].height;
@@ -302,7 +300,7 @@ impl QuantileEstimator {
 
             // 然后更新
             let marker = &mut self.markers[i];
-            
+
             if desired > curr_position + 1.0 && next_height > curr_height {
                 marker.height = curr_height + (next_height - curr_height) * 0.5;
                 marker.position = desired;
@@ -315,7 +313,13 @@ impl QuantileEstimator {
 
     fn compute_desired_position(&self, idx: usize, n: f64) -> f64 {
         // 根据分位数计算期望位置
-        let q_idx = if idx <= 1 { 0 } else if idx >= self.markers.len() - 2 { self.quantiles.len() - 1 } else { (idx - 2) / 2 };
+        let q_idx = if idx <= 1 {
+            0
+        } else if idx >= self.markers.len() - 2 {
+            self.quantiles.len() - 1
+        } else {
+            (idx - 2) / 2
+        };
         let q = self.quantiles.get(q_idx).copied().unwrap_or(0.5);
         q * n
     }
@@ -378,7 +382,7 @@ impl LatencyTracker {
     #[inline(always)]
     pub fn record(&self, latency: Duration) {
         let ns = latency.as_nanos() as u64;
-        
+
         // 更新统计
         self.count.fetch_add(1, Ordering::Relaxed);
         self.sum.fetch_add(ns, Ordering::Relaxed);
@@ -413,15 +417,20 @@ impl LatencyTracker {
 
         // 采样记录到分位数估计器
         if self.sampler.should_sample()
-            && let Ok(mut q) = self.quantiles.write() {
-                q.observe(ns as f64);
-            }
+            && let Ok(mut q) = self.quantiles.write()
+        {
+            q.observe(ns as f64);
+        }
     }
 
     /// 获取统计
     pub fn stats(&self) -> LatencyStats {
         let (p50, p90, p99) = if let Ok(q) = self.quantiles.read() {
-            (q.quantile(0.5) as u64, q.quantile(0.9) as u64, q.quantile(0.99) as u64)
+            (
+                q.quantile(0.5) as u64,
+                q.quantile(0.9) as u64,
+                q.quantile(0.99) as u64,
+            )
         } else {
             (0, 0, 0)
         };
@@ -444,7 +453,7 @@ impl LatencyTracker {
         self.max.store(0, Ordering::Relaxed);
         self.sum.store(0, Ordering::Relaxed);
         self.count.store(0, Ordering::Relaxed);
-        
+
         if let Ok(mut q) = self.quantiles.write() {
             q.reset();
         }
@@ -520,7 +529,7 @@ impl CacheMonitorV2 {
         let hits = self.hits.estimated_total();
         let misses = self.misses.estimated_total();
         let total = hits + misses;
-        
+
         if total == 0 {
             0.0
         } else {
@@ -622,7 +631,11 @@ mod tests {
 
         // 估计总数应该接近 100
         let estimated = counter.estimated_total();
-        assert!(estimated >= 80 && estimated <= 120, "estimated: {}", estimated);
+        assert!(
+            estimated >= 80 && estimated <= 120,
+            "estimated: {}",
+            estimated
+        );
     }
 
     #[test]

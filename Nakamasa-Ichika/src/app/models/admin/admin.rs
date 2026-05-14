@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{FromRow, Type};
 use serde_json::Value;
+use sqlx::{FromRow, Type};
 
 /// 管理员状态枚举 - 对应 u_admin.state
 #[derive(Debug, Type, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -9,10 +9,9 @@ use serde_json::Value;
 #[derive(Default)]
 pub enum AdminState {
     #[default]
-    Y,  // 启用
-    N,  // 禁用
+    Y, // 启用
+    N, // 禁用
 }
-
 
 /// 管理员模型 - 对应 u_admin 表
 #[derive(Debug, Serialize, Deserialize, FromRow)]

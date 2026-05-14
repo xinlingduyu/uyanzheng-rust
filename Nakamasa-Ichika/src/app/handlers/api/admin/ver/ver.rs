@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize)]
 struct GroupItem {
@@ -24,7 +24,7 @@ pub async fn get_group(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -45,8 +45,9 @@ pub async fn get_group(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    let query = "SELECT DISTINCT name, ver_key FROM u_app_ver WHERE appid = ? GROUP BY name, ver_key";
-    
+    let query =
+        "SELECT DISTINCT name, ver_key FROM u_app_ver WHERE appid = ? GROUP BY name, ver_key";
+
     let result = sqlx::query_as::<_, (Option<String>, String)>(query)
         .bind(appid)
         .fetch_all(app_state.get_db())
@@ -54,10 +55,13 @@ pub async fn get_group(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     match result {
         Ok(rows) => {
-            let list: Vec<GroupItem> = rows.into_iter().map(|row| GroupItem {
-                name: row.0,
-                ver_key: row.1,
-            }).collect();
+            let list: Vec<GroupItem> = rows
+                .into_iter()
+                .map(|row| GroupItem {
+                    name: row.0,
+                    ver_key: row.1,
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -125,7 +129,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -184,11 +188,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     if let Some(ref so) = list_req.so
         && let Some(ref keyword) = so.keyword
-            && !keyword.is_empty() {
-                query = format!("{} AND (V.name LIKE ? OR V.ver_key LIKE ?)", query);
-                params.push(format!("%{}%", keyword));
-                params.push(format!("%{}%", keyword));
-            }
+        && !keyword.is_empty()
+    {
+        query = format!("{} AND (V.name LIKE ? OR V.ver_key LIKE ?)", query);
+        params.push(format!("%{}%", keyword));
+        params.push(format!("%{}%", keyword));
+    }
 
     query = format!("{} ORDER BY V.id DESC LIMIT ? OFFSET ?", query);
     params.push(page_size.to_string());
@@ -204,33 +209,36 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     match result {
         Ok(rows) => {
             tracing::debug!("查询到 {} 行数据", rows.len());
-            let list: Vec<VerItem> = rows.into_iter().map(|row| VerItem {
-                id: row.get("id"),
-                name: row.get("name"),
-                ver_key: row.get("ver_key"),
-                ver_major: row.get("ver_major"),
-                ver_minor: row.get("ver_minor"),
-                ver_patch: row.get("ver_patch"),
-                ver_state: row.get("ver_state"),
-                ver_off_msg: row.get("ver_off_msg"),
-                ver_url: row.get("ver_url"),
-                ver_content: row.get("ver_content"),
-                mid: row.get("mid"),
-                discard: row.get::<bool, _>("discard"),
-                appid: row.get("appid"),
-                mi_name: row.get("mname"),
-                mi_type: row.get("mtype"),
-            }).collect();
+            let list: Vec<VerItem> = rows
+                .into_iter()
+                .map(|row| VerItem {
+                    id: row.get("id"),
+                    name: row.get("name"),
+                    ver_key: row.get("ver_key"),
+                    ver_major: row.get("ver_major"),
+                    ver_minor: row.get("ver_minor"),
+                    ver_patch: row.get("ver_patch"),
+                    ver_state: row.get("ver_state"),
+                    ver_off_msg: row.get("ver_off_msg"),
+                    ver_url: row.get("ver_url"),
+                    ver_content: row.get("ver_content"),
+                    mid: row.get("mid"),
+                    discard: row.get::<bool, _>("discard"),
+                    appid: row.get("appid"),
+                    mi_name: row.get("mname"),
+                    mi_type: row.get("mtype"),
+                })
+                .collect();
 
             tracing::debug!("序列化后的列表: {:?}", list);
-            
+
             let response = ListResponse {
                 current_page: page,
                 data_total: total,
                 list,
                 page_total,
             };
-            
+
             res.render(Json(ApiResponse::success("成功", Some(response))));
         }
         Err(e) => {
@@ -285,9 +293,12 @@ impl AddRequest {
             return Err("版本状态必须是on或off".to_string());
         }
         if let Some(ref url) = self.ver_url
-            && !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err("版本URL必须以http://或https://开头".to_string());
-            }
+            && !url.is_empty()
+            && !url.starts_with("http://")
+            && !url.starts_with("https://")
+        {
+            return Err("版本URL必须以http://或https://开头".to_string());
+        }
         Ok(())
     }
 }
@@ -301,7 +312,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -361,7 +372,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let insert_query = "INSERT INTO u_app_ver (mid, name, ver_key, ver_major, ver_minor, ver_patch, ver_url, ver_content, ver_state, ver_off_msg, appid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    
+
     let result = sqlx::query(insert_query)
         .bind(add_req.mid)
         .bind(&add_req.name)
@@ -434,9 +445,12 @@ impl EditRequest {
             return Err("版本状态必须是on或off".to_string());
         }
         if let Some(ref url) = self.ver_url
-            && !url.is_empty() && !url.starts_with("http://") && !url.starts_with("https://") {
-                return Err("版本URL必须以http://或https://开头".to_string());
-            }
+            && !url.is_empty()
+            && !url.starts_with("http://")
+            && !url.starts_with("https://")
+        {
+            return Err("版本URL必须以http://或https://开头".to_string());
+        }
         Ok(())
     }
 }
@@ -450,7 +464,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -486,7 +500,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let update_query = "UPDATE u_app_ver SET mid = ?, name = ?, ver_key = ?, ver_major = ?, ver_minor = ?, ver_patch = ?, ver_url = ?, ver_content = ?, ver_state = ?, ver_off_msg = ?, appid = ? WHERE id = ?";
-    
+
     let result = sqlx::query(update_query)
         .bind(edit_req.mid)
         .bind(&edit_req.name)
@@ -528,7 +542,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -571,7 +585,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -587,13 +601,16 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 构建 IN 查询
     let placeholders: Vec<&str> = del_req.ids.iter().map(|_| "?").collect();
-    let query_str = format!("DELETE FROM u_app_ver WHERE id IN ({})", placeholders.join(","));
-    
+    let query_str = format!(
+        "DELETE FROM u_app_ver WHERE id IN ({})",
+        placeholders.join(",")
+    );
+
     let mut query = sqlx::query(&query_str);
     for id in &del_req.ids {
         query = query.bind(id);
     }
-    
+
     let result = query.execute(app_state.get_db()).await;
 
     match result {
@@ -626,7 +643,7 @@ pub async fn discard(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let discard_req = match req.parse_json::<DiscardRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -680,11 +697,14 @@ pub async fn get_milist(depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(rows) => {
-            let list: Vec<MiItem> = rows.into_iter().map(|row| MiItem {
-                id: row.0,
-                name: row.1,
-                mi_type: row.2,
-            }).collect();
+            let list: Vec<MiItem> = rows
+                .into_iter()
+                .map(|row| MiItem {
+                    id: row.0,
+                    name: row.1,
+                    mi_type: row.2,
+                })
+                .collect();
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
         Err(e) => {
@@ -727,7 +747,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let submit_req = match req.parse_json::<SubmitRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -759,7 +779,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if let Some(id) = submit_req.id {
         // 编辑模式
         let update_query = "UPDATE u_app_ver SET mid = ?, name = ?, ver_key = ?, ver_major = ?, ver_minor = ?, ver_patch = ?, ver_url = ?, ver_content = ?, ver_state = ?, ver_off_msg = ?, discard = ? WHERE id = ?";
-        
+
         let result = sqlx::query(update_query)
             .bind(submit_req.mid)
             .bind(&submit_req.name)
@@ -811,7 +831,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
 
         let insert_query = "INSERT INTO u_app_ver (mid, name, ver_key, ver_major, ver_minor, ver_patch, ver_url, ver_content, ver_state, ver_off_msg, discard, appid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        
+
         let result = sqlx::query(insert_query)
             .bind(submit_req.mid)
             .bind(&submit_req.name)
@@ -910,24 +930,37 @@ pub async fn get_uplog(_req: &mut Request, depot: &mut Depot, res: &mut Response
                 return;
             }
 
-            let list: Vec<UplogItem> = rows.iter().map(|row| {
-                let major: i32 = row.try_get("ver_major").unwrap_or(1);
-                let minor: i32 = row.try_get("ver_minor").unwrap_or(0);
-                let patch: i32 = row.try_get("ver_patch").unwrap_or(0);
-                let ver = format!("{}.{}.{}", major, minor, patch);
+            let list: Vec<UplogItem> = rows
+                .iter()
+                .map(|row| {
+                    let major: i32 = row.try_get("ver_major").unwrap_or(1);
+                    let minor: i32 = row.try_get("ver_minor").unwrap_or(0);
+                    let patch: i32 = row.try_get("ver_patch").unwrap_or(0);
+                    let ver = format!("{}.{}.{}", major, minor, patch);
 
-                let content: String = row.try_get("ver_content").unwrap_or_default();
-                let log_type: String = row.try_get("ver_state").unwrap_or_else(|_| "on".to_string());
-                let log_type = if log_type == "on" { "official".to_string() } else { "beta".to_string() };
+                    let content: String = row.try_get("ver_content").unwrap_or_default();
+                    let log_type: String = row
+                        .try_get("ver_state")
+                        .unwrap_or_else(|_| "on".to_string());
+                    let log_type = if log_type == "on" {
+                        "official".to_string()
+                    } else {
+                        "beta".to_string()
+                    };
 
-                UplogItem {
-                    ver,
-                    revision: None,
-                    time: chrono::Utc::now().timestamp(),
-                    log_type,
-                    content: if content.is_empty() { "无更新内容".to_string() } else { content },
-                }
-            }).collect();
+                    UplogItem {
+                        ver,
+                        revision: None,
+                        time: chrono::Utc::now().timestamp(),
+                        log_type,
+                        content: if content.is_empty() {
+                            "无更新内容".to_string()
+                        } else {
+                            content
+                        },
+                    }
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -953,7 +986,8 @@ fn get_default_uplog() -> Vec<UplogItem> {
 <li>支持个人资料修改</li>
 <li>支持密码修改</li>
 <li>新增登录日志和操作日志查看</li>
-</ol>"#.to_string(),
+</ol>"#
+                .to_string(),
         },
         UplogItem {
             ver: "3.2.0".to_string(),
@@ -964,7 +998,8 @@ fn get_default_uplog() -> Vec<UplogItem> {
 <li>优化系统性能</li>
 <li>修复已知问题</li>
 <li>改进用户界面体验</li>
-</ol>"#.to_string(),
+</ol>"#
+                .to_string(),
         },
         UplogItem {
             ver: "3.1.0".to_string(),
@@ -975,7 +1010,8 @@ fn get_default_uplog() -> Vec<UplogItem> {
 <li>新增多应用支持</li>
 <li>优化数据库查询性能</li>
 <li>改进缓存机制</li>
-</ol>"#.to_string(),
+</ol>"#
+                .to_string(),
         },
     ]
 }

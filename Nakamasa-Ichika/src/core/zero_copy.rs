@@ -1,9 +1,9 @@
 //! 零拷贝和高性能字符串处理模块
-//! 
+//!
 //! 提供高效的字符串操作，减少内存分配和拷贝
 
-use std::borrow::Cow;
 use serde_json::Value;
+use std::borrow::Cow;
 
 // ============================================================================
 // 高性能字符串包装器
@@ -18,25 +18,29 @@ impl OptimizedString {
     /// 创建静态字符串（零分配）
     #[inline]
     pub fn new_static(s: &'static str) -> Self {
-        Self { inner: Cow::Borrowed(s) }
+        Self {
+            inner: Cow::Borrowed(s),
+        }
     }
-    
+
     /// 创建拥有所有权的字符串
     #[inline]
     pub fn new_owned(s: String) -> Self {
-        Self { inner: Cow::Owned(s) }
+        Self {
+            inner: Cow::Owned(s),
+        }
     }
-    
+
     #[inline]
     pub fn as_str(&self) -> &str {
         &self.inner
     }
-    
+
     #[inline]
     pub fn into_string(self) -> String {
         self.inner.into_owned()
     }
-    
+
     /// 检查是否为借用（零拷贝）
     #[inline]
     pub fn is_borrowed(&self) -> bool {
@@ -68,36 +72,38 @@ pub struct DbField<'a> {
 impl<'a> DbField<'a> {
     #[inline]
     pub fn new_borrowed(data: &'a [u8]) -> Self {
-        Self { data: Cow::Borrowed(data) }
+        Self {
+            data: Cow::Borrowed(data),
+        }
     }
-    
+
     #[inline]
     pub fn new_owned(data: Vec<u8>) -> Self {
-        Self { data: Cow::Owned(data) }
+        Self {
+            data: Cow::Owned(data),
+        }
     }
-    
+
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         &self.data
     }
-    
+
     #[inline]
     pub fn to_string_lossy(&self) -> Cow<'_, str> {
         String::from_utf8_lossy(&self.data)
     }
-    
+
     #[inline]
     pub fn as_str(&self) -> Option<Cow<'_, str>> {
         match &self.data {
-            Cow::Borrowed(bytes) => {
-                std::str::from_utf8(bytes).ok().map(Cow::Borrowed)
-            }
-            Cow::Owned(vec) => {
-                std::str::from_utf8(vec).ok().map(|s| Cow::Owned(s.to_string()))
-            }
+            Cow::Borrowed(bytes) => std::str::from_utf8(bytes).ok().map(Cow::Borrowed),
+            Cow::Owned(vec) => std::str::from_utf8(vec)
+                .ok()
+                .map(|s| Cow::Owned(s.to_string())),
         }
     }
-    
+
     /// 消费 self，返回拥有的字符串（零拷贝转移）
     #[inline]
     pub fn into_string(self) -> Result<String, std::string::FromUtf8Error> {
@@ -106,12 +112,12 @@ impl<'a> DbField<'a> {
             Cow::Owned(vec) => String::from_utf8(vec),
         }
     }
-    
+
     #[inline]
     pub fn len(&self) -> usize {
         self.data.len()
     }
-    
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
@@ -156,19 +162,23 @@ pub struct JsonValueWrapper<'a> {
 impl<'a> JsonValueWrapper<'a> {
     #[inline]
     pub fn new_borrowed(value: &'a Value) -> Self {
-        Self { value: Cow::Borrowed(value) }
+        Self {
+            value: Cow::Borrowed(value),
+        }
     }
-    
+
     #[inline]
     pub fn new_owned(value: Value) -> Self {
-        Self { value: Cow::Owned(value) }
+        Self {
+            value: Cow::Owned(value),
+        }
     }
-    
+
     #[inline]
     pub fn get_value(&self) -> &Value {
         &self.value
     }
-    
+
     #[inline]
     pub fn into_owned(self) -> Value {
         self.value.into_owned()
@@ -217,27 +227,27 @@ impl StringBuilder {
             buffer: String::with_capacity(capacity),
         }
     }
-    
+
     /// 创建新的构建器，使用默认容量
     #[inline]
     pub fn new() -> Self {
         Self::with_capacity(64)
     }
-    
+
     /// 追加字符串切片
     #[inline]
     pub fn append(&mut self, s: &str) -> &mut Self {
         self.buffer.push_str(s);
         self
     }
-    
+
     /// 追加字符
     #[inline]
     pub fn append_char(&mut self, c: char) -> &mut Self {
         self.buffer.push(c);
         self
     }
-    
+
     /// 追加整数（避免 format!）
     #[inline]
     pub fn append_int(&mut self, n: i64) -> &mut Self {
@@ -245,7 +255,7 @@ impl StringBuilder {
         let _ = write!(self.buffer, "{}", n);
         self
     }
-    
+
     /// 追加无符号整数
     #[inline]
     pub fn append_uint(&mut self, n: u64) -> &mut Self {
@@ -253,7 +263,7 @@ impl StringBuilder {
         let _ = write!(self.buffer, "{}", n);
         self
     }
-    
+
     /// 快速构建 Redis key
     #[inline]
     pub fn build_redis_key(prefix: &str, key: &str) -> String {
@@ -261,7 +271,7 @@ impl StringBuilder {
         sb.append(prefix).append(key);
         sb.finish()
     }
-    
+
     /// 快速构建带前缀的 key
     #[inline]
     pub fn build_prefixed_key(prefix: &str, mid: &str, suffix: &str) -> String {
@@ -269,35 +279,35 @@ impl StringBuilder {
         sb.append(prefix).append(mid).append(suffix);
         sb.finish()
     }
-    
+
     #[inline]
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
-    
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.buffer.is_empty()
     }
-    
+
     /// 完成构建，返回字符串
     #[inline]
     pub fn finish(self) -> String {
         self.buffer
     }
-    
+
     /// 获取内容的引用（不消费）
     #[inline]
     pub fn as_str(&self) -> &str {
         &self.buffer
     }
-    
+
     /// 清空内容，保留容量
     #[inline]
     pub fn clear(&mut self) {
         self.buffer.clear();
     }
-    
+
     /// 预留额外容量
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
@@ -356,11 +366,11 @@ pub fn token_key(prefix: &str, token: &str) -> String {
 pub fn logon_key(prefix: &str, appid: u64, uid: i64, udid_hash: &str) -> String {
     let mut sb = StringBuilder::with_capacity(64);
     sb.append(prefix)
-      .append_int(appid as i64)
-      .append("_")
-      .append_int(uid)
-      .append("_")
-      .append(udid_hash);
+        .append_int(appid as i64)
+        .append("_")
+        .append_int(uid)
+        .append("_")
+        .append(udid_hash);
     sb.finish()
 }
 
@@ -380,8 +390,8 @@ pub fn fail_ip_num_key(ip_hash: &str) -> String {
 // 字符串池（用于常用字符串复用）
 // ============================================================================
 
-use std::sync::LazyLock;
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 /// 常用字符串池
 pub static COMMON_STRINGS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
@@ -445,7 +455,7 @@ mod tests {
         let s = OptimizedString::new_static("test");
         assert!(s.is_borrowed());
         assert_eq!(s.as_str(), "test");
-        
+
         let s2 = OptimizedString::new_owned("test".to_string());
         assert!(!s2.is_borrowed());
     }

@@ -2,17 +2,20 @@
 //! 支持在后台编写 JavaScript 代码并通过 API 调用执行
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::execute_cloud_function;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::CloudFunctionRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::CloudFunctionRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::execute_cloud_function;
+use crate::core::middleware::get_client_ip;
 
 /// 云函数执行结果
 #[derive(Debug, Serialize)]
@@ -25,6 +28,58 @@ struct CloudFunctionResult {
     code: Option<i32>,
 }
 
+fn is_safe_cloud_function_error(message: &str) -> bool {
+    let msg = message.trim();
+    if msg.is_empty() || msg.len() > 200 {
+        return false;
+    }
+
+    let lower = msg.to_ascii_lowercase();
+    let sensitive_markers = [
+        "mysql://",
+        "redis://",
+        "password",
+        "secret",
+        "token",
+        "authorization",
+        "bearer ",
+        "api_key",
+        "apikey",
+        "stack backtrace",
+        "panicked at",
+        "/data/",
+        "/storage/",
+    ];
+
+    !sensitive_markers
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+fn cloud_function_business_error_message(error: &str) -> Cow<'static, str> {
+    let msg = error.trim();
+    if msg.contains("执行中断") || msg.contains("interrupted") {
+        return Cow::Borrowed("云函数执行超时");
+    }
+    if msg.contains("内存") || msg.contains("memory") {
+        return Cow::Borrowed("云函数资源超限");
+    }
+    if msg.contains("不允许")
+        || msg.contains("禁止")
+        || msg.contains("URL格式无效")
+        || msg.contains("表名格式无效")
+        || msg.contains("SQL语句包含不允许的操作")
+        || msg.contains("未知Redis操作")
+        || msg.contains("不支持的HTTP方法")
+    {
+        return Cow::Owned(msg.to_string());
+    }
+    if is_safe_cloud_function_error(msg) && msg.starts_with("业务错误:") {
+        return Cow::Owned(msg.trim_start_matches("业务错误:").trim().to_string());
+    }
+    Cow::Borrowed("执行失败")
+}
+
 #[handler]
 pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -34,7 +89,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -44,7 +99,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let cf_req = match req.parse_json::<CloudFunctionRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -56,7 +111,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // 验证参数: name 必须是字母开头，3-64位字母数字
     let mut validator = Validator::new();
     validator.reg("name", &cf_req.name, "[a-zA-Z][a-zA-Z\\d]{2,64}");
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -70,7 +125,6 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
             return;
         }
     };
-
 
     // 直接从引用获取值
     let app_type = &user_info.user_type;
@@ -105,11 +159,13 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // 检查VIP权限
     if app_type == "user" {
         if let Some(allow_val) = allow
-            && allow_val > 0 && user_vip < current_time {
-                render_error(res, "请成为VIP后操作", 201, app_key);
-                return;
-            }
-        
+            && allow_val > 0
+            && user_vip < current_time
+        {
+            render_error(res, "请成为VIP后操作", 201, app_key);
+            return;
+        }
+
         // 检查积分消耗
         if fen > 0 && user_fen < fen as i64 {
             render_error(res, "积分余额不足", 201, app_key);
@@ -172,13 +228,17 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
         user_json,
         app_json,
         cf_req.param.clone(),
-    ).await;
+    )
+    .await;
 
     match result {
         Ok(json_result) => {
             // 检查是否设置了自定义 code
             let custom_code = json_result.get("code").and_then(|c| c.as_i64());
-            let custom_msg = json_result.get("msg").and_then(|m| m.as_str()).map(|s| s.to_string());
+            let custom_msg = json_result
+                .get("msg")
+                .and_then(|m| m.as_str())
+                .map(|s| s.to_string());
             let data = json_result.get("data").cloned();
 
             if let Some(code_val) = custom_code {
@@ -197,14 +257,12 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
 
             // 如果消耗积分，更新用户积分
             if fen > 0 && app_type == "user" {
-                let _ = sqlx::query(
-                    "UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?"
-                )
-                .bind(fen)
-                .bind(user_info.uid)
-                .bind(appid)
-                .execute(app_state.get_db())
-                .await;
+                let _ = sqlx::query("UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?")
+                    .bind(fen)
+                    .bind(user_info.uid)
+                    .bind(appid)
+                    .execute(app_state.get_db())
+                    .await;
 
                 // 记录日志
                 let _ = sqlx::query(
@@ -223,7 +281,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
         Err(e) => {
             tracing::error!("云函数执行失败: {}", e);
-            render_error(res, format!("执行失败: {}", e), 201, app_key);
+            render_error(res, cloud_function_business_error_message(&e), 201, app_key);
         }
     }
 }

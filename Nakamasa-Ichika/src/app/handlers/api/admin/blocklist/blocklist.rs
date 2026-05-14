@@ -7,9 +7,10 @@ use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::app_state::AppState;
+use crate::core::middleware::get_client_ip;
 use crate::core::regex_cache::SN_REGEX;
 use std::sync::Arc;
-use crate::core::app_state::AppState;
 
 // ==================== 获取列表 ====================
 
@@ -23,8 +24,12 @@ struct GetListRequest {
     so: Option<SearchOptions>,
 }
 
-fn default_page() -> u32 { 1 }
-fn default_size() -> u32 { 10 }
+fn default_page() -> u32 {
+    1
+}
+fn default_size() -> u32 {
+    10
+}
 
 #[derive(Debug, Deserialize)]
 struct SearchOptions {
@@ -117,17 +122,21 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 处理搜索条件 - PHP: keyword 搜索 sn 或 ip
     if let Some(ref so) = list_req.so
-        && !so.keyword.is_empty() {
-            // PHP: (sn LIKE ? or ip LIKE ?)
-            // 但数据库用的是 type + val 结构，所以改为: (val LIKE ?)
-            where_conditions.push("val LIKE ?".to_string());
-            keyword_param = Some(format!("%{}%", so.keyword));
-        }
+        && !so.keyword.is_empty()
+    {
+        // PHP: (sn LIKE ? or ip LIKE ?)
+        // 但数据库用的是 type + val 结构，所以改为: (val LIKE ?)
+        where_conditions.push("val LIKE ?".to_string());
+        keyword_param = Some(format!("%{}%", so.keyword));
+    }
 
     let where_clause = where_conditions.join(" AND ");
 
     // 查询总数
-    let count_query = format!("SELECT COUNT(*) as total FROM u_app_blocklist WHERE {}", where_clause);
+    let count_query = format!(
+        "SELECT COUNT(*) as total FROM u_app_blocklist WHERE {}",
+        where_clause
+    );
     let mut count_sql = sqlx::query(&count_query);
     count_sql = count_sql.bind(appid);
     if let Some(ref kw) = keyword_param {
@@ -162,35 +171,47 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     match result {
         Ok(rows) => {
             tracing::info!("blocklist query returned {} rows", rows.len());
-            let list: Vec<BlocklistItem> = rows.iter().enumerate().map(|(idx, row)| {
-                // MySQL的bigint unsigned在协议层作为有符号整数传输
-                // 需要先获取i64然后转换为u64
-                let id: u64 = match row.try_get::<i64, _>("id") {
-                    Ok(v) => {
-                        tracing::info!("blocklist row[{}] id as i64: {}", idx, v);
-                        v as u64
-                    },
-                    Err(e) => {
-                        tracing::error!("blocklist row[{}] failed to get id as i64: {:?}", idx, e);
-                        // 尝试用u64
-                        match row.try_get::<u64, _>("id") {
-                            Ok(v) => v,
-                            Err(e2) => {
-                                tracing::error!("blocklist row[{}] also failed as u64: {:?}", idx, e2);
-                                0
+            let list: Vec<BlocklistItem> = rows
+                .iter()
+                .enumerate()
+                .map(|(idx, row)| {
+                    // MySQL的bigint unsigned在协议层作为有符号整数传输
+                    // 需要先获取i64然后转换为u64
+                    let id: u64 = match row.try_get::<i64, _>("id") {
+                        Ok(v) => {
+                            tracing::info!("blocklist row[{}] id as i64: {}", idx, v);
+                            v as u64
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                "blocklist row[{}] failed to get id as i64: {:?}",
+                                idx,
+                                e
+                            );
+                            // 尝试用u64
+                            match row.try_get::<u64, _>("id") {
+                                Ok(v) => v,
+                                Err(e2) => {
+                                    tracing::error!(
+                                        "blocklist row[{}] also failed as u64: {:?}",
+                                        idx,
+                                        e2
+                                    );
+                                    0
+                                }
                             }
                         }
+                    };
+
+                    BlocklistItem {
+                        id,
+                        type_: row.try_get("type").unwrap_or_else(|_| "ip".to_string()),
+                        val: row.try_get("val").unwrap_or_else(|_| String::new()),
+                        time: row.try_get("time").unwrap_or(0),
+                        appid: row.try_get("appid").ok(),
                     }
-                };
-                
-                BlocklistItem {
-                    id,
-                    type_: row.try_get("type").unwrap_or_else(|_| "ip".to_string()),
-                    val: row.try_get("val").unwrap_or_else(|_| String::new()),
-                    time: row.try_get("time").unwrap_or(0),
-                    appid: row.try_get("appid").ok(),
-                }
-            }).collect();
+                })
+                .collect();
 
             let page_total = if total > 0 {
                 ((total as f64) / (size as f64)).ceil() as u32
@@ -219,12 +240,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 #[derive(Debug, Deserialize)]
 struct AddRequest {
     #[serde(default)]
-    id: Option<i64>,  // 忽略，PHP中也没用到
+    id: Option<i64>, // 忽略，PHP中也没用到
     #[serde(rename = "type")]
     type_: String,
     val: String,
     #[serde(default)]
-    all: String,  // 'y' = 全局(NULL), 'n' = 当前应用(appid)
+    all: String, // 'y' = 全局(NULL), 'n' = 当前应用(appid)
 }
 
 /// 添加 - PHP: add()
@@ -309,22 +330,21 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let time = chrono::Utc::now().timestamp();
 
     // 插入数据
-    let result = sqlx::query(
-        "INSERT INTO u_app_blocklist (type, val, time, appid) VALUES (?, ?, ?, ?)"
-    )
-    .bind(&add_req.type_)
-    .bind(&add_req.val)
-    .bind(time)
-    .bind(appid_value)
-    .execute(app_state.get_db())
-    .await;
+    let result =
+        sqlx::query("INSERT INTO u_app_blocklist (type, val, time, appid) VALUES (?, ?, ?, ?)")
+            .bind(&add_req.type_)
+            .bind(&add_req.val)
+            .bind(time)
+            .bind(appid_value)
+            .execute(app_state.get_db())
+            .await;
 
     match result {
         Ok(r) => {
             let add_id = r.last_insert_id() as i64;
 
             // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id)
-            let ip = get_client_ip(req);
+            let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -454,21 +474,20 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 执行更新
-    let result = sqlx::query(
-        "UPDATE u_app_blocklist SET type = ?, val = ?, appid = ? WHERE id = ?"
-    )
-    .bind(&edit_req.type_)
-    .bind(&edit_req.val)
-    .bind(appid_value)
-    .bind(edit_req.id as i64)
-    .execute(app_state.get_db())
-    .await;
+    let result =
+        sqlx::query("UPDATE u_app_blocklist SET type = ?, val = ?, appid = ? WHERE id = ?")
+            .bind(&edit_req.type_)
+            .bind(&edit_req.val)
+            .bind(appid_value)
+            .bind(edit_req.id as i64)
+            .execute(app_state.get_db())
+            .await;
 
     match result {
         Ok(_) => {
             // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
             let time = chrono::Utc::now().timestamp();
-            let ip = get_client_ip(req);
+            let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -556,7 +575,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(r) => {
             // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
             let time = chrono::Utc::now().timestamp();
-            let ip = get_client_ip(req);
+            let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -639,7 +658,12 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 构建IN查询 - PHP: $placeholders = implode(',', array_fill(0,count($_POST['ids']), '?'))
-    let placeholders: String = del_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders: String = del_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM u_app_blocklist WHERE id IN ({})", placeholders);
 
     let mut sql_query = sqlx::query(&query);
@@ -653,7 +677,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(r) => {
             // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
             let time = chrono::Utc::now().timestamp();
-            let ip = get_client_ip(req);
+            let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -683,21 +707,6 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 }
 
 // ==================== 辅助函数 ====================
-
-/// 获取客户端IP
-fn get_client_ip(req: &Request) -> String {
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
-        && let Ok(ip) = x_real_ip.to_str() {
-            return ip.to_string();
-        }
-
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
-        && let Ok(ip) = x_forwarded_for.to_str() {
-            return ip.split(',').next().unwrap_or("").trim().to_string();
-        }
-
-    "127.0.0.1".to_string()
-}
 
 /// 验证IP地址格式
 fn is_valid_ip(ip: &str) -> bool {

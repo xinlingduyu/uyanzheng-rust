@@ -1,7 +1,7 @@
-use sqlx::FromRow;
-use serde::{Serialize, Deserialize};
-use serde_json::Value;
 use super::super::common::enums::UserType;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sqlx::FromRow;
 
 /// 消息模型 - 对应 u_message 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

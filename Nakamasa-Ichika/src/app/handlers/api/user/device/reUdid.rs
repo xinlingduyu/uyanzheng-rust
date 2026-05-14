@@ -1,5 +1,5 @@
 //! 解绑设备
-//! 
+//!
 //! 功能说明：
 //! 用户解绑指定的设备码，解绑后该设备无法自动登录。
 //!
@@ -9,18 +9,20 @@
 //! 3. 删除该设备的在线状态
 //! 4. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::common::DeviceInfo;
+use crate::app::models::requests::ReUdidRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::ReUdidRequest;
-use crate::app::models::common::DeviceInfo;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -44,7 +46,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let logon_sn_num = app_info.logon_sn_num;
     let logon_sn_unbdeVal = app_info.logon_sn_unbdeVal;
     let logon_sn_unbdeType = &app_info.logon_sn_unbdeType;
-    
+
     let re_req = match req.parse_json::<ReUdidRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -59,7 +61,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator
         .wordnum("token", &re_req.token, 32, 32)
         .reg("udid", &re_req.udid, "[a-zA-Z0-9_-]+");
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -83,7 +85,9 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // PHP: $snList_Arr = json_decode($this->user['sn_list'],true);
     // 解析设备列表
-    let sn_list_arr: Vec<DeviceInfo> = user_info.sn_list.clone()
+    let sn_list_arr: Vec<DeviceInfo> = user_info
+        .sn_list
+        .clone()
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
@@ -98,7 +102,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // }
     let mut found = false;
     let mut new_sn_list: Vec<DeviceInfo> = Vec::new();
-    
+
     for device in &sn_list_arr {
         if device.udid == re_req.udid {
             found = true;
@@ -126,12 +130,12 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let sn_list_json = serde_json::to_string(&new_sn_list).unwrap_or_default();
-    
+
     // 构建更新数据
     let mut update_data = serde_json::json!({
         "sn_list": sn_list_json
     });
-    
+
     // PHP: if($this->app['logon_sn_unbdeVal'] > 0){
     //     if($this->app['logon_sn_unbdeType'] == 'vip'){
     //         ...VIP消耗逻辑
@@ -139,7 +143,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     //         ...积分消耗逻辑
     //     }
     // }
-    
+
     if logon_sn_unbdeVal > 0 {
         if logon_sn_unbdeType == "vip" {
             // VIP消耗
@@ -164,7 +168,8 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     return;
                 }
                 if user_vip_exp < 9999999999 {
-                    update_data["vip_exp"] = serde_json::json!(user_vip_exp - logon_sn_unbdeVal as i64);
+                    update_data["vip_exp"] =
+                        serde_json::json!(user_vip_exp - logon_sn_unbdeVal as i64);
                 }
             }
         } else {
@@ -189,15 +194,25 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 根据用户类型选择表
-    let table_name = if user_type == "kami" { "u_cdk_kami" } else { "u_user" };
-    
+    let table_name = if user_type == "kami" {
+        "u_cdk_kami"
+    } else {
+        "u_user"
+    };
+
     // 构建动态SQL
-    let update_fields: Vec<String> = update_data.as_object().unwrap()
+    let update_fields: Vec<String> = update_data
+        .as_object()
+        .unwrap()
         .iter()
         .map(|(k, _)| format!("{} = ?", k))
         .collect();
-    let update_sql = format!("UPDATE {} SET {} WHERE id = ? AND appid = ?", table_name, update_fields.join(", "));
-    
+    let update_sql = format!(
+        "UPDATE {} SET {} WHERE id = ? AND appid = ?",
+        table_name,
+        update_fields.join(", ")
+    );
+
     // 构建参数
     let mut query = sqlx::query(&update_sql);
     for (_k, v) in update_data.as_object().unwrap() {
@@ -208,7 +223,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
     query = query.bind(uid).bind(appid);
-    
+
     let result = query.execute(app_state.get_db()).await;
 
     match result {

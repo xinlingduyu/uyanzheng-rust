@@ -5,9 +5,9 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
-use crate::core::zero_copy::StringBuilder;
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::zero_copy::StringBuilder;
 
 #[derive(Debug, Serialize)]
 struct AgentGroupItem {
@@ -24,7 +24,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
             return;
         }
     };
-    
+
     // 获取appid
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
@@ -47,7 +47,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     let result = sqlx::query_as::<_, (i64, String)>(
-        "SELECT id, name FROM u_agent_group WHERE appid = ? ORDER BY id DESC"
+        "SELECT id, name FROM u_agent_group WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
     .fetch_all(app_state.get_db())
@@ -55,7 +55,13 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     match result {
         Ok(rows) => {
-            let list: Vec<AgentGroupItem> = rows.into_iter().map(|row| AgentGroupItem { id: row.0, name: row.1 }).collect();
+            let list: Vec<AgentGroupItem> = rows
+                .into_iter()
+                .map(|row| AgentGroupItem {
+                    id: row.0,
+                    name: row.1,
+                })
+                .collect();
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
         Err(e) => {
@@ -99,7 +105,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -133,17 +139,20 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let page_size = list_req.size.unwrap_or(10).max(1);
     let offset = (page - 1) * page_size;
 
-    let mut query = String::from("SELECT id, name, pay_divide, km_discount, authority, appid FROM u_agent_group WHERE appid = ?");
+    let mut query = String::from(
+        "SELECT id, name, pay_divide, km_discount, authority, appid FROM u_agent_group WHERE appid = ?",
+    );
     let mut params: Vec<String> = vec![appid.to_string()];
 
     if let Some(so) = list_req.so
         && let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                query.push_str(" AND name LIKE ?");
-                let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
-                sb.append("%").append(&keyword).append("%");
-                params.push(sb.finish());
-            }
+        && !keyword.is_empty()
+    {
+        query.push_str(" AND name LIKE ?");
+        let mut sb = StringBuilder::with_capacity(keyword.len() + 2);
+        sb.append("%").append(&keyword).append("%");
+        params.push(sb.finish());
+    }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
     params.push(page_size.to_string());
@@ -158,17 +167,20 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<AgentGroupListItem> = rows.into_iter().map(|row| {
-                let authority = row.4.and_then(|v| serde_json::from_str(&v).ok());
-                AgentGroupListItem {
-                    id: row.0,
-                    name: row.1,
-                    pay_divide: row.2,
-                    km_discount: row.3,
-                    authority,
-                    appid: row.5,
-                }
-            }).collect();
+            let list: Vec<AgentGroupListItem> = rows
+                .into_iter()
+                .map(|row| {
+                    let authority = row.4.and_then(|v| serde_json::from_str(&v).ok());
+                    AgentGroupListItem {
+                        id: row.0,
+                        name: row.1,
+                        pay_divide: row.2,
+                        km_discount: row.3,
+                        authority,
+                        appid: row.5,
+                    }
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -196,7 +208,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddAgentGroupRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -233,20 +245,19 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .string("name", &add_req.name, 2, 64)
         .betweend("pay_divide", add_req.pay_divide, 0, 100)
         .betweend("km_discount", add_req.km_discount, 0, 10);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
     }
 
     // 检查名称是否重复
-    let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_agent_group WHERE appid = ? AND name = ?"
-    )
-    .bind(appid)
-    .bind(&add_req.name)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE appid = ? AND name = ?")
+            .bind(appid)
+            .bind(&add_req.name)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some(_)) => {
@@ -307,7 +318,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditAgentGroupRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -346,7 +357,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .string("name", &edit_req.name, 2, 64)
         .betweend("pay_divide", edit_req.pay_divide, 0, 100)
         .betweend("km_discount", edit_req.km_discount, 0, 10);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -354,7 +365,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 检查名称是否重复（排除自己）
     let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_agent_group WHERE appid = ? AND name = ? AND id != ?"
+        "SELECT id FROM u_agent_group WHERE appid = ? AND name = ? AND id != ?",
     )
     .bind(appid)
     .bind(&edit_req.name)
@@ -417,7 +428,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -428,8 +439,10 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 参数验证
     let mut validator = Validator::new();
-    validator.required_i64("id", &Some(del_req.id), "删除ID").int("id", del_req.id, 1, 11);
-    
+    validator
+        .required_i64("id", &Some(del_req.id), "删除ID")
+        .int("id", del_req.id, 1, 11);
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -455,5 +468,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

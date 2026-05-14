@@ -1,5 +1,5 @@
 //! 绑定邮箱
-//! 
+//!
 //! 功能说明：
 //! 用户绑定邮箱，需要邮箱验证码验证。
 //! 绑定后可用邮箱+密码登录。
@@ -11,17 +11,19 @@
 //! 4. 更新用户email字段
 //! 5. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::SetEmailRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::SetEmailRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -32,7 +34,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -43,7 +45,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     };
     let app_key = app_info.app_key.as_str();
     let vc_time = app_info.vc_time;
-    
+
     let set_req = match req.parse_json::<SetEmailRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -60,7 +62,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .wordnum("token", &set_req.token, 32, 32)
         .email("email", &set_req.email)
         .int("code", set_req.code as i64, 4, 6);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -104,7 +106,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     .bind(appid)
     .execute(app_state.get_db())
     .await;
-    
+
     match verify_result {
         Ok(result) => {
             if result.rows_affected() < 1 {
@@ -122,13 +124,12 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: $emailRes = $this->db->where('email = ? and appid = ?',[$_POST['email'],$this->app['id']])->fetch('id');
     // PHP: if($emailRes)$this->out->e(120,'该邮箱已被绑定');
     // 检查邮箱是否已被其他用户绑定
-    let email_check = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE email = ? AND appid = ?"
-    )
-    .bind(&set_req.email)
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let email_check =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE email = ? AND appid = ?")
+            .bind(&set_req.email)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     if let Ok(Some(_)) = email_check {
         render_error(res, "该邮箱已被绑定", 120, app_key);
@@ -137,14 +138,12 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['email'=>$_POST['email']]);
     // 更新邮箱
-    let result = sqlx::query(
-        "UPDATE u_user SET email = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(&set_req.email)
-    .bind(uid)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_user SET email = ? WHERE id = ? AND appid = ?")
+        .bind(&set_req.email)
+        .bind(uid)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) => {

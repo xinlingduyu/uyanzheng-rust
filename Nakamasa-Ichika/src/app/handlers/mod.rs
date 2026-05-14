@@ -83,7 +83,7 @@ pub mod api;
 // 公开导出
 // ============================================================================
 
+pub use api::*;
 pub use health::*;
 pub use hello::*;
 pub use static_files::*;
-pub use api::*;

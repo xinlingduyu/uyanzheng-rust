@@ -103,10 +103,7 @@ impl GeminiProvider {
             .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string());
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
         // 添加额外的自定义头部
         for (key, value) in &config.extra_headers {
@@ -296,10 +293,7 @@ impl AiProvider for GeminiProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>> {
-        let url = format!(
-            "{}/models?key={}",
-            self.api_base, self.config.api_key
-        );
+        let url = format!("{}/models?key={}", self.api_base, self.config.api_key);
 
         #[derive(Deserialize)]
         struct ModelsResponse {

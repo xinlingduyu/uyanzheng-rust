@@ -52,7 +52,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -89,21 +89,26 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut where_clause = String::from("WHERE appid = ?");
     let mut params: Vec<String> = vec![appid.to_string()];
     let mut count_params: Vec<String> = vec![appid.to_string()];
-    
+
     if let Some(so) = &list_req.so
         && let Some(keyword) = &so.keyword
-            && !keyword.is_empty() {
-                where_clause.push_str(" AND (name LIKE ? OR id = ?)");
-                params.push(format!("%{}%", keyword));
-                params.push(keyword.clone());
-                count_params.push(format!("%{}%", keyword));
-                count_params.push(keyword.clone());
-            }
+        && !keyword.is_empty()
+    {
+        where_clause.push_str(" AND (name LIKE ? OR id = ?)");
+        params.push(format!("%{}%", keyword));
+        params.push(keyword.clone());
+        count_params.push(format!("%{}%", keyword));
+        count_params.push(keyword.clone());
+    }
 
-    let query = format!("SELECT id, name, type, val, money, IFNULL(blurb, '') as blurb, state, appid FROM u_goods {} ORDER BY id DESC LIMIT ? OFFSET ?", where_clause);
+    let query = format!(
+        "SELECT id, name, type, val, money, IFNULL(blurb, '') as blurb, state, appid FROM u_goods {} ORDER BY id DESC LIMIT ? OFFSET ?",
+        where_clause
+    );
     let count_query = format!("SELECT COUNT(*) FROM u_goods {}", where_clause);
-    
-    let mut sql_query = sqlx::query_as::<_, (u64, String, String, i64, f64, String, String, i64)>(&query);
+
+    let mut sql_query =
+        sqlx::query_as::<_, (u64, String, String, i64, f64, String, String, i64)>(&query);
     for param in &params {
         sql_query = sql_query.bind(param);
     }
@@ -114,16 +119,19 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<GoodsItem> = rows.into_iter().map(|row| GoodsItem {
-                id: row.0,
-                name: row.1,
-                goods_type: row.2,
-                val: row.3,
-                money: row.4,
-                blurb: row.5,
-                state: row.6,
-                appid: row.7,
-            }).collect();
+            let list: Vec<GoodsItem> = rows
+                .into_iter()
+                .map(|row| GoodsItem {
+                    id: row.0,
+                    name: row.1,
+                    goods_type: row.2,
+                    val: row.3,
+                    money: row.4,
+                    blurb: row.5,
+                    state: row.6,
+                    appid: row.7,
+                })
+                .collect();
 
             // 查询总数
             let mut count_sql = sqlx::query_as::<_, (u64,)>(&count_query);
@@ -147,7 +155,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 pageTotal: page_total,
                 dataTotal: data_total,
             };
-            
+
             tracing::debug!("返回数据: {:?}", response);
             res.render(Json(ApiResponse::success("成功", Some(response))));
         }
@@ -178,7 +186,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddGoodsRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -214,7 +222,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let result = sqlx::query(
-        "INSERT INTO u_goods (name, type, val, money, blurb, appid) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO u_goods (name, type, val, money, blurb, appid) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&add_req.name)
     .bind(&add_req.goods_type)
@@ -263,7 +271,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditGoodsRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -321,7 +329,7 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditStateRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -371,7 +379,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -400,5 +408,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

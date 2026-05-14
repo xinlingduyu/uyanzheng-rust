@@ -49,7 +49,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -83,24 +83,28 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let offset = (page - 1) * page_size;
 
     // 构建查询语句
-    let mut query = String::from("SELECT id, name, var_key, var_val, appid FROM u_app_extend WHERE (appid = ? OR appid IS NULL)");
-    let mut count_query = String::from("SELECT COUNT(*) FROM u_app_extend WHERE (appid = ? OR appid IS NULL)");
+    let mut query = String::from(
+        "SELECT id, name, var_key, var_val, appid FROM u_app_extend WHERE (appid = ? OR appid IS NULL)",
+    );
+    let mut count_query =
+        String::from("SELECT COUNT(*) FROM u_app_extend WHERE (appid = ? OR appid IS NULL)");
     let mut params: Vec<String> = vec![appid.to_string()];
     let mut count_params: Vec<String> = vec![appid.to_string()];
 
     // 添加搜索条件
     if let Some(so) = list_req.so
-        && !so.keyword.is_empty() {
-            query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
-            count_query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
-            let keyword = format!("%{}%", so.keyword);
-            params.push(keyword.clone());
-            params.push(keyword.clone());
-            params.push(keyword.clone());
-            count_params.push(keyword.clone());
-            count_params.push(keyword.clone());
-            count_params.push(keyword.clone());
-        }
+        && !so.keyword.is_empty()
+    {
+        query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
+        count_query.push_str(" AND (name LIKE ? OR var_key LIKE ? OR var_val LIKE ?)");
+        let keyword = format!("%{}%", so.keyword);
+        params.push(keyword.clone());
+        params.push(keyword.clone());
+        params.push(keyword.clone());
+        count_params.push(keyword.clone());
+        count_params.push(keyword.clone());
+        count_params.push(keyword.clone());
+    }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
 
@@ -116,13 +120,16 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<ExtendItem> = rows.into_iter().map(|row| ExtendItem {
-                id: row.0,
-                name: row.1,
-                var_key: row.2,
-                var_val: row.3,
-                appid: row.4,
-            }).collect();
+            let list: Vec<ExtendItem> = rows
+                .into_iter()
+                .map(|row| ExtendItem {
+                    id: row.0,
+                    name: row.1,
+                    var_key: row.2,
+                    var_val: row.3,
+                    appid: row.4,
+                })
+                .collect();
 
             // 查询总数
             let mut count_sql = sqlx::query_as::<_, (u64,)>(&count_query);
@@ -178,7 +185,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddExtendRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -207,17 +214,20 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let appid_value = if add_req.all == "n" { Some(appid) } else { None };
+    let appid_value = if add_req.all == "n" {
+        Some(appid)
+    } else {
+        None
+    };
 
-    let insert_result = sqlx::query(
-        "INSERT INTO u_app_extend (name, var_key, var_val, appid) VALUES (?, ?, ?, ?)"
-    )
-    .bind(&add_req.name)
-    .bind(&add_req.var_key)
-    .bind(&add_req.var_val)
-    .bind(appid_value)
-    .execute(app_state.get_db())
-    .await;
+    let insert_result =
+        sqlx::query("INSERT INTO u_app_extend (name, var_key, var_val, appid) VALUES (?, ?, ?, ?)")
+            .bind(&add_req.name)
+            .bind(&add_req.var_key)
+            .bind(&add_req.var_val)
+            .bind(appid_value)
+            .execute(app_state.get_db())
+            .await;
 
     match insert_result {
         Ok(result) => {
@@ -253,7 +263,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditExtendRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -282,10 +292,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let appid_value = if edit_req.all == "n" { Some(appid) } else { None };
+    let appid_value = if edit_req.all == "n" {
+        Some(appid)
+    } else {
+        None
+    };
 
     let result = sqlx::query(
-        "UPDATE u_app_extend SET name = ?, var_key = ?, var_val = ?, appid = ? WHERE id = ?"
+        "UPDATE u_app_extend SET name = ?, var_key = ?, var_val = ?, appid = ? WHERE id = ?",
     )
     .bind(&edit_req.name)
     .bind(&edit_req.var_key)
@@ -324,7 +338,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -353,5 +367,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

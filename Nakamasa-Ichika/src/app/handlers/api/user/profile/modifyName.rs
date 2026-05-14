@@ -1,19 +1,21 @@
 //! 修改昵称
-//! 
+//!
 //! 功能说明：
 //! 已登录用户修改自己的昵称。
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::ModifyNameRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::ModifyNameRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -24,7 +26,7 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -54,7 +56,7 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
     validator
         .wordnum("token", &modify_req.token, 32, 32)
         .string("name", &modify_req.name, 1, 64);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -75,23 +77,28 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let ip = get_client_ip(req);
 
     // 更新昵称
-    let result = sqlx::query(
-        "UPDATE u_user SET nickname = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(&modify_req.name).bind(uid).bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_user SET nickname = ? WHERE id = ? AND appid = ?")
+        .bind(&modify_req.name)
+        .bind(uid)
+        .bind(appid)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 记录日志
                 let _ = sqlx::query(
-                    "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
                 )
-                .bind("user").bind(uid).bind("modifyName")
-                .bind(current_time).bind(ip).bind(appid)
-                .execute(app_state.get_db()).await;
+                .bind("user")
+                .bind(uid)
+                .bind("modifyName")
+                .bind(current_time)
+                .bind(ip)
+                .bind(appid)
+                .execute(app_state.get_db())
+                .await;
 
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {

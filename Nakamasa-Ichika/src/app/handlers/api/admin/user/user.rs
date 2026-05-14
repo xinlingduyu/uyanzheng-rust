@@ -1,16 +1,17 @@
 //! Admin User controller
 //! 管理员用户控制器 - PHP逻辑一比一还原
 
+use chrono::Utc;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use chrono::Utc;
 use sqlx::Row;
 use std::sync::Arc;
 
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::core::app_state::AppState;
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::app_state::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 /// 安全的SQL查询构建器
 /// 所有条件值都通过参数绑定传递，防止SQL注入
@@ -22,7 +23,7 @@ mod safe_query {
         Str(String),
         Null,
     }
-    
+
     /// 安全查询构建器
     pub struct SafeQueryBuilder {
         table: String,
@@ -32,16 +33,17 @@ mod safe_query {
         limit: Option<u32>,
         offset: Option<u32>,
     }
-    
+
     impl SafeQueryBuilder {
         /// 创建新的查询构建器
         /// table_name 只允许字母、数字和下划线
         pub fn new(table_name: &str) -> Self {
             // 验证表名只包含安全字符
-            let safe_name: String = table_name.chars()
+            let safe_name: String = table_name
+                .chars()
                 .filter(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
-            
+
             Self {
                 table: safe_name,
                 conditions: Vec::new(),
@@ -51,36 +53,41 @@ mod safe_query {
                 offset: None,
             }
         }
-        
+
         /// 添加WHERE条件 - 条件模板必须是预定义的安全字符串
         pub fn add_condition(&mut self, condition: &str, param: SqlParam) -> &mut Self {
             self.conditions.push(condition.to_string());
             self.params.push(param);
             self
         }
-        
+
         /// 添加原始条件（仅用于硬编码的条件，如 "ban > ?"）
         pub fn add_raw_condition(&mut self, condition: &str) -> &mut Self {
             self.conditions.push(condition.to_string());
             self
         }
-        
+
         /// 设置排序（仅允许预定义的安全字段）
         pub fn order_by(&mut self, field: &str, desc: bool) -> &mut Self {
-            let safe_field: String = field.chars()
+            let safe_field: String = field
+                .chars()
                 .filter(|c| c.is_alphanumeric() || *c == '_')
                 .collect();
-            self.order_by = Some(format!("{} {}", safe_field, if desc { "DESC" } else { "ASC" }));
+            self.order_by = Some(format!(
+                "{} {}",
+                safe_field,
+                if desc { "DESC" } else { "ASC" }
+            ));
             self
         }
-        
+
         /// 设置分页
         pub fn paginate(&mut self, page: u32, size: u32) -> &mut Self {
             self.limit = Some(size);
             self.offset = Some((page.saturating_sub(1)) * size);
             self
         }
-        
+
         /// 构建COUNT查询SQL
         pub fn build_count_sql(&self) -> String {
             let where_clause = if self.conditions.is_empty() {
@@ -88,9 +95,12 @@ mod safe_query {
             } else {
                 format!(" WHERE {}", self.conditions.join(" AND "))
             };
-            format!("SELECT COUNT(*) as total FROM {}{}", self.table, where_clause)
+            format!(
+                "SELECT COUNT(*) as total FROM {}{}",
+                self.table, where_clause
+            )
         }
-        
+
         /// 构建SELECT查询SQL
         pub fn build_select_sql(&self, fields: &str) -> String {
             let where_clause = if self.conditions.is_empty() {
@@ -98,20 +108,25 @@ mod safe_query {
             } else {
                 format!(" WHERE {}", self.conditions.join(" AND "))
             };
-            
-            let order_clause = self.order_by.as_ref()
+
+            let order_clause = self
+                .order_by
+                .as_ref()
                 .map(|o| format!(" ORDER BY {}", o))
                 .unwrap_or_default();
-            
+
             let limit_clause = match (self.limit, self.offset) {
                 (Some(lim), Some(off)) => format!(" LIMIT {} OFFSET {}", lim, off),
                 (Some(lim), None) => format!(" LIMIT {}", lim),
                 _ => String::new(),
             };
-            
-            format!("SELECT {} FROM {}{}{}{}", fields, self.table, where_clause, order_clause, limit_clause)
+
+            format!(
+                "SELECT {} FROM {}{}{}{}",
+                fields, self.table, where_clause, order_clause, limit_clause
+            )
         }
-        
+
         /// 获取参数列表
         pub fn params(&self) -> &[SqlParam] {
             &self.params
@@ -152,7 +167,6 @@ struct UserItem {
     acctno: String,
     nickname: Option<String>,
     avatars: Option<String>,
-    password: String,
     inviter_id: Option<u64>,
     vip: Option<i64>,
     fen: i64,
@@ -228,13 +242,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 获取appid（从Header获取，必须）
     let appid: u64 = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
-            Ok(s) => {
-                match s.parse::<u64>() {
-                    Ok(num) => num,
-                    Err(_) => {
-                        res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
-                        return;
-                    }
+            Ok(s) => match s.parse::<u64>() {
+                Ok(num) => num,
+                Err(_) => {
+                    res.render(Json(ApiResponse::<()>::error("APPID格式错误", 201)));
+                    return;
                 }
             },
             Err(_) => {
@@ -275,18 +287,19 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         // ug 过滤: 1=普通用户(vip < time or vip IS NULL), 2=VIP用户(vip > time), 3=永久VIP(vip >= 9999999999)
         if let Some(ref ug_str) = so.ug
             && !ug_str.is_empty()
-                && let Ok(ug) = ug_str.parse::<i32>() {
-                    if ug == 1 {
-                        where_conditions.push("(vip < ? OR vip IS NULL)".to_string());
-                        where_params_i64.push(now);
-                    } else if ug == 2 {
-                        where_conditions.push("vip > ?".to_string());
-                        where_params_i64.push(now);
-                    } else if ug == 3 {
-                        where_conditions.push("vip >= ?".to_string());
-                        where_params_i64.push(9999999999);
-                    }
-                }
+            && let Ok(ug) = ug_str.parse::<i32>()
+        {
+            if ug == 1 {
+                where_conditions.push("(vip < ? OR vip IS NULL)".to_string());
+                where_params_i64.push(now);
+            } else if ug == 2 {
+                where_conditions.push("vip > ?".to_string());
+                where_params_i64.push(now);
+            } else if ug == 3 {
+                where_conditions.push("vip >= ?".to_string());
+                where_params_i64.push(9999999999);
+            }
+        }
 
         // keyword 搜索: 根据 keywordType 搜索不同字段
         if !so.keyword.is_empty() {
@@ -326,9 +339,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let app_url = app_state.config().app().host().to_string();
 
     let where_clause = where_conditions.join(" AND ");
-    
+
     // 先查询总数
-    let count_query = format!("SELECT COUNT(*) as total FROM u_user WHERE {}", where_clause);
+    let count_query = format!(
+        "SELECT COUNT(*) as total FROM u_user WHERE {}",
+        where_clause
+    );
 
     let mut count_sql_query = sqlx::query(&count_query);
     for param in &where_params_i64 {
@@ -337,7 +353,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     for param in &where_params_str {
         count_sql_query = count_sql_query.bind(param);
     }
-    
+
     let total: i64 = match count_sql_query.fetch_one(app_state.get_db()).await {
         Ok(row) => row.try_get("total").unwrap_or(0),
         Err(_e) => {
@@ -345,15 +361,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 查询数据
     let query = format!(
-        "SELECT * FROM u_user WHERE {} ORDER BY id DESC LIMIT {} OFFSET {}",
-        where_clause,
-        size,
-        offset
+        "SELECT id, email, phone, acctno, nickname, avatars, inviter_id, vip, fen, extend, open_wx, open_qq, reg_time, reg_ip, reg_sn, sn_list, sn_max, ban, ban_msg, appid FROM u_user WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?",
+        where_clause
     );
-    
+
     let mut sql_query = sqlx::query(&query);
     for param in &where_params_i64 {
         sql_query = sql_query.bind(param);
@@ -361,6 +375,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     for param in &where_params_str {
         sql_query = sql_query.bind(param);
     }
+    sql_query = sql_query.bind(size).bind(offset);
 
     // 执行查询
     let result = sql_query.fetch_all(app_state.get_db()).await;
@@ -400,7 +415,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     acctno: row.try_get("acctno").unwrap_or_else(|_| String::new()),
                     nickname: row.try_get("nickname").ok(),
                     avatars,
-                    password: row.try_get("password").unwrap_or_else(|_| String::new()),
                     inviter_id: row.try_get("inviter_id").ok(),
                     vip: row.try_get("vip").ok(),
                     fen: row.try_get("fen").unwrap_or(0),
@@ -416,7 +430,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     ban_msg: row.try_get("ban_msg").ok(),
                     appid: row.try_get("appid").unwrap_or(0),
                     last_login_info: None, // TODO: 需要从u_login表查询最后登录信息
-                    online: 0, // TODO: 需要从Redis或其他方式判断在线状态
+                    online: 0,             // TODO: 需要从Redis或其他方式判断在线状态
                 };
                 list.push(user_item);
             }
@@ -495,13 +509,12 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 检查账号是否重复
-    let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_user WHERE acctno = ? AND appid = ?"
-    )
-    .bind(&add_req.acctno)
-    .bind(&appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE acctno = ? AND appid = ?")
+            .bind(&add_req.acctno)
+            .bind(&appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some(_)) => {
@@ -510,7 +523,12 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
         Ok(None) => {}
         Err(e) => {
-            tracing::error!("检查账号重复失败: acctno={}, appid={}, error={}", add_req.acctno, appid, e);
+            tracing::error!(
+                "检查账号重复失败: acctno={}, appid={}, error={}",
+                add_req.acctno,
+                appid,
+                e
+            );
             res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
             return;
         }
@@ -520,11 +538,11 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let password_hash_bytes = md5_hex(add_req.password.as_bytes());
     let password_hash = md5_to_str(&password_hash_bytes).to_string();
     let now = Utc::now().timestamp();
-    let ip = get_client_ip(req);
+    let ip = get_client_ip(req).to_string();
 
     // 插入用户
     let result = sqlx::query(
-        "INSERT INTO u_user (acctno, password, reg_time, reg_ip, appid) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO u_user (acctno, password, reg_time, reg_ip, appid) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&add_req.acctno)
     .bind(&password_hash)
@@ -627,13 +645,12 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         // 奖励所有人
         if award_req.award_type == "fen" {
             // 奖励积分: 累加 fen = fen + val
-            let result = sqlx::query(
-                "UPDATE u_user SET fen = fen + ? WHERE fen < 9999999999 AND appid = ?"
-            )
-            .bind(val_seconds)
-            .bind(&appid)
-            .execute(app_state.get_db())
-            .await;
+            let result =
+                sqlx::query("UPDATE u_user SET fen = fen + ? WHERE fen < 9999999999 AND appid = ?")
+                    .bind(val_seconds)
+                    .bind(&appid)
+                    .execute(app_state.get_db())
+                    .await;
             if let Ok(r) = result {
                 success = r.rows_affected() > 0;
             }
@@ -641,7 +658,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             // 奖励VIP：累加 vip = vip + val，保护永久会员
             // 1. 对已有VIP的用户累加（排除永久会员和已过期用户）
             let res1 = sqlx::query(
-                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?"
+                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?",
             )
             .bind(val_seconds)
             .bind(now)
@@ -679,7 +696,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         } else {
             // 奖励VIP: 累加 vip = vip + val，保护永久会员
             let result = sqlx::query(
-                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?"
+                "UPDATE u_user SET vip = vip + ? WHERE vip > ? AND vip < 9999999999 AND appid = ?",
             )
             .bind(val_seconds)
             .bind(now)
@@ -693,7 +710,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 记录日志: log->u('adm', adminfo['id'])->add(res)
-    let ip = get_client_ip(req);
+    let ip = get_client_ip(req).to_string();
     if let Ok(admin_id) = depot.get::<u64>("admin_id") {
         let _ = sqlx::query(
             "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -707,30 +724,30 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(&appid)
         .execute(app_state.get_db())
                     .await;
-            }
-        
-            if success {
-                res.render(Json(ApiResponse::success_msg("奖励执行成功")));
-            } else {
-                res.render(Json(ApiResponse::<()>::error("奖励执行失败", 201)));
-            }
-        }
+    }
+
+    if success {
+        res.render(Json(ApiResponse::success_msg("奖励执行成功")));
+    } else {
+        res.render(Json(ApiResponse::<()>::error("奖励执行失败", 201)));
+    }
+}
 /// 辅助函数：反序列化时支持字符串或整数类型（转为字符串）
 fn deserialize_string_or_int<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     use serde::de::{self, Visitor};
-    
+
     struct StringOrIntVisitor;
-    
+
     impl<'de> Visitor<'de> for StringOrIntVisitor {
         type Value = Option<String>;
-        
+
         fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
             formatter.write_str("a string, an integer, or null")
         }
-        
+
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: de::Error,
@@ -741,28 +758,28 @@ where
                 Ok(Some(value.to_string()))
             }
         }
-        
+
         fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
         where
             E: de::Error,
         {
             Ok(Some(value.to_string()))
         }
-        
+
         fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: de::Error,
         {
             Ok(Some(value.to_string()))
         }
-        
+
         fn visit_none<E>(self) -> Result<Self::Value, E>
         where
             E: de::Error,
         {
             Ok(None)
         }
-        
+
         fn visit_unit<E>(self) -> Result<Self::Value, E>
         where
             E: de::Error,
@@ -770,7 +787,7 @@ where
             Ok(None)
         }
     }
-    
+
     deserializer.deserialize_any(StringOrIntVisitor)
 }
 
@@ -815,9 +832,12 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 打印 POST 请求内容
-    tracing::info!("user/edit POST 请求内容: {:?}", serde_json::to_string(&edit_req).unwrap_or_default());
+    tracing::info!(
+        "user/edit POST 请求内容: {:?}",
+        serde_json::to_string(&edit_req).unwrap_or_default()
+    );
 
-// 参数验证: id[int], password[Password 5,18 可选], vip[betweend 0,9999999999 可选], fen[int 默认0], sn_max[int 默认0], ban[betweend 0,9999999999 可选], ban_msg[String 2,255 可选]
+    // 参数验证: id[int], password[Password 5,18 可选], vip[betweend 0,9999999999 可选], fen[int 默认0], sn_max[int 默认0], ban[betweend 0,9999999999 可选], ban_msg[String 2,255 可选]
     let mut validator = Validator::new();
     validator
         .required_u64("id", &Some(edit_req.id), "操作用户ID")
@@ -825,21 +845,24 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // password: 可选，如果不为空则验证
     if let Some(ref pwd) = edit_req.password
-        && !pwd.is_empty() {
-            validator.password("password", pwd, 5, 18);
-        }
+        && !pwd.is_empty()
+    {
+        validator.password("password", pwd, 5, 18);
+    }
 
     // phone: 可选，如果不为空则验证手机号格式
     if let Some(ref phone) = edit_req.phone
-        && !phone.is_empty() {
-            validator.string("phone", phone, 11, 11);
-        }
+        && !phone.is_empty()
+    {
+        validator.string("phone", phone, 11, 11);
+    }
 
     // email: 可选，如果不为空则验证邮箱格式
     if let Some(ref email) = edit_req.email
-        && !email.is_empty() {
-            validator.string("email", email, 5, 100);
-        }
+        && !email.is_empty()
+    {
+        validator.string("email", email, 5, 100);
+    }
 
     // vip: 可选
     if let Some(vip) = edit_req.vip {
@@ -863,9 +886,10 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // ban_msg: 可选，如果不为空则验证
     if let Some(ref ban_msg) = edit_req.ban_msg
-        && !ban_msg.is_empty() {
-            validator.string("ban_msg", ban_msg, 2, 255);
-        }
+        && !ban_msg.is_empty()
+    {
+        validator.string("ban_msg", ban_msg, 2, 255);
+    }
 
     if let Err(msg) = validator.validate() {
         tracing::error!("参数验证失败: {}", msg);
@@ -890,7 +914,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 查询用户是否存在
     let user_result = sqlx::query_as::<_, (u64, Option<i64>, i64, i64)>(
-        "SELECT id, vip, fen, appid FROM u_user WHERE id = ?"
+        "SELECT id, vip, fen, appid FROM u_user WHERE id = ?",
     )
     .bind(edit_req.id)
     .fetch_optional(app_state.get_db())
@@ -920,15 +944,27 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // phone: 可选，直接赋值
     let new_phone = edit_req.phone.clone();
-    update_sql.push_str(&format!("phone = {}{}, ", if new_phone.is_some() { "?" } else { "NULL" }, if new_phone.is_some() { "" } else { "" }));
+    update_sql.push_str(&format!(
+        "phone = {}{}, ",
+        if new_phone.is_some() { "?" } else { "NULL" },
+        if new_phone.is_some() { "" } else { "" }
+    ));
 
     // email: 可选，直接赋值
     let new_email = edit_req.email.clone();
-    update_sql.push_str(&format!("email = {}{}, ", if new_email.is_some() { "?" } else { "NULL" }, if new_email.is_some() { "" } else { "" }));
+    update_sql.push_str(&format!(
+        "email = {}{}, ",
+        if new_email.is_some() { "?" } else { "NULL" },
+        if new_email.is_some() { "" } else { "" }
+    ));
 
     // vip: !empty($_POST['vip'])?$_POST['vip']:NULL
     let new_vip = edit_req.vip;
-    update_sql.push_str(&format!("vip = {}{}, ", if new_vip.is_some() { "?" } else { "NULL" }, if new_vip.is_some() { "" } else { "" }));
+    update_sql.push_str(&format!(
+        "vip = {}{}, ",
+        if new_vip.is_some() { "?" } else { "NULL" },
+        if new_vip.is_some() { "" } else { "" }
+    ));
 
     // fen: 默认0
     let new_fen = edit_req.fen.unwrap_or(0);
@@ -940,41 +976,54 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // ban: 直接赋值
     let new_ban = edit_req.ban;
-    update_sql.push_str(&format!("ban = {}{}, ", if new_ban.is_some() { "?" } else { "NULL" }, if new_ban.is_some() { "" } else { "" }));
+    update_sql.push_str(&format!(
+        "ban = {}{}, ",
+        if new_ban.is_some() { "?" } else { "NULL" },
+        if new_ban.is_some() { "" } else { "" }
+    ));
 
     // ban_msg: 直接赋值
     let new_ban_msg = edit_req.ban_msg;
-    update_sql.push_str(&format!("ban_msg = {}{}, ", if new_ban_msg.is_some() { "?" } else { "NULL" }, if new_ban_msg.is_some() { "" } else { "" }));
+    update_sql.push_str(&format!(
+        "ban_msg = {}{}, ",
+        if new_ban_msg.is_some() { "?" } else { "NULL" },
+        if new_ban_msg.is_some() { "" } else { "" }
+    ));
 
     // password: 可选
     let mut password_hash_opt: Option<String> = None;
     if let Some(ref pwd) = edit_req.password
-        && !pwd.is_empty() {
-            let hash_bytes = md5_hex(pwd.as_bytes());
-            password_hash_opt = Some(md5_to_str(&hash_bytes).to_string());
-            update_sql.push_str("password = ?, ");
-        }
+        && !pwd.is_empty()
+    {
+        let hash_bytes = md5_hex(pwd.as_bytes());
+        password_hash_opt = Some(md5_to_str(&hash_bytes).to_string());
+        update_sql.push_str("password = ?, ");
+    }
 
     // 移除最后的", "
 
-        let update_sql = update_sql.trim_end_matches(", ");
+    let update_sql = update_sql.trim_end_matches(", ");
 
-    
+    // 执行更新
 
-        // 执行更新
+    let query = format!("UPDATE u_user SET {} WHERE id = ?", update_sql);
 
-        let query = format!("UPDATE u_user SET {} WHERE id = ?", update_sql);
+    // 打印 SQL 和参数用于调试
+    tracing::debug!("user/edit SQL: {}", query);
+    tracing::debug!(
+        "user/edit 参数: phone={:?}, email={:?}, vip={:?}, fen={}, sn_max={}, ban={:?}, ban_msg={:?}, password_hash={:?}, id={}",
+        new_phone,
+        new_email,
+        new_vip,
+        new_fen,
+        new_sn_max,
+        new_ban,
+        new_ban_msg,
+        password_hash_opt,
+        edit_req.id
+    );
 
-    
-
-        // 打印 SQL 和参数用于调试
-        tracing::debug!("user/edit SQL: {}", query);
-        tracing::debug!("user/edit 参数: phone={:?}, email={:?}, vip={:?}, fen={}, sn_max={}, ban={:?}, ban_msg={:?}, password_hash={:?}, id={}", 
-            new_phone, new_email, new_vip, new_fen, new_sn_max, new_ban, new_ban_msg, password_hash_opt, edit_req.id);
-
-    
-
-        let mut sql_query = sqlx::query(&query);
+    let mut sql_query = sqlx::query(&query);
 
     // 按顺序绑定参数
     // phone
@@ -1017,7 +1066,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 let effective_new = if new_vip_val < now { now } else { new_vip_val };
                 let new_vip_diff = effective_new - effective_old;
                 // $asset_changes['vip'] = $newVip>0?'+'.$newVip:$newVip;
-                asset_changes.insert("vip".to_string(), serde_json::Value::String(if new_vip_diff > 0 { format!("+{}", new_vip_diff) } else { new_vip_diff.to_string() }));
+                asset_changes.insert(
+                    "vip".to_string(),
+                    serde_json::Value::String(if new_vip_diff > 0 {
+                        format!("+{}", new_vip_diff)
+                    } else {
+                        new_vip_diff.to_string()
+                    }),
+                );
             }
         }
 
@@ -1026,7 +1082,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             // $newFen = intval($data['fen'])-intval($Ures['fen']);
             let new_fen_diff = new_fen - old_fen;
             // $asset_changes['fen'] = $newFen>0?'+'.$newFen:$newFen;
-            asset_changes.insert("fen".to_string(), serde_json::Value::String(if new_fen_diff > 0 { format!("+{}", new_fen_diff) } else { new_fen_diff.to_string() }));
+            asset_changes.insert(
+                "fen".to_string(),
+                serde_json::Value::String(if new_fen_diff > 0 {
+                    format!("+{}", new_fen_diff)
+                } else {
+                    new_fen_diff.to_string()
+                }),
+            );
         }
 
         // if(!empty($asset_changes)){
@@ -1044,9 +1107,9 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if r.rows_affected() > 0 {
                 // 失效用户缓存
                 app_state.invalidate_user_cache(edit_req.id);
-                
+
                 // 记录日志: log->u('adm', adminfo['id'], 'user', id)->add(res)
-                let ip = get_client_ip(req);
+                let ip = get_client_ip(req).to_string();
                 if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                     let _ = sqlx::query(
                         "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -1088,7 +1151,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -1123,7 +1186,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if r.rows_affected() > 0 {
                 // 失效用户缓存
                 app_state.invalidate_user_cache(del_req.id as u64);
-                
+
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
@@ -1299,23 +1362,23 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let log_list = match log_result {
         Ok(rows) => {
-            rows.iter().map(|row| {
-                LogItem {
-                    id: row.0,
-                    ug: row.1.clone(),
-                    uid: row.2,
-                    r#type: row.3.clone(),
-                    details: row.4.clone(),
-                    time: row.5,
-                    ip: row.6.clone(),
-                    ip_address: None, // TODO: 可以使用GeoIP库根据IP查询地址
-                    appid: row.7,
-                }
-            }).collect()
+            rows.iter()
+                .map(|row| {
+                    LogItem {
+                        id: row.0,
+                        ug: row.1.clone(),
+                        uid: row.2,
+                        r#type: row.3.clone(),
+                        details: row.4.clone(),
+                        time: row.5,
+                        ip: row.6.clone(),
+                        ip_address: None, // TODO: 可以使用GeoIP库根据IP查询地址
+                        appid: row.7,
+                    }
+                })
+                .collect()
         }
-        Err(_) => {
-            Vec::new()
-        }
+        Err(_) => Vec::new(),
     };
 
     let data = GetData {
@@ -1328,30 +1391,15 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
 #[handler]
 pub async fn get_log(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
-    res.render(Json(ApiResponse::success("成功", Some(serde_json::json!({"list": []})))));
+    res.render(Json(ApiResponse::success(
+        "成功",
+        Some(serde_json::json!({"list": []})),
+    )));
 }
 
 #[handler]
 pub async fn unbind_sn(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
     res.render(Json(ApiResponse::success_msg("解绑成功")));
-}
-
-/// 获取客户端IP
-fn get_client_ip(req: &Request) -> String {
-    // 尝试从Header获取真实IP
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
-        && let Ok(ip) = x_real_ip.to_str() {
-            return ip.to_string();
-        }
-    
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
-        && let Ok(ip) = x_forwarded_for.to_str() {
-            // 取第一个IP
-            return ip.split(',').next().unwrap_or("").trim().to_string();
-        }
-
-    // TODO: 获取连接的真实IP
-    "127.0.0.1".to_string()
 }
 
 // ==================== 管理员个人中心接口 ====================
@@ -1381,7 +1429,7 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取当前管理员ID
     let admin_id: u64 = match depot.get::<u64>("admin_id") {
         Ok(id) => *id,
@@ -1402,7 +1450,7 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
     };
 
     let now = Utc::now().timestamp();
-    let ip = get_client_ip(req);
+    let ip = get_client_ip(req).to_string();
 
     // 构建更新语句 - 只更新提供的字段
     let mut updates = Vec::new();
@@ -1429,10 +1477,7 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
         return;
     }
 
-    let query = format!(
-        "UPDATE u_admin SET {} WHERE id = ?",
-        updates.join(", ")
-    );
+    let query = format!("UPDATE u_admin SET {} WHERE id = ?", updates.join(", "));
 
     let mut sql_query = sqlx::query(&query);
     for param in params {
@@ -1447,10 +1492,10 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
             if r.rows_affected() > 0 {
                 // 失效管理员缓存
                 app_state.admin_cache.invalidate(admin_id);
-                
+
                 // 记录日志
                 let _ = sqlx::query(
-                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind("adm")
                 .bind(admin_id)
@@ -1492,7 +1537,7 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
             return;
         }
     };
-    
+
     // 获取当前管理员ID
     let admin_id: u64 = match depot.get::<u64>("admin_id") {
         Ok(id) => *id,
@@ -1525,28 +1570,31 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
 
     // 验证新密码和确认密码一致
     if pwd_req.newPassword != pwd_req.new_password_confirmation {
-        res.render(Json(ApiResponse::<()>::error("新密码与确认密码不一致", 201)));
+        res.render(Json(ApiResponse::<()>::error(
+            "新密码与确认密码不一致",
+            201,
+        )));
         return;
     }
 
     // 获取管理员当前密码
-    let current_password: String = match sqlx::query_scalar::<_, String>(
-        "SELECT password FROM u_admin WHERE id = ?"
-    )
-    .bind(admin_id)
-    .fetch_optional(app_state.get_db())
-    .await {
-        Ok(Some(pwd)) => pwd,
-        Ok(None) => {
-            res.render(Json(ApiResponse::<()>::error("管理员不存在", 201)));
-            return;
-        }
-        Err(e) => {
-            tracing::error!("查询管理员密码失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
-            return;
-        }
-    };
+    let current_password: String =
+        match sqlx::query_scalar::<_, String>("SELECT password FROM u_admin WHERE id = ?")
+            .bind(admin_id)
+            .fetch_optional(app_state.get_db())
+            .await
+        {
+            Ok(Some(pwd)) => pwd,
+            Ok(None) => {
+                res.render(Json(ApiResponse::<()>::error("管理员不存在", 201)));
+                return;
+            }
+            Err(e) => {
+                tracing::error!("查询管理员密码失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
+                return;
+            }
+        };
 
     // 验证旧密码
     let adm_pwd_salt = app_state.config().app().admin().keys();
@@ -1591,25 +1639,23 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     };
 
     // 更新密码
-    let result = sqlx::query(
-        "UPDATE u_admin SET password = ? WHERE id = ?"
-    )
-    .bind(&new_pwd_hash)
-    .bind(admin_id)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_admin SET password = ? WHERE id = ?")
+        .bind(&new_pwd_hash)
+        .bind(admin_id)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 失效管理员缓存
                 app_state.admin_cache.invalidate(admin_id);
-                
+
                 // 记录日志
                 let now = Utc::now().timestamp();
-                let ip = get_client_ip(req);
+                let ip = get_client_ip(req).to_string();
                 let _ = sqlx::query(
-                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO u_logs (ug, uid, type, state, time, ip) VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind("adm")
                 .bind(admin_id)

@@ -1,8 +1,8 @@
 //! 预编译正则表达式模块
 //! 避免运行时重复编译正则表达式，提升性能
 
-use std::sync::LazyLock;
 use regex::Regex;
+use std::sync::LazyLock;
 
 /// XML CDATA 内容提取正则（宽松匹配）
 /// 匹配: <key><![CDATA[value]]></...>
@@ -15,27 +15,21 @@ pub static XML_CDATA_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// XML 普通内容提取正则（宽松匹配）
 /// 匹配: <key>value</...>
 pub static XML_PLAIN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r#"<([a-zA-Z_][a-zA-Z0-9_-]*)>([^<]+)<"#)
-        .expect("Invalid XML plain regex")
+    Regex::new(r#"<([a-zA-Z_][a-zA-Z0-9_-]*)>([^<]+)<"#).expect("Invalid XML plain regex")
 });
 
 /// SN 设备号验证正则
 /// 匹配字母、数字、下划线、连字符组成的设备标识
-pub static SN_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9_\-]+$")
-        .expect("Invalid SN regex")
-});
+pub static SN_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_\-]+$").expect("Invalid SN regex"));
 
 /// 手机号验证正则（中国大陆）
-pub static PHONE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^1[3-9]\d{9}$")
-        .expect("Invalid phone regex")
-});
+pub static PHONE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^1[3-9]\d{9}$").expect("Invalid phone regex"));
 
 /// 邮箱验证正则
 pub static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-        .expect("Invalid email regex")
+    Regex::new(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").expect("Invalid email regex")
 });
 
 /// 使用预编译正则解析 XML 到 JSON

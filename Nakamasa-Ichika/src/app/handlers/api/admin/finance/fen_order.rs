@@ -59,7 +59,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -122,11 +122,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             event_id_value = Some(event_id);
         }
         if let Some(ref keyword) = so.keyword
-            && !keyword.is_empty() {
-                keyword_filter = true;
-                keyword_value = keyword.clone();
-                keyword_type = so.keyword_type.clone().unwrap_or_default();
-            }
+            && !keyword.is_empty()
+        {
+            keyword_filter = true;
+            keyword_value = keyword.clone();
+            keyword_type = so.keyword_type.clone().unwrap_or_default();
+        }
     }
 
     let where_clause = where_conditions.join(" AND ");
@@ -135,7 +136,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         Some("user") => {
             // 用户模式：join u_user表
             let mut conditions = where_clause.clone();
-            
+
             // 根据关键字类型优化查询
             if keyword_filter {
                 match keyword_type.as_str() {
@@ -161,19 +162,22 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
             }
 
-            let like_pattern = if keyword_filter { Some(format!("%{}%", keyword_value)) } else { None };
-            
+            let like_pattern = if keyword_filter {
+                Some(format!("%{}%", keyword_value))
+            } else {
+                None
+            };
+
             // 查询总数
             let count_query = format!(
                 "SELECT COUNT(*) FROM u_fen_order AS O LEFT JOIN u_user AS U ON (O.uid=U.id) WHERE {}",
                 conditions
             );
-            
+
             let mut count_q = sqlx::query_scalar(&count_query).bind(appid);
-            if event_filter
-                && let Some(event_id) = event_id_value {
-                    count_q = count_q.bind(event_id);
-                }
+            if event_filter && let Some(event_id) = event_id_value {
+                count_q = count_q.bind(event_id);
+            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     count_q = count_q.bind(pattern).bind(pattern);
@@ -181,7 +185,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     count_q = count_q.bind(pattern);
                 }
             }
-            
+
             let data_total = match count_q.fetch_one(app_state.get_db()).await {
                 Ok(count) => count,
                 Err(e) => {
@@ -196,12 +200,24 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 "SELECT O.id, O.fid, O.uid, O.name, O.fen, O.mark, O.time, IFNULL(U.phone,IFNULL(U.email,U.acctno)) as user FROM u_fen_order AS O LEFT JOIN u_user AS U ON (O.uid=U.id) WHERE {} ORDER BY O.id DESC LIMIT ? OFFSET ?",
                 conditions
             );
-            
-            let mut list_q = sqlx::query_as::<_, (i64, i64, i64, String, i64, Option<String>, i64, Option<String>)>(&list_query).bind(appid);
-            if event_filter
-                && let Some(event_id) = event_id_value {
-                    list_q = list_q.bind(event_id);
-                }
+
+            let mut list_q = sqlx::query_as::<
+                _,
+                (
+                    i64,
+                    i64,
+                    i64,
+                    String,
+                    i64,
+                    Option<String>,
+                    i64,
+                    Option<String>,
+                ),
+            >(&list_query)
+            .bind(appid);
+            if event_filter && let Some(event_id) = event_id_value {
+                list_q = list_q.bind(event_id);
+            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     list_q = list_q.bind(pattern).bind(pattern);
@@ -210,21 +226,24 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
             }
             list_q = list_q.bind(page_size as i64).bind(offset as i64);
-            
+
             let list_result = list_q.fetch_all(app_state.get_db()).await;
 
             match list_result {
                 Ok(rows) => {
-                    let list: Vec<FenOrderItem> = rows.into_iter().map(|row| FenOrderItem {
-                        id: row.0,
-                        fid: row.1,
-                        uid: row.2,
-                        name: row.3,
-                        fen: row.4,
-                        mark: row.5,
-                        user: row.7,
-                        time: row.6,
-                    }).collect();
+                    let list: Vec<FenOrderItem> = rows
+                        .into_iter()
+                        .map(|row| FenOrderItem {
+                            id: row.0,
+                            fid: row.1,
+                            uid: row.2,
+                            name: row.3,
+                            fen: row.4,
+                            mark: row.5,
+                            user: row.7,
+                            time: row.6,
+                        })
+                        .collect();
                     (list, data_total)
                 }
                 Err(e) => {
@@ -237,7 +256,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         _ => {
             // CDK模式：join u_cdk_kami表
             let mut conditions = where_clause.clone();
-            
+
             // 根据关键字类型优化查询
             if keyword_filter {
                 match keyword_type.as_str() {
@@ -263,19 +282,22 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
             }
 
-            let like_pattern = if keyword_filter { Some(format!("%{}%", keyword_value)) } else { None };
-            
+            let like_pattern = if keyword_filter {
+                Some(format!("%{}%", keyword_value))
+            } else {
+                None
+            };
+
             // 查询总数
             let count_query = format!(
                 "SELECT COUNT(*) FROM u_fen_order AS O LEFT JOIN u_cdk_kami AS U ON (O.uid=U.id) WHERE {}",
                 conditions
             );
-            
+
             let mut count_q = sqlx::query_scalar(&count_query).bind(appid);
-            if event_filter
-                && let Some(event_id) = event_id_value {
-                    count_q = count_q.bind(event_id);
-                }
+            if event_filter && let Some(event_id) = event_id_value {
+                count_q = count_q.bind(event_id);
+            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     count_q = count_q.bind(pattern).bind(pattern);
@@ -283,7 +305,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     count_q = count_q.bind(pattern);
                 }
             }
-            
+
             let data_total = match count_q.fetch_one(app_state.get_db()).await {
                 Ok(count) => count,
                 Err(e) => {
@@ -298,12 +320,24 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 "SELECT O.id, O.fid, O.uid, O.name, O.fen, O.mark, O.time, IFNULL(U.phone,IFNULL(U.email,U.cardNo)) as user FROM u_fen_order AS O LEFT JOIN u_cdk_kami AS U ON (O.uid=U.id) WHERE {} ORDER BY O.id DESC LIMIT ? OFFSET ?",
                 conditions
             );
-            
-            let mut list_q = sqlx::query_as::<_, (i64, i64, i64, String, i64, Option<String>, i64, Option<String>)>(&list_query).bind(appid);
-            if event_filter
-                && let Some(event_id) = event_id_value {
-                    list_q = list_q.bind(event_id);
-                }
+
+            let mut list_q = sqlx::query_as::<
+                _,
+                (
+                    i64,
+                    i64,
+                    i64,
+                    String,
+                    i64,
+                    Option<String>,
+                    i64,
+                    Option<String>,
+                ),
+            >(&list_query)
+            .bind(appid);
+            if event_filter && let Some(event_id) = event_id_value {
+                list_q = list_q.bind(event_id);
+            }
             if let Some(ref pattern) = like_pattern {
                 if keyword_type.is_empty() {
                     list_q = list_q.bind(pattern).bind(pattern);
@@ -312,21 +346,24 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 }
             }
             list_q = list_q.bind(page_size as i64).bind(offset as i64);
-            
+
             let list_result = list_q.fetch_all(app_state.get_db()).await;
 
             match list_result {
                 Ok(rows) => {
-                    let list: Vec<FenOrderItem> = rows.into_iter().map(|row| FenOrderItem {
-                        id: row.0,
-                        fid: row.1,
-                        uid: row.2,
-                        name: row.3,
-                        fen: row.4,
-                        mark: row.5,
-                        user: row.7,
-                        time: row.6,
-                    }).collect();
+                    let list: Vec<FenOrderItem> = rows
+                        .into_iter()
+                        .map(|row| FenOrderItem {
+                            id: row.0,
+                            fid: row.1,
+                            uid: row.2,
+                            name: row.3,
+                            fen: row.4,
+                            mark: row.5,
+                            user: row.7,
+                            time: row.6,
+                        })
+                        .collect();
                     (list, data_total)
                 }
                 Err(e) => {
@@ -338,7 +375,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    let page_total = if data_total == 0 { 0 } else { (data_total as f64 / page_size as f64).ceil() as u32 };
+    let page_total = if data_total == 0 {
+        0
+    } else {
+        (data_total as f64 / page_size as f64).ceil() as u32
+    };
 
     let pagination_data = PaginationData {
         current_page: page,
@@ -367,7 +408,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -400,7 +441,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let query = format!("UPDATE u_fen_order SET {} WHERE id = ?", updates.join(", "));
-    
+
     let mut sql_query = sqlx::query(&query);
     for param in params {
         sql_query = sql_query.bind(param);
@@ -438,7 +479,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -481,7 +522,7 @@ pub async fn delall(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let delall_req = match req.parse_json::<DelAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -496,7 +537,12 @@ pub async fn delall(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 构建IN子句
-    let placeholders = delall_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = delall_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM u_fen_order WHERE id IN ({})", placeholders);
 
     let mut query_builder = sqlx::query(&query);
@@ -521,5 +567,5 @@ pub async fn delall(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

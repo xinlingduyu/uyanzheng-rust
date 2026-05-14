@@ -1,5 +1,5 @@
 // 用户API响应结构体
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 // ========== 用户信息 ==========
 #[derive(Debug, Serialize)]

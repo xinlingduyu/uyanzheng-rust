@@ -1,5 +1,5 @@
 //! 获取验证码
-//! 
+//!
 //! 功能说明：
 //! 发送短信或邮件验证码，用于注册、登录、绑定手机/邮箱等场景。
 //!
@@ -11,18 +11,20 @@
 //! 5. 支持阿里云、腾讯云、捷信等多家短信服务商
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use std::fmt::Write;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::plugins::sms::{SmsPlugin, JieSmsPlugin, AliSmsPlugin, TencentSmsPlugin};
-use crate::app::plugins::mailer::{MailerPlugin, SmtpMailer, MailerConfig};
-use crate::app::models::requests::GetCodeRequest;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::models::requests::GetCodeRequest;
+use crate::app::plugins::mailer::{MailerConfig, MailerPlugin, SmtpMailer};
+use crate::app::plugins::sms::{AliSmsPlugin, JieSmsPlugin, SmsPlugin, TencentSmsPlugin};
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 /// 验证码类型白名单
 const VALID_CODE_TYPES: &[&str] = &["reg", "repwd", "ubind", "resn", "reEmail", "rePhone"];
@@ -46,7 +48,7 @@ struct VcodeConfig {
 #[inline]
 async fn get_vcode_config(pool: &sqlx::MySqlPool, appid: u64) -> VcodeConfig {
     let result = sqlx::query_as::<_, (
-        Option<i32>, Option<i32>, 
+        Option<i32>, Option<i32>,
         Option<String>, Option<String>, Option<i32>, Option<String>, Option<String>, Option<String>,
         Option<String>, Option<String>, Option<String>
     )>(
@@ -60,13 +62,21 @@ async fn get_vcode_config(pool: &sqlx::MySqlPool, appid: u64) -> VcodeConfig {
         Ok(Some(row)) => VcodeConfig {
             vc_length: row.0.unwrap_or(6),
             vc_time: row.1.unwrap_or(10),
-            smtp_state: row.2.as_deref().map(|s| if s == "on" { "on" } else { "off" }).unwrap_or("off"),
+            smtp_state: row
+                .2
+                .as_deref()
+                .map(|s| if s == "on" { "on" } else { "off" })
+                .unwrap_or("off"),
             smtp_host: row.3,
             smtp_port: row.4,
             smtp_user: row.5,
             smtp_pass: row.6,
             app_name: row.7,
-            sms_state: row.8.as_deref().map(|s| if s == "on" { "on" } else { "off" }).unwrap_or("off"),
+            sms_state: row
+                .8
+                .as_deref()
+                .map(|s| if s == "on" { "on" } else { "off" })
+                .unwrap_or("off"),
             sms_config: row.9,
             sms_type: row.10,
         },
@@ -95,7 +105,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone，直接使用引用）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -105,7 +115,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let code_req = match req.parse_json::<GetCodeRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -116,7 +126,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 验证参数
     let mut validator = Validator::new();
-    
+
     // account可以是email或phone
     let is_email = code_req.account.contains('@');
     if is_email {
@@ -124,7 +134,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     } else {
         validator.phone("account", &code_req.account);
     }
-    
+
     // 验证类型 - 一比一还原PHP
     // type: reg(注册), repwd(重置密码), ubind(绑定账号), resn(设备换绑), reEmail(解绑邮箱), rePhone(解绑手机)
     if !VALID_CODE_TYPES.contains(&code_req.code_type.as_str()) {
@@ -157,7 +167,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 获取应用验证码配置
     let vcode_config = get_vcode_config(app_state.get_db(), appid).await;
-    
+
     // 验证码长度配置
     if vcode_config.vc_length <= 0 {
         render_error(res, "验证码长度配置错误", 201, app_key);
@@ -170,24 +180,25 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 检查IP获取次数（1小时内最多10次）- 一比一还原PHP
     // PHP: $vcnum = $this->db->where('ip = ? and time between ? and ?',[$this->ip,timeRange(),timeRange(0,1)])->count();
     let vcnum = sqlx::query_as::<_, (i64,)>(
-        "SELECT COUNT(*) FROM u_vcode WHERE ip = ? AND time BETWEEN ? AND ?"
+        "SELECT COUNT(*) FROM u_vcode WHERE ip = ? AND time BETWEEN ? AND ?",
     )
     .bind(ip)
-    .bind(current_time - 3600)  // timeRange() - 当前小时开始
-    .bind(current_time)          // timeRange(0,1) - 当前小时结束
+    .bind(current_time - 3600) // timeRange() - 当前小时开始
+    .bind(current_time) // timeRange(0,1) - 当前小时结束
     .fetch_one(app_state.get_db())
     .await;
 
     if let Ok(count) = vcnum
-        && count.0 >= 10 {
-            render_error(res, "验证码获取频繁", 117, app_key);
-            return;
-        }
+        && count.0 >= 10
+    {
+        render_error(res, "验证码获取频繁", 117, app_key);
+        return;
+    }
 
     // 检查同一账号120秒内是否已获取 - 一比一还原PHP
     // PHP: $vcRes = $this->db->where('eorp = ? and time > ?',[$_POST['account'],time()-120])->fetch();
     let vc_res = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_vcode WHERE eorp = ? AND time > ? AND appid = ?"
+        "SELECT id FROM u_vcode WHERE eorp = ? AND time > ? AND appid = ?",
     )
     .bind(&code_req.account)
     .bind(current_time - 120)
@@ -213,7 +224,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 插入验证码
     let insert_result = sqlx::query(
-        "INSERT INTO u_vcode (eorp, type, code, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO u_vcode (eorp, type, code, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&code_req.account)
     .bind(&code_req.code_type)
@@ -236,11 +247,23 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let send_result = if is_email {
         // 邮箱发送 - 一比一还原PHP逻辑
         // PHP: if($this->app['smtp_state'] != 'on' || empty($this->app['smtp_host']) || empty($this->app['smtp_user']) || empty($this->app['smtp_pass']) || empty($this->app['smtp_port']))$this->out->e(104);
-        send_email(&code_req.account, &code, vcode_config.vc_time, &vcode_config).await
+        send_email(
+            &code_req.account,
+            &code,
+            vcode_config.vc_time,
+            &vcode_config,
+        )
+        .await
     } else {
         // 短信发送 - 一比一还原PHP逻辑
         // PHP: if($this->app['sms_state'] != 'on')$this->out->e(105);
-        send_sms(&code_req.account, &code, vcode_config.vc_time, &vcode_config).await
+        send_sms(
+            &code_req.account,
+            &code,
+            vcode_config.vc_time,
+            &vcode_config,
+        )
+        .await
     };
 
     match send_result {
@@ -249,8 +272,13 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             if tx.commit().await.is_ok() {
                 // 测试模式返回验证码，生产环境不返回
                 #[cfg(debug_assertions)]
-                render_success(res, app_key, Some(serde_json::json!({"code": code})), app_info.mi.as_ref());
-                
+                render_success(
+                    res,
+                    app_key,
+                    Some(serde_json::json!({"code": code})),
+                    app_info.mi.as_ref(),
+                );
+
                 #[cfg(not(debug_assertions))]
                 render_success_with_msg(res, "验证码发送成功", app_key);
             } else {
@@ -275,27 +303,33 @@ fn generate_code(length: i32) -> String {
 
 /// 发送邮件验证码 - 一比一还原PHP逻辑
 async fn send_email(
-    email: &str, 
-    code: &str, 
-    vc_time: i32, 
-    config: &VcodeConfig
+    email: &str,
+    code: &str,
+    vc_time: i32,
+    config: &VcodeConfig,
 ) -> Result<(), String> {
     // PHP: if($this->app['smtp_state'] != 'on' || empty($this->app['smtp_host']) || empty($this->app['smtp_user']) || empty($this->app['smtp_pass']) || empty($this->app['smtp_port']))$this->out->e(104);
     if config.smtp_state != "on" {
         return Err("邮件服务未开启".to_string());
     }
 
-    let smtp_host = config.smtp_host.as_deref()
+    let smtp_host = config
+        .smtp_host
+        .as_deref()
         .filter(|s| !s.is_empty())
         .ok_or("SMTP主机未配置")?;
-    
+
     let smtp_port = config.smtp_port.ok_or("SMTP端口未配置")?;
-    
-    let smtp_user = config.smtp_user.as_deref()
+
+    let smtp_user = config
+        .smtp_user
+        .as_deref()
         .filter(|s| !s.is_empty())
         .ok_or("SMTP用户未配置")?;
-    
-    let smtp_pass = config.smtp_pass.as_deref()
+
+    let smtp_pass = config
+        .smtp_pass
+        .as_deref()
         .filter(|s| !s.is_empty())
         .ok_or("SMTP密码未配置")?;
 
@@ -304,7 +338,7 @@ async fn send_email(
     // 构建邮件标题 - 一比一还原PHP
     // PHP: $title = $type[$_POST['type']].' - '.$this->app['app_name'];
     let title = format!("验证码 - {}", app_name);
-    
+
     // PHP: "您本次操作的验证码是：<b>{$code}</b>,有效期为{$this->app['vc_time']}分钟，请尽快完成验证"
     let body = format!(
         "您本次操作的验证码是：<b>{}</b>，有效期为{}分钟，请尽快完成验证",
@@ -313,7 +347,10 @@ async fn send_email(
 
     tracing::info!(
         "发送邮件到 {} - 标题: {} - SMTP: {}:{}",
-        email, title, smtp_host, smtp_port
+        email,
+        title,
+        smtp_host,
+        smtp_port
     );
 
     // 构建邮件配置
@@ -329,7 +366,7 @@ async fn send_email(
     // 使用 mailer 插件发送邮件
     let mut mailer = SmtpMailer::new();
     mailer.init(mailer_config)?;
-    
+
     // 发送HTML格式邮件
     match mailer.send(email, &title, &body, true).await {
         Ok(result) => {
@@ -349,10 +386,10 @@ async fn send_email(
 
 /// 发送短信验证码 - 一比一还原PHP逻辑
 async fn send_sms(
-    phone: &str, 
-    code: &str, 
+    phone: &str,
+    code: &str,
     vc_time: i32,
-    config: &VcodeConfig
+    config: &VcodeConfig,
 ) -> Result<(), String> {
     // PHP: if($this->app['sms_state'] != 'on')$this->out->e(105);
     if config.sms_state != "on" {
@@ -360,11 +397,10 @@ async fn send_sms(
     }
 
     // PHP: $sms_config = json_decode($this->app['sms_config'],true);
-    let sms_config_str = config.sms_config.as_deref()
-        .ok_or("短信配置未设置")?;
-    
-    let sms_config: serde_json::Value = serde_json::from_str(sms_config_str)
-        .map_err(|_| "短信配置格式错误")?;
+    let sms_config_str = config.sms_config.as_deref().ok_or("短信配置未设置")?;
+
+    let sms_config: serde_json::Value =
+        serde_json::from_str(sms_config_str).map_err(|_| "短信配置格式错误")?;
 
     // PHP: $sms = t('sms')->send($_POST['account'],$code,$this->app['vc_time'],$this->app['sms_type'],$sms_config);
     let sms_type = config.sms_type.as_deref().unwrap_or("jie");
@@ -372,33 +408,51 @@ async fn send_sms(
     match sms_type {
         "jie" => {
             let mut sms_plugin = JieSmsPlugin::new();
-            
+
             // PHP: 初始化短信配置
-            sms_plugin.init(sms_config).map_err(|e| format!("短信插件初始化失败: {}", e))?;
-            
+            sms_plugin
+                .init(sms_config)
+                .map_err(|e| format!("短信插件初始化失败: {}", e))?;
+
             // PHP: 发送短信
             sms_plugin.send(phone, code, vc_time).map(|result| {
-                if result.success { Ok(()) } else { Err(result.message) }
+                if result.success {
+                    Ok(())
+                } else {
+                    Err(result.message)
+                }
             })?
         }
         "ali" => {
             let mut sms_plugin = AliSmsPlugin::new();
-            
-            sms_plugin.init(sms_config).map_err(|e| format!("阿里云短信插件初始化失败: {}", e))?;
-            
+
+            sms_plugin
+                .init(sms_config)
+                .map_err(|e| format!("阿里云短信插件初始化失败: {}", e))?;
+
             sms_plugin.send(phone, code, vc_time).map(|result| {
-                if result.success { Ok(()) } else { Err(result.message) }
+                if result.success {
+                    Ok(())
+                } else {
+                    Err(result.message)
+                }
             })?
         }
         "tencent" => {
             let mut sms_plugin = TencentSmsPlugin::new();
-            
-            sms_plugin.init(sms_config).map_err(|e| format!("腾讯云短信插件初始化失败: {}", e))?;
-            
+
+            sms_plugin
+                .init(sms_config)
+                .map_err(|e| format!("腾讯云短信插件初始化失败: {}", e))?;
+
             sms_plugin.send(phone, code, vc_time).map(|result| {
-                if result.success { Ok(()) } else { Err(result.message) }
+                if result.success {
+                    Ok(())
+                } else {
+                    Err(result.message)
+                }
             })?
         }
-        _ => Err("不支持的短信类型".to_string())
+        _ => Err("不支持的短信类型".to_string()),
     }
 }

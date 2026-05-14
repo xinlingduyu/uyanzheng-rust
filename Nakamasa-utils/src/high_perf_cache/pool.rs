@@ -1,11 +1,11 @@
 //! 内存池模块
-//! 
+//!
 //! 高性能内存池实现，减少内存分配开销
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
+use std::cell::UnsafeCell;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
-use std::cell::UnsafeCell;
 
 use super::{CACHE_LINE_SIZE, cpu_pause};
 
@@ -37,10 +37,10 @@ impl MemoryBlock {
     pub fn new(size: usize) -> Self {
         let size = size.next_power_of_two().max(64);
         let layout = Layout::from_size_align(size, CACHE_LINE_SIZE).unwrap();
-        
+
         // SAFETY: Layout 已验证
         let ptr = unsafe { alloc(layout) };
-        
+
         Self {
             ptr: NonNull::new(ptr).expect("allocation failed"),
             layout,
@@ -121,7 +121,7 @@ impl FixedSizePool {
     fn allocate_block(&self) -> Option<*mut u8> {
         let block = MemoryBlock::new(self.block_size);
         let ptr = block.as_ptr();
-        
+
         // 写入块头
         unsafe {
             let header = ptr as *mut BlockHeader;
@@ -131,7 +131,7 @@ impl FixedSizePool {
 
         self.blocks.write().unwrap().push(block);
         self.total_allocated.fetch_add(1, Ordering::Relaxed);
-        
+
         Some(ptr)
     }
 
@@ -153,12 +153,11 @@ impl FixedSizePool {
             };
 
             // CAS 更新头指针
-            if self.free_head.compare_exchange_weak(
-                head,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ).is_ok() {
+            if self
+                .free_head
+                .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 self.free_count.fetch_sub(1, Ordering::Relaxed);
                 return Some(head);
             }
@@ -183,18 +182,19 @@ impl FixedSizePool {
         // 添加到空闲链表
         loop {
             let head = self.free_head.load(Ordering::Acquire);
-            
+
             unsafe {
                 let header = ptr as *mut BlockHeader;
-                (*header).next.store(head as *mut BlockHeader, Ordering::Release);
+                (*header)
+                    .next
+                    .store(head as *mut BlockHeader, Ordering::Release);
             }
 
-            if self.free_head.compare_exchange_weak(
-                head,
-                ptr,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ).is_ok() {
+            if self
+                .free_head
+                .compare_exchange_weak(head, ptr, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 self.free_count.fetch_add(1, Ordering::Relaxed);
                 return;
             }
@@ -237,7 +237,8 @@ impl MultiSizePool {
     const SIZE_CLASSES: [usize; 8] = [64, 128, 256, 512, 1024, 2048, 4096, 8192];
 
     pub fn new(initial_count: usize, max_free: usize) -> Self {
-        let pools = Self::SIZE_CLASSES.iter()
+        let pools = Self::SIZE_CLASSES
+            .iter()
             .map(|&size| FixedSizePool::new(size, initial_count, max_free))
             .collect();
 
@@ -346,12 +347,11 @@ impl<T> ObjectPool<T> {
 
             let next = unsafe { (*head).next.load(Ordering::Acquire) };
 
-            if self.free_list.compare_exchange_weak(
-                head,
-                next,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ).is_ok() {
+            if self
+                .free_list
+                .compare_exchange_weak(head, next, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 self.stats.free.fetch_sub(1, Ordering::Relaxed);
                 return PooledObject {
                     node: head,
@@ -380,12 +380,11 @@ impl<T> ObjectPool<T> {
                 (*node).next.store(head, Ordering::Release);
             }
 
-            if self.free_list.compare_exchange_weak(
-                head,
-                node,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ).is_ok() {
+            if self
+                .free_list
+                .compare_exchange_weak(head, node, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
                 self.stats.free.fetch_add(1, Ordering::Relaxed);
                 return;
             }

@@ -1,16 +1,15 @@
+use async_trait::async_trait;
+use once_cell::sync::Lazy;
+use serde_json::{Number, Value as JsonValue};
 use sqlx::{
-    any::{AnyPoolOptions, AnyArguments, AnyRow},
-    AnyPool,
-    Row, Column, ValueRef,
+    AnyPool, Column, Row, ValueRef,
+    any::{AnyArguments, AnyPoolOptions, AnyRow},
     types::chrono::Utc,
 };
-use serde_json::{Value as JsonValue, Number};
 use std::collections::HashMap;
 use std::sync::Arc;
-use async_trait::async_trait;
-use tokio::sync::Mutex as AsyncMutex;
-use once_cell::sync::Lazy;
 use thiserror::Error;
+use tokio::sync::Mutex as AsyncMutex;
 
 // --- 全局驱动注册 ---
 static DRIVER_INIT: Lazy<()> = Lazy::new(|| {
@@ -68,21 +67,29 @@ impl DbConfig {
     // 修复: 改为 pub，允许外部调用
     pub fn get_url(&self) -> String {
         let mut base_url = match self.db_type {
-            DbType::MySql => format!("mysql://{}:{}@{}:{}/{}?charset={}", self.user, self.pwd, self.host, self.port, self.dbname, self.charset),
-            DbType::Postgres => format!("postgres://{}:{}@{}:{}/{}", self.user, self.pwd, self.host, self.port, self.dbname),
+            DbType::MySql => format!(
+                "mysql://{}:{}@{}:{}/{}?charset={}",
+                self.user, self.pwd, self.host, self.port, self.dbname, self.charset
+            ),
+            DbType::Postgres => format!(
+                "postgres://{}:{}@{}:{}/{}",
+                self.user, self.pwd, self.host, self.port, self.dbname
+            ),
             DbType::Sqlite => format!("sqlite:{}?mode=rwc", self.dbname),
         };
 
-        let extra_opts: Vec<String> = self.options.iter()
+        let extra_opts: Vec<String> = self
+            .options
+            .iter()
             .filter(|(k, _)| !k.starts_with("charset"))
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
-        
+
         if !extra_opts.is_empty() {
             let separator = if base_url.contains('?') { "&" } else { "?" };
             base_url.push_str(&format!("{}{}", separator, extra_opts.join("&")));
         }
-        
+
         base_url
     }
 }
@@ -103,12 +110,18 @@ pub enum DbError {
 
 #[derive(Debug, Clone)]
 pub enum DbEvent {
-    BeforeQuery, AfterQuery,
-    BeforeInsert, AfterInsert,
-    BeforeUpdate, AfterUpdate,
-    BeforeDelete, AfterDelete,
-    BeforeSelect, AfterSelect,
-    BeforeBatchInsert, AfterBatchInsert,
+    BeforeQuery,
+    AfterQuery,
+    BeforeInsert,
+    AfterInsert,
+    BeforeUpdate,
+    AfterUpdate,
+    BeforeDelete,
+    AfterDelete,
+    BeforeSelect,
+    AfterSelect,
+    BeforeBatchInsert,
+    AfterBatchInsert,
 }
 
 #[async_trait]
@@ -121,18 +134,22 @@ pub struct Operator {
     // 修复: 移除未使用的 db_type 字段
     table_name: String,
     pool: Arc<AnyPool>,
-    
+
     where_clause: Option<(String, Vec<JsonValue>)>,
     group_by: Option<String>,
     join: Option<String>,
     order_by: Option<String>,
     limit: Option<(u32, u32)>,
-    
+
     listener: Option<Arc<dyn EventListener>>,
 }
 
 impl Operator {
-    pub async fn get(config: DbConfig, table_name: &str, config_name: &str) -> Result<Self, DbError> {
+    pub async fn get(
+        config: DbConfig,
+        table_name: &str,
+        config_name: &str,
+    ) -> Result<Self, DbError> {
         let pool = Self::get_pool(&config, config_name).await?;
         let full_table_name = format!("{}{}", config.pre, table_name);
 
@@ -150,14 +167,15 @@ impl Operator {
     }
 
     async fn get_pool(config: &DbConfig, config_name: &str) -> Result<Arc<AnyPool>, DbError> {
-        let mut cache: tokio::sync::MutexGuard<'_, HashMap<String, Arc<AnyPool>>> = POOL_CACHE.lock().await;
+        let mut cache: tokio::sync::MutexGuard<'_, HashMap<String, Arc<AnyPool>>> =
+            POOL_CACHE.lock().await;
 
         if let Some(pool) = cache.get(config_name) {
             return Ok(pool.clone());
         }
 
         let database_url = config.get_url();
-        
+
         let pool = AnyPoolOptions::new()
             .max_connections(config.max_connections)
             .min_connections(config.min_connections)
@@ -199,16 +217,21 @@ impl Operator {
         for param in params {
             query = self.bind_param(query, param);
         }
-        
+
         let query: sqlx::query::Query<'_, sqlx::Any, AnyArguments<'_>> = query;
-        
-        query.execute(&*self.pool)
+
+        query
+            .execute(&*self.pool)
             .await
             .map(|result| result.rows_affected())
             .map_err(|e| DbError::Query(e.to_string(), sql.to_string()))
     }
 
-    fn bind_param<'q>(&self, query: sqlx::query::Query<'q, sqlx::Any, AnyArguments<'q>>, param: &JsonValue) -> sqlx::query::Query<'q, sqlx::Any, AnyArguments<'q>> {
+    fn bind_param<'q>(
+        &self,
+        query: sqlx::query::Query<'q, sqlx::Any, AnyArguments<'q>>,
+        param: &JsonValue,
+    ) -> sqlx::query::Query<'q, sqlx::Any, AnyArguments<'q>> {
         match param {
             JsonValue::Null => query.bind(None::<String>),
             JsonValue::Bool(b) => query.bind(*b),
@@ -227,12 +250,13 @@ impl Operator {
 
     pub async fn fetch_all(&mut self) -> Result<Vec<HashMap<String, JsonValue>>, DbError> {
         let (sql, params) = self.build_select_sql();
-        
+
         self.trigger(DbEvent::BeforeSelect, || {
             let mut m = HashMap::new();
             m.insert("sql".into(), sql.clone());
             m
-        }).await;
+        })
+        .await;
 
         let start = Utc::now();
         let mut query = sqlx::query(&sql);
@@ -240,7 +264,8 @@ impl Operator {
             query = self.bind_param(query, param);
         }
 
-        let rows = query.fetch_all(&*self.pool)
+        let rows = query
+            .fetch_all(&*self.pool)
             .await
             .map_err(|e| DbError::Query(e.to_string(), sql.clone()))?;
 
@@ -251,10 +276,14 @@ impl Operator {
 
         self.trigger(DbEvent::AfterSelect, || {
             let mut m = HashMap::new();
-            m.insert("cost_ms".into(), (Utc::now() - start).num_milliseconds().to_string());
+            m.insert(
+                "cost_ms".into(),
+                (Utc::now() - start).num_milliseconds().to_string(),
+            );
             m.insert("count".into(), results.len().to_string());
             m
-        }).await;
+        })
+        .await;
 
         self.reset_query_state();
         Ok(results)
@@ -263,9 +292,9 @@ impl Operator {
     pub async fn fetch(&mut self) -> Result<Option<HashMap<String, JsonValue>>, DbError> {
         let _original_limit = self.limit;
         self.limit = Some((0, 1));
-        
+
         let result = self.fetch_all().await;
-        
+
         match result {
             Ok(mut rows) => Ok(rows.pop()),
             Err(e) => Err(e),
@@ -273,27 +302,44 @@ impl Operator {
     }
 
     pub async fn add(&mut self, data: &HashMap<String, JsonValue>) -> Result<u64, DbError> {
-        if data.is_empty() { return Ok(0); }
-        
+        if data.is_empty() {
+            return Ok(0);
+        }
+
         let cols: Vec<&str> = data.keys().map(|k| k.as_str()).collect();
         let vals: Vec<JsonValue> = data.values().cloned().collect();
         let placeholders: Vec<&str> = cols.iter().map(|_| "?").collect();
-        
-        let sql = format!("INSERT INTO {} ({}) VALUES ({})", 
-            self.table_name, cols.join(", "), placeholders.join(", "));
+
+        let sql = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            self.table_name,
+            cols.join(", "),
+            placeholders.join(", ")
+        );
 
         self.trigger(DbEvent::BeforeInsert, || {
-             let mut m = HashMap::new(); m.insert("sql".into(), sql.clone()); m 
-        }).await;
+            let mut m = HashMap::new();
+            m.insert("sql".into(), sql.clone());
+            m
+        })
+        .await;
 
         let res = self.execute_raw(&sql, &vals).await;
 
         self.trigger(DbEvent::AfterInsert, || {
-             let mut m = HashMap::new(); 
-             m.insert("result".into(), if res.is_ok() { "success".into() } else { "fail".into() }); 
-             m 
-        }).await;
-        
+            let mut m = HashMap::new();
+            m.insert(
+                "result".into(),
+                if res.is_ok() {
+                    "success".into()
+                } else {
+                    "fail".into()
+                },
+            );
+            m
+        })
+        .await;
+
         res
     }
 
@@ -301,36 +347,56 @@ impl Operator {
     where
         T: Into<JsonValue> + Clone,
     {
-        if data.is_empty() { return Ok(0); }
-        if keys.is_empty() { return Err(DbError::InvalidArgument("Keys cannot be empty".into())); }
+        if data.is_empty() {
+            return Ok(0);
+        }
+        if keys.is_empty() {
+            return Err(DbError::InvalidArgument("Keys cannot be empty".into()));
+        }
 
-        let mut sql = format!("INSERT INTO {} ({}) VALUES ", self.table_name, keys.join(", "));
+        let mut sql = format!(
+            "INSERT INTO {} ({}) VALUES ",
+            self.table_name,
+            keys.join(", ")
+        );
         let mut flat_values: Vec<JsonValue> = Vec::new();
 
         for (i, row) in data.iter().enumerate() {
             if row.len() != keys.len() {
-                return Err(DbError::InvalidArgument(format!("Row {} length mismatch with keys", i)));
+                return Err(DbError::InvalidArgument(format!(
+                    "Row {} length mismatch with keys",
+                    i
+                )));
             }
-            if i > 0 { sql.push_str(", "); }
+            if i > 0 {
+                sql.push_str(", ");
+            }
             let placeholders: Vec<&str> = row.iter().map(|_| "?").collect();
             sql.push_str(&format!("({})", placeholders.join(", ")));
-            
+
             for item in row {
                 flat_values.push(item.clone().into());
             }
         }
 
         self.trigger(DbEvent::BeforeBatchInsert, || {
-             let mut m = HashMap::new(); m.insert("sql".into(), sql.clone()); m 
-        }).await;
+            let mut m = HashMap::new();
+            m.insert("sql".into(), sql.clone());
+            m
+        })
+        .await;
 
         self.execute_raw(&sql, &flat_values).await
     }
 
     pub async fn update(&mut self, data: &HashMap<String, JsonValue>) -> Result<u64, DbError> {
-        if data.is_empty() { return Ok(0); }
-        if self.where_clause.is_none() { 
-            return Err(DbError::InvalidArgument("Safety: Update requires where condition".into())); 
+        if data.is_empty() {
+            return Ok(0);
+        }
+        if self.where_clause.is_none() {
+            return Err(DbError::InvalidArgument(
+                "Safety: Update requires where condition".into(),
+            ));
         }
 
         let mut sets = Vec::new();
@@ -343,32 +409,45 @@ impl Operator {
         let (where_sql, where_params) = self.where_clause.as_ref().unwrap();
         values.extend(where_params.clone());
 
-        let sql = format!("UPDATE {} SET {} {}", self.table_name, sets.join(", "), where_sql);
+        let sql = format!(
+            "UPDATE {} SET {} {}",
+            self.table_name,
+            sets.join(", "),
+            where_sql
+        );
 
         self.trigger(DbEvent::BeforeUpdate, || {
-            let mut m = HashMap::new(); m.insert("sql".into(), sql.clone()); m 
-       }).await;
-       
-       let res = self.execute_raw(&sql, &values).await;
-       self.reset_query_state(); 
-       res
+            let mut m = HashMap::new();
+            m.insert("sql".into(), sql.clone());
+            m
+        })
+        .await;
+
+        let res = self.execute_raw(&sql, &values).await;
+        self.reset_query_state();
+        res
     }
 
     pub async fn delete(&mut self) -> Result<u64, DbError> {
-        if self.where_clause.is_none() { 
-            return Err(DbError::InvalidArgument("Safety: Delete requires where condition".into())); 
+        if self.where_clause.is_none() {
+            return Err(DbError::InvalidArgument(
+                "Safety: Delete requires where condition".into(),
+            ));
         }
-        
+
         let (where_sql, params) = self.where_clause.as_ref().unwrap();
         let sql = format!("DELETE FROM {} {}", self.table_name, where_sql);
 
         self.trigger(DbEvent::BeforeDelete, || {
-            let mut m = HashMap::new(); m.insert("sql".into(), sql.clone()); m 
-       }).await;
+            let mut m = HashMap::new();
+            m.insert("sql".into(), sql.clone());
+            m
+        })
+        .await;
 
-       let res = self.execute_raw(&sql, params).await;
-       self.reset_query_state(); 
-       res
+        let res = self.execute_raw(&sql, params).await;
+        self.reset_query_state();
+        res
     }
 
     pub fn where_condition(&mut self, condition: &str, params: Vec<JsonValue>) -> &mut Self {
@@ -400,15 +479,21 @@ impl Operator {
         let mut sql = format!("SELECT * FROM {}", self.table_name);
         let mut params = Vec::new();
 
-        if let Some(join) = &self.join { sql.push_str(&format!(" {}", join)); }
-        
+        if let Some(join) = &self.join {
+            sql.push_str(&format!(" {}", join));
+        }
+
         if let Some((w, p)) = &self.where_clause {
             sql.push_str(&format!(" {}", w));
             params.extend(p.clone());
         }
 
-        if let Some(g) = &self.group_by { sql.push_str(&format!(" {}", g)); }
-        if let Some(o) = &self.order_by { sql.push_str(&format!(" {}", o)); }
+        if let Some(g) = &self.group_by {
+            sql.push_str(&format!(" {}", g));
+        }
+        if let Some(o) = &self.order_by {
+            sql.push_str(&format!(" {}", o));
+        }
 
         if let Some((offset, count)) = self.limit {
             sql.push_str(&format!(" LIMIT {} OFFSET {}", count, offset));
@@ -419,25 +504,30 @@ impl Operator {
 
     fn row_to_map(&self, row: &AnyRow) -> HashMap<String, JsonValue> {
         let mut map = HashMap::new();
-        
+
         for col in row.columns() {
             let ordinal = col.ordinal();
             let key = col.name().to_string();
-            
+
             if let Ok(raw) = row.try_get_raw(ordinal)
-                && raw.is_null() {
-                    map.insert(key, JsonValue::Null);
-                    continue;
-                }
+                && raw.is_null()
+            {
+                map.insert(key, JsonValue::Null);
+                continue;
+            }
 
             let value = if let Ok(v) = row.try_get::<i64, _>(ordinal) {
                 JsonValue::Number(v.into())
             } else if let Ok(v) = row.try_get::<f64, _>(ordinal) {
-                 Number::from_f64(v).map(JsonValue::Number).unwrap_or(JsonValue::Null)
+                Number::from_f64(v)
+                    .map(JsonValue::Number)
+                    .unwrap_or(JsonValue::Null)
             } else if let Ok(v) = row.try_get::<bool, _>(ordinal) {
                 JsonValue::Bool(v)
             } else if let Ok(v) = row.try_get::<String, _>(ordinal) {
-                if (v.starts_with('{') && v.ends_with('}')) || (v.starts_with('[') && v.ends_with(']')) {
+                if (v.starts_with('{') && v.ends_with('}'))
+                    || (v.starts_with('[') && v.ends_with(']'))
+                {
                     serde_json::from_str(&v).unwrap_or(JsonValue::String(v))
                 } else {
                     Self::parse_string_value(&v)
@@ -457,13 +547,16 @@ impl Operator {
             "false" => return JsonValue::Bool(false),
             _ => {}
         }
-        
+
         if v.parse::<i64>().is_ok() {
-             v.parse::<i64>().ok().map(|i| JsonValue::Number(i.into()))
+            v.parse::<i64>().ok().map(|i| JsonValue::Number(i.into()))
         } else if v.parse::<f64>().is_ok() {
-             v.parse::<f64>().ok().and_then(|f| Number::from_f64(f).map(JsonValue::Number))
+            v.parse::<f64>()
+                .ok()
+                .and_then(|f| Number::from_f64(f).map(JsonValue::Number))
         } else {
-             None
-        }.unwrap_or(JsonValue::String(v.to_string()))
+            None
+        }
+        .unwrap_or(JsonValue::String(v.to_string()))
     }
 }

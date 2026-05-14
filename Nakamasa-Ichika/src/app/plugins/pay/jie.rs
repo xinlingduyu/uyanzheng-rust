@@ -1,19 +1,19 @@
 //! 皆网支付插件
-//! 
+//!
 //! 功能说明：
 //! 皆网支付是一个聚合支付平台，支持微信、支付宝等多种支付方式。
-//! 
+//!
 //! 签名规则：
 //! 1. 将所有参数按键名升序排列
 //! 2. 拼接成 key=value&key2=value2 格式
 //! 3. 末尾追加 AccessKey
 //! 4. 对拼接字符串进行 MD5 加密
 
-use super::trait_def::{PayPlugin, PayOrder, PayResult};
 use super::http_client;
+use super::trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
+use crate::core::md5_optimize::{md5_concat_2, md5_hex, md5_to_str};
 use serde_json::json;
 use std::collections::BTreeMap;
-use crate::core::md5_optimize::{md5_hex, md5_to_str, md5_concat_2};
 
 /// 皆网支付插件
 pub struct JiePayPlugin {
@@ -32,7 +32,7 @@ impl JiePayPlugin {
     }
 
     /// 生成签名
-    /// 
+    ///
     /// 签名算法：
     /// 1. 将所有参数按key升序排列
     /// 2. 拼接成 key=value&key2=value2 格式（URL编码后解码）
@@ -48,16 +48,16 @@ impl JiePayPlugin {
 
         // URL解码（与PHP的urldecode(http_build_query())行为一致）
         let decoded = urlencoding::decode(&sign_str).unwrap_or_default();
-        
+
         let empty_key = String::new();
         let access_key = self.access_key.as_ref().unwrap_or(&empty_key);
-        
+
         // MD5签名 - 使用优化版本
         md5_concat_2(&decoded, access_key)
     }
 
     /// 验证签名
-    /// 
+    ///
     /// 验证流程：
     /// 1. 提取sign参数
     /// 2. 从数据中移除sign
@@ -90,9 +90,8 @@ impl JiePayPlugin {
     /// 发送HTTP请求
     fn submit(&self, url: &str, param: &str) -> Result<String, String> {
         tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                http_client::post_form(url, param).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { http_client::post_form(url, param).await })
         })
     }
 }
@@ -184,19 +183,21 @@ impl PayPlugin for JiePayPlugin {
                 // 解析响应
                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&response) {
                     if let Some(code) = result.get("code").and_then(|c| c.as_i64())
-                        && (code == 1 || code == 200) {
-                            // 获取支付URL
-                            if let Some(pay_url) = result.get("url").and_then(|u| u.as_str()) {
-                                return Ok(PayResult {
-                                    success: true,
-                                    pay_url: Some(pay_url.to_string()),
-                                    qrcode: None,
-                                    message: "创建成功".to_string(),
-                                });
-                            }
+                        && (code == 1 || code == 200)
+                    {
+                        // 获取支付URL
+                        if let Some(pay_url) = result.get("url").and_then(|u| u.as_str()) {
+                            return Ok(PayResult {
+                                success: true,
+                                pay_url: Some(pay_url.to_string()),
+                                qrcode: None,
+                                message: "创建成功".to_string(),
+                            });
                         }
+                    }
                     // 返回错误信息
-                    let msg = result.get("msg")
+                    let msg = result
+                        .get("msg")
                         .and_then(|m| m.as_str())
                         .unwrap_or("创建支付订单失败");
                     return Err(msg.to_string());
@@ -211,23 +212,35 @@ impl PayPlugin for JiePayPlugin {
         Err("创建支付订单失败".to_string())
     }
 
-    fn verify_notify(&self, data: serde_json::Value) -> Result<String, String> {
-        // 提取sign参数
+    fn verify_notify(&self, data: serde_json::Value) -> Result<NotifyVerifyResult, String> {
         let received_sign = match data.get("sign").and_then(|s| s.as_str()) {
             Some(s) => s.to_string(),
             None => return Err("缺少sign参数".to_string()),
         };
 
-        // 转换为BTreeMap（自动移除sign）
         let map = Self::json_to_map(&data);
 
-        // 验证签名
         if self.verify(&map, &received_sign) {
-            // 返回订单号
-            if let Some(order_no) = map.get("order_no") {
-                return Ok(order_no.clone());
-            }
-            return Err("缺少order_no参数".to_string());
+            let order_no = map
+                .get("order_no")
+                .or_else(|| map.get("out_trade_no"))
+                .ok_or_else(|| "缺少order_no参数".to_string())?
+                .clone();
+            let trade_no = map
+                .get("trade_no")
+                .or_else(|| map.get("transaction_id"))
+                .cloned()
+                .unwrap_or_else(|| order_no.clone());
+            let amount = map
+                .get("money")
+                .or_else(|| map.get("amount"))
+                .and_then(|s| s.parse::<f64>().ok())
+                .map(|v| (v * 100.0).round() as i64);
+            return Ok(NotifyVerifyResult {
+                order_no,
+                trade_no,
+                amount,
+            });
         }
 
         Err("签名验证失败".to_string())
@@ -242,9 +255,10 @@ impl PayPlugin for JiePayPlugin {
         if let Some(obj) = data.as_object() {
             for (k, v) in obj {
                 if k != "sign"
-                    && let Some(s) = v.as_str() {
-                        map.insert(k.clone(), s.to_string());
-                    }
+                    && let Some(s) = v.as_str()
+                {
+                    map.insert(k.clone(), s.to_string());
+                }
             }
         }
 

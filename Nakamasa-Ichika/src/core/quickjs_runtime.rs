@@ -2,12 +2,14 @@
 //! Android 平台使用 QuickJS 替代 V8，用于执行云函数
 //! 支持 Db、Redis、Http 操作
 
-use std::sync::Arc;
-use std::cell::RefCell;
-use rquickjs::{Runtime, Context, Value, Ctx, Object, Type, Function};
-use sqlx::{MySqlPool, Row, Column};
-use deadpool_redis::Pool as RedisPool;
 use crate::core::RedisUtil;
+use deadpool_redis::Pool as RedisPool;
+use rquickjs::{Context, Ctx, Function, Object, Runtime, Type, Value};
+use sqlx::{Column, MySqlPool, Row};
+use std::cell::RefCell;
+use std::net::{IpAddr, ToSocketAddrs};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// 云函数执行上下文
 pub struct CloudFunctionContext {
@@ -58,6 +60,61 @@ thread_local! {
     static CF_CONTEXT: RefCell<Option<CloudFunctionContext>> = const { RefCell::new(None) };
 }
 
+const QUICKJS_MEMORY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
+const QUICKJS_STACK_LIMIT_BYTES: usize = 1024 * 1024;
+const QUICKJS_EXEC_TIMEOUT_MS: u64 = 3000;
+const QUICKJS_HTTP_TIMEOUT_MAX_SECS: u64 = 10;
+
+fn is_private_or_loopback_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.octets()[0] == 0
+        }
+        IpAddr::V6(v6) => {
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_unique_local()
+                || v6.is_unicast_link_local()
+        }
+    }
+}
+
+fn validate_http_url(url: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "URL格式无效".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return Err("仅允许 http/https 请求".to_string()),
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "URL缺少主机名".to_string())?;
+    if host.eq_ignore_ascii_case("localhost") {
+        return Err("禁止访问本机地址".to_string());
+    }
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        if is_private_or_loopback_ip(ip) {
+            return Err("禁止访问内网或本机地址".to_string());
+        }
+    }
+
+    let port = parsed.port_or_known_default().unwrap_or(80);
+    if let Ok(addrs) = (host, port).to_socket_addrs() {
+        for addr in addrs {
+            if is_private_or_loopback_ip(addr.ip()) {
+                return Err("禁止访问解析到内网或本机的地址".to_string());
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// 蛇形命名转驼峰命名
 fn to_camel_case(s: &str) -> String {
     let mut result = String::new();
@@ -88,34 +145,27 @@ const FORBIDDEN_TABLES: &[&str] = &[
     "system_admin",
     "super_admin",
     "root",
-
     // ═══ 应用配置（含支付密钥、加密配置） ═══
     "app",
     "apps",
-
     // ═══ 订单与财务 ═══
     "order",
     "orders",
     "fen_event",
     "fen_order",
-
     // ═══ 代理佣金 ═══
     "agent",
     "agents",
-
     // ═══ 卡密 ═══
     "cdk_kami",
     "cdk_user",
-
     // ═══ 审计日志 ═══
     "log",
     "logs",
-
     // ═══ 消息与通知 ═══
     "message",
     "messages",
     "notice",
-
     // ═══ 应用扩展配置 ═══
     "blocklist",
     "extend",
@@ -126,10 +176,8 @@ const FORBIDDEN_TABLES: &[&str] = &[
     "app_mi",
     "app_notice",
     "app_ver",
-
     // ═══ 云函数自身定义 ═══
     "app_function",
-
     // ═══ 系统表 ═══
     "sys_user",
     "system_user",
@@ -146,31 +194,34 @@ const FORBIDDEN_TABLES: &[&str] = &[
 /// 验证表名是否合法
 fn validate_table_name(table: &str) -> Result<String, String> {
     let table_lower = table.to_lowercase();
-    
+
     // 检查黑名单
     for forbidden in FORBIDDEN_TABLES {
-        if table_lower == *forbidden || table_lower.contains(&format!("_{}", forbidden)) || table_lower.contains(&format!("{}_", forbidden)) {
+        if table_lower == *forbidden
+            || table_lower.contains(&format!("_{}", forbidden))
+            || table_lower.contains(&format!("{}_", forbidden))
+        {
             return Err("不允许访问此表".to_string());
         }
     }
-    
+
     // 只允许字母、数字、下划线
     if !table.chars().all(|c| c.is_alphanumeric() || c == '_') {
         return Err("表名格式无效".to_string());
     }
-    
+
     // 防止 SQL 注入 - 检查危险字符
     if table.contains("--") || table.contains(";") || table.contains("'") || table.contains("\"") {
         return Err("表名包含非法字符".to_string());
     }
-    
+
     Ok(format!("u_{}", table))
 }
 
 /// 验证 SQL 是否安全（用于 Sql 方法）
 fn validate_sql_security(sql: &str) -> Result<(), String> {
     let upper = sql.to_uppercase();
-    
+
     // 禁止访问黑名单表
     for forbidden in FORBIDDEN_TABLES {
         // 检查 u_xxx 形式
@@ -178,12 +229,13 @@ fn validate_sql_security(sql: &str) -> Result<(), String> {
             return Err("不允许访问此表".to_string());
         }
         // 检查直接表名
-        if upper.contains(&format!(" {}", forbidden.to_uppercase())) ||
-           upper.contains(&format!("`{}", forbidden.to_uppercase())) {
+        if upper.contains(&format!(" {}", forbidden.to_uppercase()))
+            || upper.contains(&format!("`{}", forbidden.to_uppercase()))
+        {
             return Err("不允许访问此表".to_string());
         }
     }
-    
+
     // 禁止系统表
     let system_tables = ["INFORMATION_SCHEMA", "MYSQL", "PERFORMANCE_SCHEMA", "SYS"];
     for sys in system_tables {
@@ -191,27 +243,28 @@ fn validate_sql_security(sql: &str) -> Result<(), String> {
             return Err("不允许访问系统表".to_string());
         }
     }
-    
+
     // 禁止危险操作
     let dangerous_patterns = [
-        "--",           // SQL 注释
-        "/*", "*/",     // 多行注释
+        "--", // SQL 注释
+        "/*",
+        "*/",           // 多行注释
         ";",            // 多语句
         "UNION",        // UNION 注入
         "INTO OUTFILE", // 文件写入
         "INTO DUMPFILE",
-        "LOAD_FILE",    // 文件读取
-        "BENCHMARK",    // 拒绝服务
+        "LOAD_FILE", // 文件读取
+        "BENCHMARK", // 拒绝服务
         "SLEEP",
         "WAITFOR",
     ];
-    
+
     for pattern in dangerous_patterns {
         if upper.contains(pattern) {
             return Err("SQL语句包含不允许的操作".to_string());
         }
     }
-    
+
     Ok(())
 }
 
@@ -231,62 +284,78 @@ fn escape_sql_value(value: &str) -> String {
 fn execute_db_query(sql: &str) -> Result<serde_json::Value, String> {
     // 安全验证
     validate_sql_security(sql)?;
-    
+
     CF_CONTEXT.with(|c| {
         let ctx_ref = c.borrow();
         let cf_ctx = ctx_ref.as_ref().ok_or("上下文未初始化")?;
         let db = cf_ctx.db.clone();
-        
+
         let rt = tokio::runtime::Handle::current();
-        
+
         let is_select = sql.trim().to_uppercase().starts_with("SELECT");
-        
+
         if is_select {
             rt.block_on(async {
-                sqlx::query(sql).fetch_all(&db).await
+                sqlx::query(sql)
+                    .fetch_all(&db)
+                    .await
                     .map(|rows| {
-                        let results: Vec<serde_json::Map<String, serde_json::Value>> = rows.iter().map(|row| {
-                            let mut map = serde_json::Map::new();
-                            for col in row.columns() {
-                                let col_name = col.name();
-                                let value: Option<String> = row.try_get(col_name).ok();
-                                map.insert(col_name.to_string(), 
-                                    value.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
-                            }
-                            map
-                        }).collect();
+                        let results: Vec<serde_json::Map<String, serde_json::Value>> = rows
+                            .iter()
+                            .map(|row| {
+                                let mut map = serde_json::Map::new();
+                                for col in row.columns() {
+                                    let col_name = col.name();
+                                    let value: Option<String> = row.try_get(col_name).ok();
+                                    map.insert(
+                                        col_name.to_string(),
+                                        value
+                                            .map(serde_json::Value::String)
+                                            .unwrap_or(serde_json::Value::Null),
+                                    );
+                                }
+                                map
+                            })
+                            .collect();
                         serde_json::json!({ "OK": true, "Data": results })
                     })
-                    .map_err(|_| "查询执行失败".to_string())  // 不返回详细错误信息
+                    .map_err(|_| "查询执行失败".to_string()) // 不返回详细错误信息
             })
         } else {
             rt.block_on(async {
-                sqlx::query(sql).execute(&db).await
+                sqlx::query(sql)
+                    .execute(&db)
+                    .await
                     .map(|r| serde_json::json!({ "OK": true, "Rows": r.rows_affected() }))
-                    .map_err(|_| "操作执行失败".to_string())  // 不返回详细错误信息
+                    .map_err(|_| "操作执行失败".to_string()) // 不返回详细错误信息
             })
         }
     })
 }
 
 /// 执行 Redis 操作
-fn execute_redis_op(op: &str, key: &str, value: Option<&str>, expire: Option<i32>) -> Result<serde_json::Value, String> {
+fn execute_redis_op(
+    op: &str,
+    key: &str,
+    value: Option<&str>,
+    expire: Option<i32>,
+) -> Result<serde_json::Value, String> {
     CF_CONTEXT.with(|c| {
         let ctx_ref = c.borrow();
         let cf_ctx = ctx_ref.as_ref().ok_or("上下文未初始化")?;
         let redis_pool = cf_ctx.redis_pool.as_ref().ok_or("Redis未配置")?;
         let redis_util = &cf_ctx.redis_util;
-        
+
         let rt = tokio::runtime::Handle::current();
-        
+
         match op {
-            "get" => {
-                rt.block_on(async {
-                    redis_util.get(redis_pool, key).await
-                        .map(|v| serde_json::json!({ "Ok": true, "Data": v }))
-                        .map_err(|_| "Redis操作失败".to_string())
-                })
-            }
+            "get" => rt.block_on(async {
+                redis_util
+                    .get(redis_pool, key)
+                    .await
+                    .map(|v| serde_json::json!({ "Ok": true, "Data": v }))
+                    .map_err(|_| "Redis操作失败".to_string())
+            }),
             "set" => {
                 let val = value.ok_or("缺少value参数")?;
                 rt.block_on(async {
@@ -303,28 +372,35 @@ fn execute_redis_op(op: &str, key: &str, value: Option<&str>, expire: Option<i32
                     .map_err(|_| "Redis操作失败".to_string())
                 })
             }
-            "del" => {
-                rt.block_on(async {
-                    redis_util.del(redis_pool, key).await
-                        .map(|_| serde_json::json!({ "Ok": true }))
-                        .map_err(|_| "Redis操作失败".to_string())
-                })
-            }
-            _ => Err(format!("未知Redis操作: {}", op))
+            "del" => rt.block_on(async {
+                redis_util
+                    .del(redis_pool, key)
+                    .await
+                    .map(|_| serde_json::json!({ "Ok": true }))
+                    .map_err(|_| "Redis操作失败".to_string())
+            }),
+            _ => Err(format!("未知Redis操作: {}", op)),
         }
     })
 }
 
 /// 执行 HTTP 请求
-fn execute_http(method: &str, url: &str, body: Option<&str>, timeout_secs: u64) -> Result<serde_json::Value, String> {
+fn execute_http(
+    method: &str,
+    url: &str,
+    body: Option<&str>,
+    timeout_secs: u64,
+) -> Result<serde_json::Value, String> {
+    validate_http_url(url)?;
+    let timeout_secs = timeout_secs.clamp(1, QUICKJS_HTTP_TIMEOUT_MAX_SECS);
     let rt = tokio::runtime::Handle::current();
-    
+
     rt.block_on(async {
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(timeout_secs))
+            .timeout(Duration::from_secs(timeout_secs))
             .build()
             .map_err(|e| e.to_string())?;
-        
+
         let mut req = match method {
             "GET" => client.get(url),
             "POST" => {
@@ -339,7 +415,7 @@ fn execute_http(method: &str, url: &str, body: Option<&str>, timeout_secs: u64) 
             }
             _ => return Err(format!("不支持的HTTP方法: {}", method)),
         };
-        
+
         req.send().await
             .map_err(|e| e.to_string())
             .and_then(|resp| {
@@ -358,36 +434,46 @@ impl QuickJsRuntime {
     /// 创建新的 QuickJS 运行时
     pub fn new() -> Self {
         let runtime = Runtime::new().expect("Failed to create QuickJS runtime");
+        runtime.set_memory_limit(QUICKJS_MEMORY_LIMIT_BYTES);
+        runtime.set_max_stack_size(QUICKJS_STACK_LIMIT_BYTES);
         Self { runtime }
     }
 
     /// 执行云函数
-    pub fn execute(&mut self, code: &str, ctx: CloudFunctionContext) -> Result<serde_json::Value, String> {
+    pub fn execute(
+        &mut self,
+        code: &str,
+        ctx: CloudFunctionContext,
+    ) -> Result<serde_json::Value, String> {
         // 设置上下文
         CF_CONTEXT.with(|c| {
             *c.borrow_mut() = Some(ctx);
         });
 
-        let context = Context::full(&self.runtime)
-            .map_err(|e| format!("创建上下文失败: {}", e))?;
+        let context = Context::full(&self.runtime).map_err(|e| format!("创建上下文失败: {}", e))?;
+
+        let deadline = Instant::now() + Duration::from_millis(QUICKJS_EXEC_TIMEOUT_MS);
+        self.runtime
+            .set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
 
         let result = context.with(|ctx| {
             // 注入全局变量
             Self::inject_globals(&ctx)?;
-            
+
             // 注入桥接函数
             Self::inject_bridge_functions(&ctx)?;
-            
+
             // 注入 Db/Redis/Http 类（JavaScript 实现，调用桥接函数）
             Self::inject_helpers(&ctx)?;
-            
+
             // 执行代码
-            let result: Value = ctx.eval(code)
-                .map_err(|e| format!("执行错误: {}", e))?;
-            
+            let result: Value = ctx.eval(code).map_err(|e| format!("执行错误: {}", e))?;
+
             // 转换结果为 JSON
             Self::value_to_json(&ctx, result)
         });
+
+        self.runtime.set_interrupt_handler(None);
 
         // 清理上下文
         CF_CONTEXT.with(|c| {
@@ -400,35 +486,49 @@ impl QuickJsRuntime {
     /// 注入全局变量
     fn inject_globals(ctx: &Ctx) -> Result<(), String> {
         let globals = ctx.globals();
-        
+
         // 注入 Ip
         let ip = CF_CONTEXT.with(|c| {
-            c.borrow().as_ref().map(|ctx| ctx.ip.clone()).unwrap_or_default()
+            c.borrow()
+                .as_ref()
+                .map(|ctx| ctx.ip.clone())
+                .unwrap_or_default()
         });
         globals.set("Ip", ip).map_err(|e| e.to_string())?;
-        
+
         // 注入 User 对象
         let user_json = CF_CONTEXT.with(|c| {
-            c.borrow().as_ref().map(|ctx| ctx.user.clone()).unwrap_or(serde_json::Value::Null)
+            c.borrow()
+                .as_ref()
+                .map(|ctx| ctx.user.clone())
+                .unwrap_or(serde_json::Value::Null)
         });
         let user_obj = Self::json_to_object(ctx, &user_json)?;
         globals.set("User", user_obj).map_err(|e| e.to_string())?;
-        
+
         // 注入 App 对象
         let app_json = CF_CONTEXT.with(|c| {
-            c.borrow().as_ref().map(|ctx| ctx.app.clone()).unwrap_or(serde_json::Value::Null)
+            c.borrow()
+                .as_ref()
+                .map(|ctx| ctx.app.clone())
+                .unwrap_or(serde_json::Value::Null)
         });
         let app_obj = Self::json_to_object(ctx, &app_json)?;
         globals.set("App", app_obj).map_err(|e| e.to_string())?;
-        
+
         // 注入 param（根据类型注入不同的值）
         let param_json = CF_CONTEXT.with(|c| {
-            c.borrow().as_ref().map(|ctx| ctx.param.clone()).unwrap_or(None)
+            c.borrow()
+                .as_ref()
+                .map(|ctx| ctx.param.clone())
+                .unwrap_or(None)
         });
         let param_value = param_json.unwrap_or(serde_json::Value::Null);
         match &param_value {
             serde_json::Value::Null => {
-                globals.set("param", rquickjs::Null).map_err(|e| e.to_string())?;
+                globals
+                    .set("param", rquickjs::Null)
+                    .map_err(|e| e.to_string())?;
             }
             serde_json::Value::Bool(b) => {
                 globals.set("param", *b).map_err(|e| e.to_string())?;
@@ -452,154 +552,215 @@ impl QuickJsRuntime {
                 globals.set("param", param_obj).map_err(|e| e.to_string())?;
             }
         }
-        
+
         // 注入 console
         let console = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
         let log_fn = Function::new(ctx.clone(), |_ctx: Ctx, args: String| {
             tracing::info!("[CloudFunction] {}", args);
             Ok::<(), rquickjs::Error>(())
-        }).map_err(|e| e.to_string())?;
+        })
+        .map_err(|e| e.to_string())?;
         console.set("log", log_fn).map_err(|e| e.to_string())?;
         globals.set("console", console).map_err(|e| e.to_string())?;
-        
+
         Ok(())
     }
 
     /// 注入桥接函数（Rust 实现供 JS 调用）
     fn inject_bridge_functions(ctx: &Ctx) -> Result<(), String> {
         let globals = ctx.globals();
-        
+
         // __dbQuery 函数 - 执行数据库查询
-        let db_query_fn = Function::new(ctx.clone(), |_ctx: Ctx, sql: String| -> Result<String, rquickjs::Error> {
-            let result = execute_db_query(&sql);
-            match result {
-                Ok(json) => Ok(json.to_string()),
-                Err(e) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
-            }
-        }).map_err(|e| e.to_string())?;
-        globals.set("__dbQuery", db_query_fn).map_err(|e| e.to_string())?;
-        
+        let db_query_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx, sql: String| -> Result<String, rquickjs::Error> {
+                let result = execute_db_query(&sql);
+                match result {
+                    Ok(json) => Ok(json.to_string()),
+                    Err(e) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__dbQuery", db_query_fn)
+            .map_err(|e| e.to_string())?;
+
         // __redisCall 函数 - 执行 Redis 操作
-        let redis_call_fn = Function::new(ctx.clone(), |_ctx: Ctx, op: String, key: String, value: Option<String>, expire: Option<i32>| -> Result<String, rquickjs::Error> {
-            let result = execute_redis_op(&op, &key, value.as_deref(), expire);
-            match result {
-                Ok(json) => Ok(json.to_string()),
-                Err(e) => Ok(serde_json::json!({ "Ok": false, "Err": e }).to_string()),
-            }
-        }).map_err(|e| e.to_string())?;
-        globals.set("__redisCall", redis_call_fn).map_err(|e| e.to_string())?;
-        
+        let redis_call_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx,
+             op: String,
+             key: String,
+             value: Option<String>,
+             expire: Option<i32>|
+             -> Result<String, rquickjs::Error> {
+                let result = execute_redis_op(&op, &key, value.as_deref(), expire);
+                match result {
+                    Ok(json) => Ok(json.to_string()),
+                    Err(e) => Ok(serde_json::json!({ "Ok": false, "Err": e }).to_string()),
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__redisCall", redis_call_fn)
+            .map_err(|e| e.to_string())?;
+
         // __httpCall 函数 - 执行 HTTP 请求
-        let http_call_fn = Function::new(ctx.clone(), |_ctx: Ctx, method: String, url: String, body: Option<String>, timeout: Option<u32>| -> Result<String, rquickjs::Error> {
-            let result = execute_http(&method, &url, body.as_deref(), timeout.unwrap_or(15) as u64);
-            match result {
-                Ok(json) => Ok(json.to_string()),
-                Err(e) => Ok(serde_json::json!({ "Ok": false, "Err": e }).to_string()),
-            }
-        }).map_err(|e| e.to_string())?;
-        globals.set("__httpCall", http_call_fn).map_err(|e| e.to_string())?;
-        
+        let http_call_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx,
+             method: String,
+             url: String,
+             body: Option<String>,
+             timeout: Option<u32>|
+             -> Result<String, rquickjs::Error> {
+                let result =
+                    execute_http(&method, &url, body.as_deref(), timeout.unwrap_or(15) as u64);
+                match result {
+                    Ok(json) => Ok(json.to_string()),
+                    Err(e) => Ok(serde_json::json!({ "Ok": false, "Err": e }).to_string()),
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__httpCall", http_call_fn)
+            .map_err(|e| e.to_string())?;
+
         // __validateTable 函数 - 验证表名
-        let validate_table_fn = Function::new(ctx.clone(), |_ctx: Ctx, table: String| -> Result<String, rquickjs::Error> {
-            match validate_table_name(&table) {
-                Ok(validated) => Ok(serde_json::json!({ "OK": true, "Table": validated }).to_string()),
-                Err(e) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
-            }
-        }).map_err(|e| e.to_string())?;
-        globals.set("__validateTable", validate_table_fn).map_err(|e| e.to_string())?;
-        
+        let validate_table_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx, table: String| -> Result<String, rquickjs::Error> {
+                match validate_table_name(&table) {
+                    Ok(validated) => {
+                        Ok(serde_json::json!({ "OK": true, "Table": validated }).to_string())
+                    }
+                    Err(e) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__validateTable", validate_table_fn)
+            .map_err(|e| e.to_string())?;
+
         // __escapeValue 函数 - 转义 SQL 值
-        let escape_value_fn = Function::new(ctx.clone(), |_ctx: Ctx, value: String| -> Result<String, rquickjs::Error> {
-            Ok(escape_sql_value(&value))
-        }).map_err(|e| e.to_string())?;
-        globals.set("__escapeValue", escape_value_fn).map_err(|e| e.to_string())?;
-        
+        let escape_value_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx, value: String| -> Result<String, rquickjs::Error> {
+                Ok(escape_sql_value(&value))
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__escapeValue", escape_value_fn)
+            .map_err(|e| e.to_string())?;
+
         // __dbQueryWithParams 函数 - 带参数的参数化查询
-        let db_query_params_fn = Function::new(ctx.clone(), |_ctx: Ctx, sql: String, params_json: String| -> Result<String, rquickjs::Error> {
-            // 安全验证
-            if let Err(e) = validate_sql_security(&sql) {
-                return Ok(serde_json::json!({ "OK": false, "Err": e }).to_string());
-            }
-            
-            let params: Vec<serde_json::Value> = serde_json::from_str(&params_json).unwrap_or_default();
-            
-            let result = CF_CONTEXT.with(|c| {
-                let ctx_ref = c.borrow();
-                let cf_ctx = ctx_ref.as_ref()?;
-                let db = cf_ctx.db.clone();
-                
-                let rt = tokio::runtime::Handle::current();
-                let is_select = sql.trim().to_uppercase().starts_with("SELECT");
-                
-                Some(if is_select {
-                    rt.block_on(async {
-                        let mut query = sqlx::query(&sql);
-                        for p in &params {
-                            query = match p {
-                                serde_json::Value::String(s) => query.bind(s),
-                                serde_json::Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() {
-                                        query.bind(i)
-                                    } else if let Some(f) = n.as_f64() {
-                                        query.bind(f)
-                                    } else {
-                                        query.bind(0)
+        let db_query_params_fn = Function::new(
+            ctx.clone(),
+            |_ctx: Ctx, sql: String, params_json: String| -> Result<String, rquickjs::Error> {
+                // 安全验证
+                if let Err(e) = validate_sql_security(&sql) {
+                    return Ok(serde_json::json!({ "OK": false, "Err": e }).to_string());
+                }
+
+                let params: Vec<serde_json::Value> =
+                    serde_json::from_str(&params_json).unwrap_or_default();
+
+                let result = CF_CONTEXT.with(|c| {
+                    let ctx_ref = c.borrow();
+                    let cf_ctx = ctx_ref.as_ref()?;
+                    let db = cf_ctx.db.clone();
+
+                    let rt = tokio::runtime::Handle::current();
+                    let is_select = sql.trim().to_uppercase().starts_with("SELECT");
+
+                    Some(if is_select {
+                        rt.block_on(async {
+                            let mut query = sqlx::query(&sql);
+                            for p in &params {
+                                query = match p {
+                                    serde_json::Value::String(s) => query.bind(s),
+                                    serde_json::Value::Number(n) => {
+                                        if let Some(i) = n.as_i64() {
+                                            query.bind(i)
+                                        } else if let Some(f) = n.as_f64() {
+                                            query.bind(f)
+                                        } else {
+                                            query.bind(0)
+                                        }
                                     }
-                                }
-                                serde_json::Value::Bool(b) => query.bind(*b as i8),
-                                _ => query.bind(None::<String>),
-                            };
-                        }
-                        query.fetch_all(&db).await
-                            .map(|rows| {
-                                let results: Vec<serde_json::Map<String, serde_json::Value>> = rows.iter().map(|row| {
-                                    let mut map = serde_json::Map::new();
-                                    for col in row.columns() {
-                                        let col_name = col.name();
-                                        let value: Option<String> = row.try_get(col_name).ok();
-                                        map.insert(col_name.to_string(), 
-                                            value.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
+                                    serde_json::Value::Bool(b) => query.bind(*b as i8),
+                                    _ => query.bind(None::<String>),
+                                };
+                            }
+                            query
+                                .fetch_all(&db)
+                                .await
+                                .map(|rows| {
+                                    let results: Vec<serde_json::Map<String, serde_json::Value>> =
+                                        rows.iter()
+                                            .map(|row| {
+                                                let mut map = serde_json::Map::new();
+                                                for col in row.columns() {
+                                                    let col_name = col.name();
+                                                    let value: Option<String> =
+                                                        row.try_get(col_name).ok();
+                                                    map.insert(
+                                                        col_name.to_string(),
+                                                        value
+                                                            .map(serde_json::Value::String)
+                                                            .unwrap_or(serde_json::Value::Null),
+                                                    );
+                                                }
+                                                map
+                                            })
+                                            .collect();
+                                    serde_json::json!({ "OK": true, "Data": results })
+                                })
+                                .map_err(|_| "查询执行失败".to_string())
+                        })
+                    } else {
+                        rt.block_on(async {
+                            let mut query = sqlx::query(&sql);
+                            for p in &params {
+                                query = match p {
+                                    serde_json::Value::String(s) => query.bind(s),
+                                    serde_json::Value::Number(n) => {
+                                        if let Some(i) = n.as_i64() {
+                                            query.bind(i)
+                                        } else if let Some(f) = n.as_f64() {
+                                            query.bind(f)
+                                        } else {
+                                            query.bind(0)
+                                        }
                                     }
-                                    map
-                                }).collect();
-                                serde_json::json!({ "OK": true, "Data": results })
-                            })
-                            .map_err(|_| "查询执行失败".to_string())
-                    })
-                } else {
-                    rt.block_on(async {
-                        let mut query = sqlx::query(&sql);
-                        for p in &params {
-                            query = match p {
-                                serde_json::Value::String(s) => query.bind(s),
-                                serde_json::Value::Number(n) => {
-                                    if let Some(i) = n.as_i64() {
-                                        query.bind(i)
-                                    } else if let Some(f) = n.as_f64() {
-                                        query.bind(f)
-                                    } else {
-                                        query.bind(0)
-                                    }
-                                }
-                                serde_json::Value::Bool(b) => query.bind(*b as i8),
-                                _ => query.bind(None::<String>),
-                            };
-                        }
-                        query.execute(&db).await
+                                    serde_json::Value::Bool(b) => query.bind(*b as i8),
+                                    _ => query.bind(None::<String>),
+                                };
+                            }
+                            query.execute(&db).await
                             .map(|r| serde_json::json!({ "OK": true, "Rows": r.rows_affected() }))
                             .map_err(|_| "操作执行失败".to_string())
+                        })
                     })
-                })
-            });
-            
-            match result {
-                Some(Ok(json)) => Ok(json.to_string()),
-                Some(Err(e)) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
-                None => Ok(serde_json::json!({ "OK": false, "Err": "上下文错误" }).to_string()),
-            }
-        }).map_err(|e| e.to_string())?;
-        globals.set("__dbQueryWithParams", db_query_params_fn).map_err(|e| e.to_string())?;
-        
+                });
+
+                match result {
+                    Some(Ok(json)) => Ok(json.to_string()),
+                    Some(Err(e)) => Ok(serde_json::json!({ "OK": false, "Err": e }).to_string()),
+                    None => Ok(serde_json::json!({ "OK": false, "Err": "上下文错误" }).to_string()),
+                }
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        globals
+            .set("__dbQueryWithParams", db_query_params_fn)
+            .map_err(|e| e.to_string())?;
+
         Ok(())
     }
 
@@ -608,7 +769,24 @@ impl QuickJsRuntime {
         let helpers_code = r#"
             // 列名消毒：只允许字母、数字、下划线，防止 SQL 注入
             function sanitizeColumnName(name) {
-                return String(name).replace(/[^a-zA-Z0-9_]/g, '');
+                var value = String(name).replace(/[^a-zA-Z0-9_]/g, '');
+                if (!value) {
+                    throw new Error('字段名无效');
+                }
+                return value;
+            }
+
+            function validateOrderBy(order) {
+                if (!order) return '';
+                return String(order).split(',').map(function(part) {
+                    var pieces = part.trim().split(/\s+/);
+                    var column = sanitizeColumnName(pieces[0]);
+                    var direction = (pieces[1] || 'ASC').toUpperCase();
+                    if (direction !== 'ASC' && direction !== 'DESC') {
+                        throw new Error('排序方向无效');
+                    }
+                    return column + ' ' + direction;
+                }).join(', ');
             }
 
             // Db 类 - 数据库操作
@@ -620,7 +798,7 @@ impl QuickJsRuntime {
                 this._limit = 0;
                 this._offset = 0;
                 this._whereParams = [];
-                
+
                 // 初始化时验证表名
                 if (this._table) {
                     var vResult = JSON.parse(__validateTable(this._table));
@@ -631,7 +809,7 @@ impl QuickJsRuntime {
                     }
                 }
             };
-            
+
             Db.prototype.Where = function(condition) {
                 if (this._where) {
                     this._where = this._where + ' AND ' + condition;
@@ -640,7 +818,7 @@ impl QuickJsRuntime {
                 }
                 return this;
             };
-            
+
             // 参数化 Where 条件（推荐使用）
             Db.prototype.WhereParam = function(condition, params) {
                 if (this._where) {
@@ -653,22 +831,22 @@ impl QuickJsRuntime {
                 }
                 return this;
             };
-            
+
             Db.prototype.Order = function(order) {
-                this._order = order;
+                this._order = validateOrderBy(order);
                 return this;
             };
-            
+
             Db.prototype.Limit = function(limit) {
                 this._limit = limit;
                 return this;
             };
-            
+
             Db.prototype.Offset = function(offset) {
                 this._offset = offset;
                 return this;
             };
-            
+
             Db.prototype.Find = function() {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -681,14 +859,14 @@ impl QuickJsRuntime {
                     sql += ' WHERE ' + this._where;
                 }
                 sql += ' LIMIT 1';
-                
+
                 var result = JSON.parse(__dbQueryWithParams(sql, JSON.stringify(this._whereParams)));
                 if (result.OK && result.Data && result.Data.length > 0) {
                     return {OK: true, Data: result.Data[0]};
                 }
                 return result.OK ? {OK: false, Err: '数据不存在'} : result;
             };
-            
+
             Db.prototype.FindAll = function() {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -709,10 +887,10 @@ impl QuickJsRuntime {
                 if (this._offset > 0) {
                     sql += ' OFFSET ' + this._offset;
                 }
-                
+
                 return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(this._whereParams)));
             };
-            
+
             Db.prototype.Add = function(data) {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -724,16 +902,20 @@ impl QuickJsRuntime {
                 if (keys.length === 0) {
                     return {OK: false, Err: '数据不能为空'};
                 }
-                
+
                 // 使用参数化查询，列名经过消毒
-                var columns = keys.map(function(k) { return sanitizeColumnName(k); }).join(', ');
+                try {
+                    var columns = keys.map(function(k) { return sanitizeColumnName(k); }).join(', ');
+                } catch (e) {
+                    return {OK: false, Err: e.message};
+                }
                 var placeholders = keys.map(function() { return '?'; }).join(', ');
                 var params = keys.map(function(k) { return data[k]; });
-                
+
                 var sql = 'INSERT INTO ' + this._validatedTable + ' (' + columns + ') VALUES (' + placeholders + ')';
                 return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(params)));
             };
-            
+
             Db.prototype.Updates = function(data) {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -748,15 +930,19 @@ impl QuickJsRuntime {
                 if (keys.length === 0) {
                     return {OK: false, Err: '数据不能为空'};
                 }
-                
+
                 // 使用参数化查询，列名经过消毒
-                var sets = keys.map(function(k) { return sanitizeColumnName(k) + ' = ?'; }).join(', ');
+                try {
+                    var sets = keys.map(function(k) { return sanitizeColumnName(k) + ' = ?'; }).join(', ');
+                } catch (e) {
+                    return {OK: false, Err: e.message};
+                }
                 var params = keys.map(function(k) { return data[k]; }).concat(this._whereParams);
-                
+
                 var sql = 'UPDATE ' + this._validatedTable + ' SET ' + sets + ' WHERE ' + this._where;
                 return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(params)));
             };
-            
+
             Db.prototype.Delete = function() {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -770,7 +956,7 @@ impl QuickJsRuntime {
                 var sql = 'DELETE FROM ' + this._validatedTable + ' WHERE ' + this._where;
                 return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(this._whereParams)));
             };
-            
+
             Db.prototype.IncOrDec = function(data) {
                 if (this._tableError) {
                     return {OK: false, Err: this._tableError};
@@ -782,30 +968,39 @@ impl QuickJsRuntime {
                 if (keys.length === 0) {
                     return {OK: false, Err: '数据不能为空'};
                 }
-                
-                // 列名经过 sanitizeColumnName 消毒，防止 SQL 注入
-                var sets = keys.map(function(k) {
-                    var safeKey = sanitizeColumnName(k);
-                    var v = data[k];
-                    if (v >= 0) {
-                        return safeKey + ' = ' + safeKey + ' + ' + v;
-                    } else {
-                        return safeKey + ' = ' + safeKey + ' - ' + (-v);
-                    }
-                }).join(', ');
-                
+
+                // 列名经过 sanitizeColumnName 消毒，数值强制校验，防止 SQL 注入
+                var incParams = [];
+                try {
+                    var sets = keys.map(function(k) {
+                        var safeKey = sanitizeColumnName(k);
+                        var v = Number(data[k]);
+                        if (!Number.isFinite(v)) {
+                            throw new Error('增减值必须是有效数字');
+                        }
+                        incParams.push(Math.abs(v));
+                        if (v >= 0) {
+                            return safeKey + ' = ' + safeKey + ' + ?';
+                        } else {
+                            return safeKey + ' = ' + safeKey + ' - ?';
+                        }
+                    }).join(', ');
+                } catch (e) {
+                    return {OK: false, Err: e.message};
+                }
+
                 var sql = 'UPDATE ' + this._validatedTable + ' SET ' + sets;
                 if (this._where) {
                     sql += ' WHERE ' + this._where;
                 }
-                return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(this._whereParams)));
+                return JSON.parse(__dbQueryWithParams(sql, JSON.stringify(incParams.concat(this._whereParams))));
             };
-            
+
             Db.prototype.Sql = function(sql) {
                 // Sql 方法会经过安全验证
                 return JSON.parse(__dbQuery(sql));
             };
-            
+
             // Redis 对象
             var Redis = {
                 set: function(key, value, expire) {
@@ -818,50 +1013,54 @@ impl QuickJsRuntime {
                     return JSON.parse(__redisCall('del', key, null, null));
                 }
             };
-            
+
             // Http 类
             var Http = function(baseUrl) {
                 this._baseUrl = baseUrl || '';
                 this._timeout = 15;
                 this._headers = {};
             };
-            
+
             Http.prototype.setTimeout = function(timeout) {
                 this._timeout = timeout;
                 return this;
             };
-            
+
             Http.prototype.setHeaders = function(headers) {
                 this._headers = headers;
                 return this;
             };
-            
+
             Http.prototype.get = function(url) {
                 var fullUrl = this._baseUrl ? this._baseUrl.replace(/\/$/, '') + url : url;
                 return JSON.parse(__httpCall('GET', fullUrl, null, this._timeout));
             };
-            
+
             Http.prototype.post = function(url, data) {
                 var fullUrl = this._baseUrl ? this._baseUrl.replace(/\/$/, '') + url : url;
                 var body = typeof data === 'object' ? JSON.stringify(data) : String(data);
                 return JSON.parse(__httpCall('POST', fullUrl, body, this._timeout));
             };
         "#;
-        
+
         ctx.eval::<(), _>(helpers_code).map_err(|e| e.to_string())?;
         Ok(())
     }
 
     /// 将 JSON 转换为 QuickJS 对象
-    fn json_to_object<'js>(ctx: &Ctx<'js>, json: &serde_json::Value) -> Result<Object<'js>, String> {
+    fn json_to_object<'js>(
+        ctx: &Ctx<'js>,
+        json: &serde_json::Value,
+    ) -> Result<Object<'js>, String> {
         let obj = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
-        
+
         if let serde_json::Value::Object(map) = json {
             for (key, value) in map {
                 let camel_key = to_camel_case(key);
                 match value {
                     serde_json::Value::Null => {
-                        obj.set(camel_key, rquickjs::Null).map_err(|e| e.to_string())?;
+                        obj.set(camel_key, rquickjs::Null)
+                            .map_err(|e| e.to_string())?;
                     }
                     serde_json::Value::Bool(b) => {
                         obj.set(camel_key, *b).map_err(|e| e.to_string())?;
@@ -881,24 +1080,29 @@ impl QuickJsRuntime {
                         obj.set(camel_key, arr_obj).map_err(|e| e.to_string())?;
                     }
                     serde_json::Value::Object(inner) => {
-                        let inner_obj = Self::json_to_object(ctx, &serde_json::Value::Object(inner.clone()))?;
+                        let inner_obj =
+                            Self::json_to_object(ctx, &serde_json::Value::Object(inner.clone()))?;
                         obj.set(camel_key, inner_obj).map_err(|e| e.to_string())?;
                     }
                 }
             }
         }
-        
+
         Ok(obj)
     }
 
     /// 将 JSON 数组转换为 QuickJS 数组
-    fn json_to_array<'js>(ctx: &Ctx<'js>, arr: &[serde_json::Value]) -> Result<Object<'js>, String> {
+    fn json_to_array<'js>(
+        ctx: &Ctx<'js>,
+        arr: &[serde_json::Value],
+    ) -> Result<Object<'js>, String> {
         let obj = Object::new(ctx.clone()).map_err(|e| e.to_string())?;
-        
+
         for (i, value) in arr.iter().enumerate() {
             match value {
                 serde_json::Value::Null => {
-                    obj.set(i as u32, rquickjs::Null).map_err(|e| e.to_string())?;
+                    obj.set(i as u32, rquickjs::Null)
+                        .map_err(|e| e.to_string())?;
                 }
                 serde_json::Value::Bool(b) => {
                     obj.set(i as u32, *b).map_err(|e| e.to_string())?;
@@ -918,12 +1122,13 @@ impl QuickJsRuntime {
                     obj.set(i as u32, inner_arr).map_err(|e| e.to_string())?;
                 }
                 serde_json::Value::Object(inner) => {
-                    let inner_obj = Self::json_to_object(ctx, &serde_json::Value::Object(inner.clone()))?;
+                    let inner_obj =
+                        Self::json_to_object(ctx, &serde_json::Value::Object(inner.clone()))?;
                     obj.set(i as u32, inner_obj).map_err(|e| e.to_string())?;
                 }
             }
         }
-        
+
         Ok(obj)
     }
 
@@ -950,9 +1155,14 @@ impl QuickJsRuntime {
             Type::Array => {
                 let obj: Object<'js> = value.get().map_err(|e: rquickjs::Error| e.to_string())?;
                 let mut arr = Vec::new();
-                let len: u32 = obj.get("length").map_err(|e: rquickjs::Error| e.to_string())?;
+                let len: u32 = obj
+                    .get("length")
+                    .map_err(|e: rquickjs::Error| e.to_string())?;
                 for i in 0..len {
-                    if let Some(item) = obj.get::<_, Option<Value<'js>>>(i).map_err(|e: rquickjs::Error| e.to_string())? {
+                    if let Some(item) = obj
+                        .get::<_, Option<Value<'js>>>(i)
+                        .map_err(|e: rquickjs::Error| e.to_string())?
+                    {
                         arr.push(Self::value_to_json(ctx, item)?);
                     }
                 }
@@ -963,16 +1173,24 @@ impl QuickJsRuntime {
                 if value.type_of() == Type::Function {
                     return Ok(serde_json::Value::Null);
                 }
-                
+
                 // 使用 JSON.stringify 转换对象
-                let json_obj: Object<'js> = ctx.globals().get("JSON").map_err(|e: rquickjs::Error| e.to_string())?;
-                let stringify_fn: Function<'js> = json_obj.get("stringify").map_err(|e: rquickjs::Error| e.to_string())?;
-                let json_str: String = stringify_fn.call((value,)).map_err(|e: rquickjs::Error| e.to_string())?;
-                
+                let json_obj: Object<'js> = ctx
+                    .globals()
+                    .get("JSON")
+                    .map_err(|e: rquickjs::Error| e.to_string())?;
+                let stringify_fn: Function<'js> = json_obj
+                    .get("stringify")
+                    .map_err(|e: rquickjs::Error| e.to_string())?;
+                let json_str: String = stringify_fn
+                    .call((value,))
+                    .map_err(|e: rquickjs::Error| e.to_string())?;
+
                 if json_str == "undefined" || json_str == "null" {
                     Ok(serde_json::Value::Null)
                 } else {
-                    serde_json::from_str(&json_str).map_err(|e| format!("JSON解析失败: {} (input: {})", e, json_str))
+                    serde_json::from_str(&json_str)
+                        .map_err(|e| format!("JSON解析失败: {} (input: {})", e, json_str))
                 }
             }
             _ => Ok(serde_json::Value::Null),
@@ -998,16 +1216,8 @@ pub async fn execute_cloud_function(
     param: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
     let mut runtime = QuickJsRuntime::new();
-    
-    let ctx = CloudFunctionContext::new(
-        db,
-        redis_pool,
-        redis_util,
-        ip,
-        user,
-        app,
-        param,
-    );
-    
+
+    let ctx = CloudFunctionContext::new(db, redis_pool, redis_util, ip, user, app, param);
+
     runtime.execute(code, ctx)
 }

@@ -1,17 +1,17 @@
 //! 多级缓存实现
-//! 
+//!
 //! L1 (本地内存) + L2 (Redis) 多级缓存
 //! 支持缓存穿透保护、雪崩防护、热点探测
 
+use parking_lot::RwLock;
+use serde::{Serialize, de::DeserializeOwned};
+use std::hash::Hash;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use std::hash::Hash;
-use parking_lot::RwLock;
-use serde::{Serialize, de::DeserializeOwned};
 
 use super::redis_backend::{RedisBackend, RedisError, TypedCache};
-use crate::high_perf_cache::{ShardedCacheV2, CacheConfig, EvictionPolicy};
+use crate::high_perf_cache::{CacheConfig, EvictionPolicy, ShardedCacheV2};
 
 // ============================================================================
 // 多级缓存配置
@@ -49,9 +49,9 @@ impl Default for MultiLevelCacheConfig {
                 max_entries: 10_000,
                 shard_count: 64,
                 default_ttl: Duration::from_secs(300),
-                eviction_policy: EvictionPolicy::Hybrid { 
-                    lfu_weight: 0.6, 
-                    lru_weight: 0.4 
+                eviction_policy: EvictionPolicy::Hybrid {
+                    lfu_weight: 0.6,
+                    lru_weight: 0.4,
                 },
                 ..Default::default()
             },
@@ -106,7 +106,7 @@ impl CacheStats {
     pub fn total_requests(&self) -> u64 {
         self.l1_hits + self.l2_hits + self.misses
     }
-    
+
     pub fn hit_rate(&self) -> f64 {
         let total = self.total_requests();
         if total == 0 {
@@ -114,7 +114,7 @@ impl CacheStats {
         }
         (self.l1_hits + self.l2_hits) as f64 / total as f64
     }
-    
+
     pub fn l1_hit_rate(&self) -> f64 {
         let total = self.total_requests();
         if total == 0 {
@@ -199,20 +199,24 @@ where
         } else {
             None
         };
-        
+
         let l2 = backend.map(|b| TypedCache::new(b, &config.key_prefix, config.l2_default_ttl));
-        
+
         // 空值缓存容量限制为 L1 容量的 5%
         let null_cache_capacity = (config.l1_config.max_entries / 20).max(100);
         // 热点键容量限制为 L1 容量的 10%
         let hot_keys_capacity = (config.l1_config.max_entries / 10).max(100);
-        
+
         Self {
             l1,
             l2,
             config,
-            null_cache: RwLock::new(lru::LruCache::new(std::num::NonZeroUsize::new(null_cache_capacity).unwrap())),
-            hot_keys: RwLock::new(lru::LruCache::new(std::num::NonZeroUsize::new(hot_keys_capacity).unwrap())),
+            null_cache: RwLock::new(lru::LruCache::new(
+                std::num::NonZeroUsize::new(null_cache_capacity).unwrap(),
+            )),
+            hot_keys: RwLock::new(lru::LruCache::new(
+                std::num::NonZeroUsize::new(hot_keys_capacity).unwrap(),
+            )),
             stats: Stats {
                 l1_hits: AtomicU64::new(0),
                 l2_hits: AtomicU64::new(0),
@@ -222,7 +226,7 @@ where
             access_counts: RwLock::new(std::collections::HashMap::new()),
         }
     }
-    
+
     /// 获取缓存值
     pub async fn get(&self, key: &K) -> Result<Option<V>, RedisError> {
         // 检查空值缓存
@@ -230,12 +234,12 @@ where
             self.stats.misses.fetch_add(1, Ordering::Relaxed);
             return Ok(None);
         }
-        
+
         // 采样式热点探测：每 100 次访问才更新计数器
         // 这大大减少了锁竞争
         if self.config.auto_promote_hot {
             let global_count = self.global_access_count.fetch_add(1, Ordering::Relaxed);
-            
+
             // 采样率：每 100 次访问采样一次
             if global_count.is_multiple_of(100) {
                 let count = {
@@ -245,11 +249,13 @@ where
                     } else {
                         drop(counts);
                         let mut counts = self.access_counts.write();
-                        let counter = counts.entry(key.clone()).or_insert_with(|| AtomicU64::new(0));
+                        let counter = counts
+                            .entry(key.clone())
+                            .or_insert_with(|| AtomicU64::new(0));
                         counter.fetch_add(100, Ordering::Relaxed) + 100
                     }
                 };
-                
+
                 // 检测热点
                 if count >= self.config.hot_threshold {
                     let mut hot_keys = self.hot_keys.write();
@@ -257,47 +263,55 @@ where
                 }
             }
         }
-        
+
         // 1. 尝试从 L1 获取
         if let Some(l1) = &self.l1
-            && let Some(entry) = l1.get(key) {
-                self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
-                return Ok(Some(entry.value));
-            }
-        
+            && let Some(entry) = l1.get(key)
+        {
+            self.stats.l1_hits.fetch_add(1, Ordering::Relaxed);
+            return Ok(Some(entry.value));
+        }
+
         // 2. 尝试从 L2 获取
         if let Some(l2) = &self.l2 {
             let l2_key = key.to_string();
             if let Some(value) = l2.get::<V>(&l2_key).await? {
                 self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
-                
+
                 // 如果是热点数据，回填到 L1
-                if self.config.auto_promote_hot && self.hot_keys.read().contains(key)
-                    && let Some(l1) = &self.l1 {
-                        l1.set(key.clone(), CacheEntry::new(value.clone()));
-                    }
-                
+                if self.config.auto_promote_hot
+                    && self.hot_keys.read().contains(key)
+                    && let Some(l1) = &self.l1
+                {
+                    l1.set(key.clone(), CacheEntry::new(value.clone()));
+                }
+
                 return Ok(Some(value));
             }
         }
-        
+
         // 未命中
         self.stats.misses.fetch_add(1, Ordering::Relaxed);
         Ok(None)
     }
-    
+
     /// 设置缓存值
     pub async fn set(&self, key: K, value: V) -> Result<(), RedisError> {
         self.set_with_ttl(key, value, None).await
     }
-    
+
     /// 设置缓存值（带 TTL）
-    pub async fn set_with_ttl(&self, key: K, value: V, ttl: Option<Duration>) -> Result<(), RedisError> {
+    pub async fn set_with_ttl(
+        &self,
+        key: K,
+        value: V,
+        ttl: Option<Duration>,
+    ) -> Result<(), RedisError> {
         let ttl = ttl.unwrap_or(self.config.l1_config.default_ttl);
-        
+
         // 移除空值标记
         self.null_cache.write().pop(&key);
-        
+
         match self.config.write_policy {
             WritePolicy::WriteThrough => {
                 // 同时写入 L1 和 L2
@@ -326,38 +340,40 @@ where
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// 设置空值（缓存穿透保护）
     pub async fn set_null(&self, key: K) {
         if self.config.enable_null_cache {
             // 使用 LRU 缓存，自动淘汰最旧的空值标记
-            self.null_cache.write().put(key, Instant::now() + self.config.null_cache_ttl);
+            self.null_cache
+                .write()
+                .put(key, Instant::now() + self.config.null_cache_ttl);
         }
     }
-    
+
     /// 删除缓存值
     pub async fn delete(&self, key: &K) -> Result<(), RedisError> {
         // 从 L1 删除
         if let Some(l1) = &self.l1 {
             l1.remove(key);
         }
-        
+
         // 从 L2 删除
         if let Some(l2) = &self.l2 {
             l2.delete(&key.to_string()).await?;
         }
-        
+
         // 移除空值标记和热点标记
         self.null_cache.write().pop(key);
         self.hot_keys.write().pop(key);
         self.access_counts.write().remove(key);
-        
+
         Ok(())
     }
-    
+
     /// 获取或创建（带缓存穿透保护）
     pub async fn get_or_create<F, Fut>(
         &self,
@@ -373,7 +389,7 @@ where
         if let Some(value) = self.get(&key).await? {
             return Ok(value);
         }
-        
+
         // 加载数据
         match loader().await? {
             Some(value) => {
@@ -390,12 +406,15 @@ where
             }
         }
     }
-    
+
     /// 批量获取
-    pub async fn get_many(&self, keys: &[K]) -> Result<std::collections::HashMap<K, V>, RedisError> {
+    pub async fn get_many(
+        &self,
+        keys: &[K],
+    ) -> Result<std::collections::HashMap<K, V>, RedisError> {
         let mut results = std::collections::HashMap::new();
         let mut missed = Vec::new();
-        
+
         // 先从 L1 批量获取
         if let Some(l1) = &self.l1 {
             for key in keys {
@@ -409,22 +428,23 @@ where
         } else {
             missed = keys.to_vec();
         }
-        
+
         // 从 L2 获取未命中的
         if !missed.is_empty()
-            && let Some(l2) = &self.l2 {
-                for key in &missed {
-                    let key_str = key.to_string();
-                    if let Some(value) = l2.get::<V>(&key_str).await? {
-                        results.insert(key.clone(), value);
-                        self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
-                    }
+            && let Some(l2) = &self.l2
+        {
+            for key in &missed {
+                let key_str = key.to_string();
+                if let Some(value) = l2.get::<V>(&key_str).await? {
+                    results.insert(key.clone(), value);
+                    self.stats.l2_hits.fetch_add(1, Ordering::Relaxed);
                 }
             }
-        
+        }
+
         Ok(results)
     }
-    
+
     /// 清空 L1 缓存
     pub fn clear_l1(&self) {
         if let Some(l1) = &self.l1 {
@@ -434,7 +454,7 @@ where
         self.hot_keys.write().clear();
         self.access_counts.write().clear();
     }
-    
+
     /// 获取统计信息
     pub fn stats(&self) -> CacheStats {
         CacheStats {
@@ -447,17 +467,17 @@ where
             null_caches: self.null_cache.read().len(),
         }
     }
-    
+
     /// 检查是否是热点键
     pub fn is_hot(&self, key: &K) -> bool {
         self.hot_keys.read().contains(key)
     }
-    
+
     /// 标记为热点键
     pub fn mark_hot(&self, key: K) {
         self.hot_keys.write().put(key, ());
     }
-    
+
     /// 取消热点标记
     pub fn unmark_hot(&self, key: &K) {
         self.hot_keys.write().pop(key);
@@ -534,7 +554,7 @@ impl<B: RedisBackend + 'static> DistributedCacheManager<B> {
             ),
         }
     }
-    
+
     /// 清空所有缓存
     pub fn clear_all(&self) {
         self.user_cache.clear_l1();
@@ -542,7 +562,7 @@ impl<B: RedisBackend + 'static> DistributedCacheManager<B> {
         self.config_cache.clear_l1();
         self.app_cache.clear_l1();
     }
-    
+
     /// 获取综合统计
     pub fn stats(&self) -> DistributedCacheStats {
         DistributedCacheStats {
@@ -569,16 +589,20 @@ impl DistributedCacheStats {
             + self.session.total_requests()
             + self.config.total_requests()
             + self.app.total_requests();
-        
+
         if total_requests == 0 {
             return 0.0;
         }
-        
-        let total_hits = self.user.l1_hits + self.user.l2_hits
-            + self.session.l1_hits + self.session.l2_hits
-            + self.config.l1_hits + self.config.l2_hits
-            + self.app.l1_hits + self.app.l2_hits;
-        
+
+        let total_hits = self.user.l1_hits
+            + self.user.l2_hits
+            + self.session.l1_hits
+            + self.session.l2_hits
+            + self.config.l1_hits
+            + self.config.l2_hits
+            + self.app.l1_hits
+            + self.app.l2_hits;
+
         total_hits as f64 / total_requests as f64
     }
 }
@@ -587,24 +611,27 @@ impl DistributedCacheStats {
 mod tests {
     use super::*;
     use crate::distributed::MockRedisBackend;
-    
+
     #[tokio::test]
     async fn test_multi_level_cache() {
         let backend = Arc::new(MockRedisBackend::new("test:"));
         let config = MultiLevelCacheConfig::default();
-        let cache: MultiLevelCache<String, String, MockRedisBackend> = 
+        let cache: MultiLevelCache<String, String, MockRedisBackend> =
             MultiLevelCache::new(Some(backend), config);
-        
+
         // 测试 set/get
-        cache.set("key1".to_string(), "value1".to_string()).await.unwrap();
+        cache
+            .set("key1".to_string(), "value1".to_string())
+            .await
+            .unwrap();
         let value = cache.get(&"key1".to_string()).await.unwrap();
         assert_eq!(value, Some("value1".to_string()));
-        
+
         // 测试统计
         let stats = cache.stats();
         assert!(stats.l1_hits > 0 || stats.l2_hits > 0);
     }
-    
+
     #[tokio::test]
     async fn test_null_cache() {
         let backend = Arc::new(MockRedisBackend::new("test:"));
@@ -612,17 +639,17 @@ mod tests {
             enable_null_cache: true,
             ..Default::default()
         };
-        let cache: MultiLevelCache<String, String, MockRedisBackend> = 
+        let cache: MultiLevelCache<String, String, MockRedisBackend> =
             MultiLevelCache::new(Some(backend), config);
-        
+
         // 设置空值
         cache.set_null("null_key".to_string()).await;
-        
+
         // 获取应返回 None（不查询后端）
         let value = cache.get(&"null_key".to_string()).await.unwrap();
         assert_eq!(value, None);
     }
-    
+
     #[tokio::test]
     async fn test_hot_key_detection() {
         let backend = Arc::new(MockRedisBackend::new("test:"));
@@ -631,17 +658,20 @@ mod tests {
             auto_promote_hot: true,
             ..Default::default()
         };
-        let cache: MultiLevelCache<String, String, MockRedisBackend> = 
+        let cache: MultiLevelCache<String, String, MockRedisBackend> =
             MultiLevelCache::new(Some(backend.clone()), config);
-        
+
         // 设置缓存
-        cache.set("hot_key".to_string(), "hot_value".to_string()).await.unwrap();
-        
+        cache
+            .set("hot_key".to_string(), "hot_value".to_string())
+            .await
+            .unwrap();
+
         // 多次访问
         for _ in 0..5 {
             let _ = cache.get(&"hot_key".to_string()).await;
         }
-        
+
         // 应被标记为热点
         assert!(cache.is_hot(&"hot_key".to_string()));
     }

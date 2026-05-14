@@ -27,7 +27,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -50,7 +50,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     // PHP: $this->db->where('appid = ?',[$this->appid])->order('id desc')->fetchAll('id,name');
     let result = sqlx::query_as::<_, (u64, String)>(
-        "SELECT id, name FROM u_fen_event WHERE appid = ? ORDER BY id DESC"
+        "SELECT id, name FROM u_fen_event WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
     .fetch_all(app_state.get_db())
@@ -58,7 +58,13 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     match result {
         Ok(rows) => {
-            let list: Vec<FenEventItem> = rows.into_iter().map(|row| FenEventItem { id: row.0, name: row.1 }).collect();
+            let list: Vec<FenEventItem> = rows
+                .into_iter()
+                .map(|row| FenEventItem {
+                    id: row.0,
+                    name: row.1,
+                })
+                .collect();
             // PHP: $this->json('成功',200,$list);
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -115,7 +121,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // PHP: $checkRules = ['pg' => ['int','1,11','页面有误',1], 'size' => ['int','1,3','数据条数有误',10], 'so' => ['isArr','','搜索内容不规范',true]];
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
@@ -159,23 +165,27 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if let Some(so) = &list_req.so {
         // PHP: if(isset($_POST['so']['keyword']) && !empty($_POST['so']['keyword']))
         if let Some(keyword) = &so.keyword
-            && !keyword.is_empty() {
-                // PHP: $where .= ' and name LIKE ?'; array_push($whereArr,'%'.$_POST['so']['keyword'].'%');
-                where_conditions.push("name LIKE ?".to_string());
-                params.push(format!("%{}%", keyword));
-            }
+            && !keyword.is_empty()
+        {
+            // PHP: $where .= ' and name LIKE ?'; array_push($whereArr,'%'.$_POST['so']['keyword'].'%');
+            where_conditions.push("name LIKE ?".to_string());
+            params.push(format!("%{}%", keyword));
+        }
     }
 
     let where_clause = where_conditions.join(" AND ");
     let count_query = format!("SELECT COUNT(*) FROM u_fen_event WHERE {}", where_clause);
-    let data_query = format!("SELECT id, name, fen, vip, vip_free, appid, state FROM u_fen_event WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?", where_clause);
-    
+    let data_query = format!(
+        "SELECT id, name, fen, vip, vip_free, appid, state FROM u_fen_event WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?",
+        where_clause
+    );
+
     // 查询总数
     let mut count_sql = sqlx::query_as::<_, (i64,)>(&count_query);
     for param in &params {
         count_sql = count_sql.bind(param);
     }
-    
+
     let data_total = match count_sql.fetch_one(app_state.get_db()).await {
         Ok((count,)) => count,
         Err(e) => {
@@ -184,15 +194,16 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let page_total = if data_total == 0 {
         0
     } else {
         ((data_total - 1) / size as i64 + 1) as i32
     };
-    
+
     // 查询数据
-    let mut data_sql = sqlx::query_as::<_, (u64, String, i64, Option<i64>, String, i64, String)>(&data_query);
+    let mut data_sql =
+        sqlx::query_as::<_, (u64, String, i64, Option<i64>, String, i64, String)>(&data_query);
     for param in &params {
         data_sql = data_sql.bind(param);
     }
@@ -202,15 +213,18 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<FenEventListItem> = rows.into_iter().map(|row| FenEventListItem {
-                id: row.0,
-                name: row.1,
-                fen: row.2,
-                vip: row.3,
-                vip_free: row.4,
-                appid: row.5,
-                state: row.6,
-            }).collect();
+            let list: Vec<FenEventListItem> = rows
+                .into_iter()
+                .map(|row| FenEventListItem {
+                    id: row.0,
+                    name: row.1,
+                    fen: row.2,
+                    vip: row.3,
+                    vip_free: row.4,
+                    appid: row.5,
+                    state: row.6,
+                })
+                .collect();
 
             let response = FenEventListResponse {
                 list,
@@ -255,7 +269,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddFenEventRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -290,7 +304,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     //   'vip' => ['betweend','0,9999999999','事件兑换会员数值有误','0'],
     //   'vip_free' => ['sameone','y,n','VIP免费选择有误','n']
     // ];
-    
+
     // 验证 name: 2-125 字符
     if add_req.name.len() < 2 || add_req.name.len() > 125 {
         res.render(Json(ApiResponse::<()>::error("事件名称不规范", 201)));
@@ -334,13 +348,12 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // PHP: $res = $this->db->where('name = ? and appid = ?',[$_POST['name'],$this->appid])->fetch();
     // PHP: if($res)$this->json("事件名称已存在",201);
-    let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_fen_event WHERE name = ? AND appid = ?"
-    )
-    .bind(&add_req.name)
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_fen_event WHERE name = ? AND appid = ?")
+            .bind(&add_req.name)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some(_)) => {
@@ -364,7 +377,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // ];
 
     let insert_result = sqlx::query(
-        "INSERT INTO u_fen_event (name, fen, vip, vip_free, appid) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO u_fen_event (name, fen, vip, vip_free, appid) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&add_req.name)
     .bind(add_req.fen)
@@ -378,12 +391,12 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(result) => {
             if result.rows_affected() > 0 {
                 let add_id = result.last_insert_id();
-                
+
                 // PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id);
                 if let Err(e) = add_log(depot, app_state, add_id).await {
                     tracing::error!("日志记录失败: {}", e);
                 }
-                
+
                 // PHP: $this->json('添加成功',200);
                 res.render(Json(ApiResponse::success_msg("添加成功")));
             } else {
@@ -420,7 +433,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditFenEventRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -506,13 +519,12 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // PHP: $res = $this->db->where('name = ? and appid = ?',[$_POST['name'],$this->appid])->fetch();
     // PHP: if($res && $res['id'] != $_POST['id'])$this->json("事件名称已存在",201);
-    let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_fen_event WHERE name = ? AND appid = ?"
-    )
-    .bind(&edit_req.name)
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (i64,)>("SELECT id FROM u_fen_event WHERE name = ? AND appid = ?")
+            .bind(&edit_req.name)
+            .bind(appid)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some((existing_id,))) => {
@@ -537,28 +549,27 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // ];
     // PHP: $res = $this->db->where('id = ?',[$_POST['id']])->update($data);
 
-    let update_result = sqlx::query(
-        "UPDATE u_fen_event SET name = ?, fen = ?, vip = ?, vip_free = ? WHERE id = ?"
-    )
-    .bind(&edit_req.name)
-    .bind(edit_req.fen)
-    .bind(vip_value)
-    .bind(&edit_req.vip_free)
-    .bind(edit_req.id)
-    .execute(app_state.get_db())
-    .await;
+    let update_result =
+        sqlx::query("UPDATE u_fen_event SET name = ?, fen = ?, vip = ?, vip_free = ? WHERE id = ?")
+            .bind(&edit_req.name)
+            .bind(edit_req.fen)
+            .bind(vip_value)
+            .bind(&edit_req.vip_free)
+            .bind(edit_req.id)
+            .execute(app_state.get_db())
+            .await;
 
     match update_result {
         Ok(result) => {
             if result.rows_affected() > 0 {
                 // 失效积分事件缓存
                 app_state.invalidate_fen_event_cache(edit_req.id as u64);
-                
+
                 // PHP: $this->log->u('adm',$this->adminfo['id'])->add($res);
                 if let Err(e) = add_log(depot, app_state, result.rows_affected()).await {
                     tracing::error!("日志记录失败: {}", e);
                 }
-                
+
                 // PHP: $this->json('编辑成功',200);
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
@@ -590,12 +601,12 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // PHP: $checkRules = [
     //   'id' => ['int','1,11','删除ID有误'],
     //   'state' => ['sameone','on,off','状态不规范'],
     // ];
-    
+
     let edit_state_req = match req.parse_json::<EditStateRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -617,25 +628,23 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
 
     // PHP: $res = $this->db->where('id = ?',[$_POST['id']])->update(['state'=>$_POST['state']]);
-    let result = sqlx::query(
-        "UPDATE u_fen_event SET state = ? WHERE id = ?"
-    )
-    .bind(&edit_state_req.state)
-    .bind(edit_state_req.id)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_fen_event SET state = ? WHERE id = ?")
+        .bind(&edit_state_req.state)
+        .bind(edit_state_req.id)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(update_result) => {
             if update_result.rows_affected() > 0 {
                 // 失效积分事件缓存
                 app_state.invalidate_fen_event_cache(edit_state_req.id as u64);
-                
+
                 // PHP: $this->log->u('adm',$this->adminfo['id'])->add($res);
                 if let Err(e) = add_log(depot, app_state, update_result.rows_affected()).await {
                     tracing::error!("日志记录失败: {}", e);
                 }
-                
+
                 // PHP: $this->json('编辑成功',200);
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
@@ -666,9 +675,9 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // PHP: $checkRules = ['id' => ['int','1,11','删除ID有误']];
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -695,12 +704,12 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if let Err(e) = add_log(depot, app_state, delete_result.rows_affected()).await {
                 tracing::error!("日志记录失败: {}", e);
             }
-            
+
             // PHP: if($res)$this->json('删除成功');
             if delete_result.rows_affected() > 0 {
                 // 失效积分事件缓存
                 app_state.invalidate_fen_event_cache(del_req.id as u64);
-                
+
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 // PHP: $this->json('删除失败',201);
@@ -730,9 +739,9 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // PHP: $checkRules = ['ids' => ['isArr','','删除选中ID有误']];
-    
+
     let del_all_req = match req.parse_json::<DelAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -748,9 +757,14 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // PHP: $placeholders = implode(',', array_fill(0,count($_POST['ids']), '?'));
     // PHP: $res = $this->db->where("id in ($placeholders)",$_POST['ids'])->delete();
-    let placeholders = del_all_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = del_all_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM u_fen_event WHERE id IN ({})", placeholders);
-    
+
     let mut sql_query = sqlx::query(&query);
     for id in &del_all_req.ids {
         sql_query = sql_query.bind(id);
@@ -764,13 +778,13 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             if let Err(e) = add_log(depot, app_state, delete_result.rows_affected()).await {
                 tracing::error!("日志记录失败: {}", e);
             }
-            
+
             // PHP: if($res)$this->json('删除成功');
             if delete_result.rows_affected() > 0 {
                 // 批量失效积分事件缓存
                 let fenids: Vec<u64> = del_all_req.ids.iter().map(|&id| id as u64).collect();
                 app_state.invalidate_fen_event_cache_batch(&fenids);
-                
+
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 // PHP: $this->json('删除失败',201);
@@ -789,11 +803,15 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 // PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id);
 // 注意: 由于 Salvo depot API 限制，暂时使用默认值记录日志
 // TODO: 实现正确的 admin_id 获取方式
-async fn add_log(_depot: &Depot, app_state: &Arc<AppState>, record_id: u64) -> Result<(), sqlx::Error> {
+async fn add_log(
+    _depot: &Depot,
+    app_state: &Arc<AppState>,
+    record_id: u64,
+) -> Result<(), sqlx::Error> {
     // PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id);
     // 对应 PHP: INSERT INTO u_logs (ug, uid, type, asset_changes, time, state) VALUES ('adm', ?, ?, ?, ?, 1)
     let now = chrono::Utc::now().timestamp();
-    
+
     let asset_changes = serde_json::json!({
         "fen_event_id": record_id
     });
@@ -802,7 +820,7 @@ async fn add_log(_depot: &Depot, app_state: &Arc<AppState>, record_id: u64) -> R
     let admin_id: u64 = 0;
 
     sqlx::query(
-        "INSERT INTO u_logs (ug, uid, type, asset_changes, time, state) VALUES (?, ?, ?, ?, ?, 1)"
+        "INSERT INTO u_logs (ug, uid, type, asset_changes, time, state) VALUES (?, ?, ?, ?, ?, 1)",
     )
     .bind("adm")
     .bind(admin_id)

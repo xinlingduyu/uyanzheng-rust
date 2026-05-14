@@ -13,22 +13,22 @@
 //! - common: common.rs, enums.rs
 
 pub mod admin;
-pub mod app;
-pub mod user;
 pub mod agent;
+pub mod app;
 pub mod cdk;
+pub mod common;
 pub mod finance;
 pub mod logs;
 pub mod message;
-pub mod common;
+pub mod user;
 
 // Re-export all for backward compatibility
 pub use admin::*;
-pub use app::*;
-pub use user::*;
 pub use agent::*;
+pub use app::*;
 pub use cdk::*;
+pub use common::*;
 pub use finance::*;
 pub use logs::*;
 pub use message::*;
-pub use common::*;
+pub use user::*;

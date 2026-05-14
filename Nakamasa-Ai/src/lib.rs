@@ -1,13 +1,13 @@
 //! Nakamasa-Ai: 统一的 AI API 协议对接库
-//! 
+//!
 //! 支持多种 AI 提供商（OpenAI、Claude、Gemini、本地推理模型等）的统一接口，
 //! 同时提供 skills 功能供 AI 使用。
 
-pub mod types;
+pub mod config;
+pub mod error;
 pub mod provider;
 pub mod skills;
-pub mod error;
-pub mod config;  // 配置管理模块
+pub mod types; // 配置管理模块
 
 // 云 API 提供商
 #[cfg(feature = "openai")]
@@ -40,10 +40,10 @@ pub mod llama_cpp;
 pub mod mistral_rust;
 
 // 重新导出常用类型和 trait
-pub use error::{AiError, Result};
-pub use types::*;
-pub use provider::AiProvider;
 pub use config::{AiConfigBuilder, PresetConfigs, from_env};
+pub use error::{AiError, Result};
+pub use provider::AiProvider;
+pub use types::*;
 
 /// 创建一个 AI 提供商实例
 pub fn create_provider(config: AiConfig) -> Result<Box<dyn AiProvider>> {

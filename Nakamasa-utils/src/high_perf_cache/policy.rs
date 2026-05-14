@@ -1,5 +1,5 @@
 //! 缓存淘汰策略模块
-//! 
+//!
 //! 提供多种淘汰策略实现:
 //! - LRU (最近最少使用)
 //! - LFU (最不经常使用)
@@ -18,16 +18,16 @@ use std::time::{Duration, Instant};
 pub trait EvictionStrategy: Send + Sync {
     /// 记录访问
     fn on_access(&self, key: u64, is_hit: bool);
-    
+
     /// 记录插入
     fn on_insert(&self, key: u64);
-    
+
     /// 记录删除
     fn on_remove(&self, key: u64);
-    
+
     /// 选择淘汰的键
     fn select_eviction(&self) -> Option<u64>;
-    
+
     /// 重置状态
     fn reset(&self);
 }
@@ -80,14 +80,22 @@ impl LruPolicy {
     fn alloc_node(&self, key: u64) -> usize {
         let mut free_list = self.free_list.write().unwrap();
         let mut nodes = self.nodes.write().unwrap();
-        
+
         if let Some(idx) = free_list.pop() {
-            nodes[idx] = Some(LruNode { key, prev: None, next: None });
+            nodes[idx] = Some(LruNode {
+                key,
+                prev: None,
+                next: None,
+            });
             return idx;
         }
-        
+
         let idx = nodes.len();
-        nodes.push(Some(LruNode { key, prev: None, next: None }));
+        nodes.push(Some(LruNode {
+            key,
+            prev: None,
+            next: None,
+        }));
         idx
     }
 
@@ -110,7 +118,7 @@ impl LruPolicy {
                 return;
             }
         };
-        
+
         // 检查是否已经是头节点
         {
             let head = self.head.read().unwrap();
@@ -118,40 +126,43 @@ impl LruPolicy {
                 return;
             }
         }
-        
+
         // 第二阶段：更新链表
         {
             let mut head = self.head.write().unwrap();
             let mut tail = self.tail.write().unwrap();
             let mut nodes = self.nodes.write().unwrap();
-            
+
             // 从当前位置移除
             if let Some(prev_idx) = node_prev
-                && let Some(prev_node) = &mut nodes[prev_idx] {
-                    prev_node.next = node_next;
-                }
+                && let Some(prev_node) = &mut nodes[prev_idx]
+            {
+                prev_node.next = node_next;
+            }
             if let Some(next_idx) = node_next
-                && let Some(next_node) = &mut nodes[next_idx] {
-                    next_node.prev = node_prev;
-                }
-            
+                && let Some(next_node) = &mut nodes[next_idx]
+            {
+                next_node.prev = node_prev;
+            }
+
             // 如果是尾节点，更新尾指针
             if *tail == Some(idx) {
                 *tail = node_prev;
             }
-            
+
             // 移动到头部
             if let Some(node) = &mut nodes[idx] {
                 node.prev = None;
                 node.next = *head;
             }
-            
+
             if let Some(head_idx) = *head
-                && let Some(head_node) = &mut nodes[head_idx] {
-                    head_node.prev = Some(idx);
-                }
+                && let Some(head_node) = &mut nodes[head_idx]
+            {
+                head_node.prev = Some(idx);
+            }
             *head = Some(idx);
-            
+
             // 如果链表只有一个节点，尾指针也指向它
             if tail.is_none() {
                 *tail = Some(idx);
@@ -162,7 +173,7 @@ impl LruPolicy {
     /// 将键移动到最近使用位置 - O(1)
     fn touch(&self, key: u64) {
         let key_to_idx = self.key_to_idx.read().unwrap();
-        
+
         if let Some(&idx) = key_to_idx.get(&key) {
             drop(key_to_idx);
             self.move_to_head(idx);
@@ -175,14 +186,14 @@ impl LruPolicy {
     /// 插入新键 - O(1)
     fn insert_key(&self, key: u64) {
         let mut key_to_idx = self.key_to_idx.write().unwrap();
-        
+
         // 已存在则移动到头部
         if let Some(&idx) = key_to_idx.get(&key) {
             drop(key_to_idx);
             self.move_to_head(idx);
             return;
         }
-        
+
         // 检查容量
         let current_len = self.len.load(std::sync::atomic::Ordering::Relaxed);
         if current_len >= self.capacity {
@@ -191,32 +202,33 @@ impl LruPolicy {
             self.evict_tail();
             key_to_idx = self.key_to_idx.write().unwrap();
         }
-        
+
         // 创建新节点并插入头部
         let idx = self.alloc_node(key);
         key_to_idx.insert(key, idx);
-        
+
         {
             let mut head = self.head.write().unwrap();
             let mut tail = self.tail.write().unwrap();
             let mut nodes = self.nodes.write().unwrap();
-            
+
             if let Some(node) = &mut nodes[idx] {
                 node.next = *head;
             }
-            
+
             if let Some(head_idx) = *head
-                && let Some(head_node) = &mut nodes[head_idx] {
-                    head_node.prev = Some(idx);
-                }
-            
+                && let Some(head_node) = &mut nodes[head_idx]
+            {
+                head_node.prev = Some(idx);
+            }
+
             *head = Some(idx);
-            
+
             if tail.is_none() {
                 *tail = Some(idx);
             }
         }
-        
+
         self.len.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -226,18 +238,18 @@ impl LruPolicy {
             let tail = self.tail.read().unwrap();
             *tail
         }?;
-        
+
         let key = {
             let nodes = self.nodes.read().unwrap();
             nodes.get(tail_idx)?.as_ref()?.key
         };
-        
+
         // 从链表中移除
         {
             let mut head = self.head.write().unwrap();
             let mut tail = self.tail.write().unwrap();
             let mut nodes = self.nodes.write().unwrap();
-            
+
             if let Some(node) = &mut nodes[tail_idx] {
                 if let Some(prev_idx) = node.prev {
                     if let Some(prev_node) = &mut nodes[prev_idx] {
@@ -251,16 +263,16 @@ impl LruPolicy {
                 }
             }
         }
-        
+
         // 清理映射
         {
             let mut key_to_idx = self.key_to_idx.write().unwrap();
             key_to_idx.remove(&key);
         }
-        
+
         self.free_node(tail_idx);
         self.len.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-        
+
         Some(key)
     }
 
@@ -270,18 +282,18 @@ impl LruPolicy {
             let mut key_to_idx = self.key_to_idx.write().unwrap();
             key_to_idx.remove(&key)
         };
-        
+
         let idx = match idx {
             Some(i) => i,
             None => return,
         };
-        
+
         // 从链表中移除
         {
             let mut head = self.head.write().unwrap();
             let mut tail = self.tail.write().unwrap();
             let mut nodes = self.nodes.write().unwrap();
-            
+
             let (node_prev, node_next) = {
                 if let Some(node) = &mut nodes[idx] {
                     (node.prev, node.next)
@@ -289,7 +301,7 @@ impl LruPolicy {
                     return;
                 }
             };
-            
+
             // 更新前驱
             if let Some(prev_idx) = node_prev {
                 if let Some(prev_node) = &mut nodes[prev_idx] {
@@ -298,7 +310,7 @@ impl LruPolicy {
             } else {
                 *head = node_next;
             }
-            
+
             // 更新后继
             if let Some(next_idx) = node_next {
                 if let Some(next_node) = &mut nodes[next_idx] {
@@ -308,7 +320,7 @@ impl LruPolicy {
                 *tail = node_prev;
             }
         }
-        
+
         self.free_node(idx);
         self.len.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -330,7 +342,7 @@ impl EvictionStrategy for LruPolicy {
     fn select_eviction(&self) -> Option<u64> {
         let tail = self.tail.read().unwrap();
         let nodes = self.nodes.read().unwrap();
-        
+
         tail.and_then(|idx| nodes.get(idx)?.as_ref().map(|n| n.key))
     }
 
@@ -340,7 +352,7 @@ impl EvictionStrategy for LruPolicy {
         let mut free_list = self.free_list.write().unwrap();
         let mut head = self.head.write().unwrap();
         let mut tail = self.tail.write().unwrap();
-        
+
         nodes.clear();
         key_to_idx.clear();
         free_list.clear();
@@ -400,10 +412,11 @@ impl EvictionStrategy for LfuPolicy {
     fn on_insert(&self, key: u64) {
         let mut counters = self.counters.write().unwrap();
         counters.insert(key, (1, Instant::now()));
-        
+
         // 超出容量时淘汰
         while counters.len() > self.capacity {
-            if let Some(evict_key) = counters.iter()
+            if let Some(evict_key) = counters
+                .iter()
                 .min_by_key(|(_, (freq, time))| (*freq, *time))
                 .map(|(k, _)| *k)
             {
@@ -419,7 +432,8 @@ impl EvictionStrategy for LfuPolicy {
 
     fn select_eviction(&self) -> Option<u64> {
         let counters = self.counters.read().unwrap();
-        counters.iter()
+        counters
+            .iter()
             .min_by_key(|(_, (freq, time))| (*freq, *time))
             .map(|(k, _)| *k)
     }
@@ -477,7 +491,7 @@ impl EvictionStrategy for HybridPolicy {
         // 简单策略：优先选择两个策略都认为应该淘汰的
         let lru_evict = self.lru.select_eviction();
         let lfu_evict = self.lfu.select_eviction();
-        
+
         match (lru_evict, lfu_evict) {
             (Some(lru_key), Some(lfu_key)) if lru_key == lfu_key => Some(lru_key),
             (Some(key), _) | (_, Some(key)) => Some(key),
@@ -544,7 +558,7 @@ impl ArcPolicy {
 impl EvictionStrategy for ArcPolicy {
     fn on_access(&self, key: u64, _is_hit: bool) {
         let mut states = self.states.write().unwrap();
-        
+
         if let Some(state) = states.get_mut(&key) {
             match state {
                 ArcState::RecentInCache => {
@@ -564,8 +578,9 @@ impl EvictionStrategy for ArcPolicy {
                     // 在最近淘汰列表中命中，增大 p
                     let recent_evicted_len = self.recent_evicted.read().unwrap().len();
                     let delta = (self.capacity / recent_evicted_len.max(1)).min(self.capacity);
-                    self.p.fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
-                    
+                    self.p
+                        .fetch_add(delta, std::sync::atomic::Ordering::Relaxed);
+
                     // 移到缓存
                     *state = ArcState::FrequentInCache;
                     self.recent_evicted.write().unwrap().retain(|k| k != &key);
@@ -575,8 +590,9 @@ impl EvictionStrategy for ArcPolicy {
                     // 在频繁淘汰列表中命中，减小 p
                     let frequent_evicted_len = self.frequent_evicted.read().unwrap().len();
                     let delta = (self.capacity / frequent_evicted_len.max(1)).min(self.capacity);
-                    self.p.fetch_sub(delta, std::sync::atomic::Ordering::Relaxed);
-                    
+                    self.p
+                        .fetch_sub(delta, std::sync::atomic::Ordering::Relaxed);
+
                     // 移到缓存
                     *state = ArcState::FrequentInCache;
                     self.frequent_evicted.write().unwrap().retain(|k| k != &key);
@@ -588,11 +604,11 @@ impl EvictionStrategy for ArcPolicy {
 
     fn on_insert(&self, key: u64) {
         let mut states = self.states.write().unwrap();
-        
+
         if states.contains_key(&key) {
             return;
         }
-        
+
         states.insert(key, ArcState::RecentInCache);
         self.recent.write().unwrap().push_back(key);
     }
@@ -607,8 +623,10 @@ impl EvictionStrategy for ArcPolicy {
     fn select_eviction(&self) -> Option<u64> {
         let p = self.p.load(std::sync::atomic::Ordering::Relaxed);
         let recent_len = self.recent.read().unwrap().len();
-        
-        if recent_len > 0 && (recent_len > p || (recent_len == p && !self.frequent.read().unwrap().is_empty())) {
+
+        if recent_len > 0
+            && (recent_len > p || (recent_len == p && !self.frequent.read().unwrap().is_empty()))
+        {
             // 从 recent 中淘汰
             let mut recent = self.recent.write().unwrap();
             if let Some(key) = recent.pop_front() {
@@ -627,12 +645,13 @@ impl EvictionStrategy for ArcPolicy {
                 return Some(key);
             }
         }
-        
+
         None
     }
 
     fn reset(&self) {
-        self.p.store(self.capacity / 2, std::sync::atomic::Ordering::Relaxed);
+        self.p
+            .store(self.capacity / 2, std::sync::atomic::Ordering::Relaxed);
         self.states.write().unwrap().clear();
         self.recent.write().unwrap().clear();
         self.frequent.write().unwrap().clear();
@@ -673,14 +692,14 @@ impl TtlManager {
     pub fn set_expiry(&self, key: u64, ttl: Duration) {
         let expires_at = Instant::now() + ttl;
         let mut entries = self.entries.write().unwrap();
-        
+
         // 查找并更新或插入
         if let Some(entry) = entries.iter_mut().find(|e| e.key == key) {
             entry.expires_at = expires_at;
         } else {
             entries.push(ExpiryEntry { key, expires_at });
         }
-        
+
         // 保持按过期时间排序
         entries.sort_by_key(|e| e.expires_at);
     }
@@ -700,7 +719,8 @@ impl TtlManager {
     pub fn get_expired_keys(&self) -> Vec<u64> {
         let now = Instant::now();
         let entries = self.entries.read().unwrap();
-        entries.iter()
+        entries
+            .iter()
             .take_while(|e| e.expires_at <= now)
             .map(|e| e.key)
             .collect()
@@ -723,7 +743,8 @@ impl TtlManager {
     /// 检查键是否过期
     pub fn is_expired(&self, key: u64) -> bool {
         let entries = self.entries.read().unwrap();
-        entries.iter()
+        entries
+            .iter()
             .find(|e| e.key == key)
             .map(|e| e.expires_at <= Instant::now())
             .unwrap_or(false)
@@ -737,13 +758,18 @@ impl TtlManager {
 use super::config::EvictionPolicy as ConfigEvictionPolicy;
 
 /// 创建淘汰策略
-pub fn create_eviction_policy(config: ConfigEvictionPolicy, capacity: usize) -> Box<dyn EvictionStrategy> {
+pub fn create_eviction_policy(
+    config: ConfigEvictionPolicy,
+    capacity: usize,
+) -> Box<dyn EvictionStrategy> {
     match config {
         ConfigEvictionPolicy::LRU => Box::new(LruPolicy::new(capacity)),
         ConfigEvictionPolicy::LFU => Box::new(LfuPolicy::new(capacity)),
         ConfigEvictionPolicy::FIFO => Box::new(LruPolicy::new(capacity)),
         ConfigEvictionPolicy::Adaptive => Box::new(ArcPolicy::new(capacity)),
-        ConfigEvictionPolicy::Hybrid { lfu_weight, .. } => Box::new(HybridPolicy::new(capacity, lfu_weight as f64)),
+        ConfigEvictionPolicy::Hybrid { lfu_weight, .. } => {
+            Box::new(HybridPolicy::new(capacity, lfu_weight as f64))
+        }
         ConfigEvictionPolicy::SizeBased => Box::new(LfuPolicy::new(capacity)),
         ConfigEvictionPolicy::Random => Box::new(LruPolicy::new(capacity)),
     }

@@ -1,5 +1,5 @@
 //! 高性能缓存分片 V2
-//! 
+//!
 //! 核心优化:
 //! 1. 无锁读取路径 - 使用 crossbeam 的无锁数据结构
 //! 2. O(1) LRU 实现 - 使用双向链表 + HashMap
@@ -35,8 +35,9 @@ impl<K: Hash + Eq> HashedKey<K> {
     }
 
     #[inline(always)]
-    pub fn from_key(key: K) -> Self 
-    where K: std::hash::Hash 
+    pub fn from_key(key: K) -> Self
+    where
+        K: std::hash::Hash,
     {
         use std::hash::Hasher;
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -133,8 +134,11 @@ impl<K: Hash + Eq + Clone> FastLru<K> {
             next: AtomicPtr::new(std::ptr::null_mut()),
         }));
 
-        self.nodes.insert(key, unsafe { NonNull::new_unchecked(node) });
-        unsafe { self.attach_to_head(node); }
+        self.nodes
+            .insert(key, unsafe { NonNull::new_unchecked(node) });
+        unsafe {
+            self.attach_to_head(node);
+        }
 
         evicted
     }
@@ -210,7 +214,7 @@ impl<K: Hash + Eq + Clone> FastLru<K> {
     #[inline(always)]
     unsafe fn attach_to_head(&mut self, node: *mut ListNode<K>) {
         let head = self.head.load(Ordering::Acquire);
-        
+
         (*node).next.store(head, Ordering::Release);
         (*node).prev.store(std::ptr::null_mut(), Ordering::Release);
 
@@ -294,7 +298,9 @@ impl<V: Clone> CacheEntry<V> {
         // 存储过期时的绝对时间戳（相对于某个固定起点）
         // 使用 Instant::now() + ttl 作为过期时间
         let now = Instant::now();
-        let expires_at = now.checked_add(ttl).unwrap_or(now + Duration::from_secs(86400 * 365));
+        let expires_at = now
+            .checked_add(ttl)
+            .unwrap_or(now + Duration::from_secs(86400 * 365));
 
         Self {
             value,
@@ -346,7 +352,7 @@ impl<V: Clone> CacheEntry<V> {
     #[inline(always)]
     pub fn try_update(&self, new_value: V) -> bool {
         let current_version = self.version.load(Ordering::Acquire);
-        
+
         // 简单实现：直接更新值
         // 在实际应用中需要 unsafe 来修改值
         self.version.fetch_add(1, Ordering::Release);
@@ -472,15 +478,16 @@ where
         {
             let data = self.data.read();
             if let Some((_, entry)) = data.entries.get(&hash)
-                && !entry.is_expired() {
-                    // 记录访问（无锁操作）
-                    entry.touch();
-                    
-                    // 更新 LRU（需要写锁，延迟到后台或忽略）
-                    // 这里选择乐观策略：只更新 LFU 计数
-                    data.stats.record_hit();
-                    return Some(entry.value.clone());
-                }
+                && !entry.is_expired()
+            {
+                // 记录访问（无锁操作）
+                entry.touch();
+
+                // 更新 LRU（需要写锁，延迟到后台或忽略）
+                // 这里选择乐观策略：只更新 LFU 计数
+                data.stats.record_hit();
+                return Some(entry.value.clone());
+            }
         }
 
         self.stats.record_miss();
@@ -492,12 +499,13 @@ where
     pub fn get_with_meta(&self, hash: u64) -> Option<(V, u64, Duration)> {
         let data = self.data.read();
         if let Some((_, entry)) = data.entries.get(&hash)
-            && !entry.is_expired() {
-                let count = entry.touch();
-                let ttl = entry.remaining_ttl();
-                data.stats.record_hit();
-                return Some((entry.value.clone(), count, ttl));
-            }
+            && !entry.is_expired()
+        {
+            let count = entry.touch();
+            let ttl = entry.remaining_ttl();
+            data.stats.record_hit();
+            return Some((entry.value.clone(), count, ttl));
+        }
         drop(data);
         self.stats.record_miss();
         None
@@ -513,7 +521,7 @@ where
     #[inline(always)]
     pub fn set_with_ttl(&self, key: K, hash: u64, value: V, ttl: Duration) {
         let mut data = self.data.write();
-        
+
         // 检查是否已存在
         if data.entries.contains_key(&hash) {
             // 更新
@@ -556,7 +564,10 @@ where
     #[inline(always)]
     pub fn contains(&self, hash: u64) -> bool {
         let data = self.data.read();
-        data.entries.get(&hash).map(|(_, e)| !e.is_expired()).unwrap_or(false)
+        data.entries
+            .get(&hash)
+            .map(|(_, e)| !e.is_expired())
+            .unwrap_or(false)
     }
 
     /// 淘汰一个条目
@@ -564,17 +575,21 @@ where
         // 根据淘汰策略选择
         let evict_hash = match self.config.eviction_policy {
             EvictionPolicy::LRU => data.lru.eviction_candidate().copied(),
-            EvictionPolicy::LFU => {
-                data.lfu.iter()
-                    .min_by_key(|(_, count)| *count)
-                    .map(|(h, _)| *h)
-            }
-            EvictionPolicy::Hybrid { lfu_weight, lru_weight } => {
+            EvictionPolicy::LFU => data
+                .lfu
+                .iter()
+                .min_by_key(|(_, count)| *count)
+                .map(|(h, _)| *h),
+            EvictionPolicy::Hybrid {
+                lfu_weight,
+                lru_weight,
+            } => {
                 // 混合策略：综合考虑 LRU 和 LFU
                 let now = Instant::now();
                 let lru_weight = lru_weight as f64;
                 let lfu_weight = lfu_weight as f64;
-                data.entries.iter()
+                data.entries
+                    .iter()
                     .map(|(h, (_, e))| {
                         let lru_score = now.duration_since(e.created_at).as_secs_f64();
                         let lfu_score = 1.0 / (e.access_count.load(Ordering::Relaxed) as f64 + 1.0);
@@ -598,7 +613,8 @@ where
     /// 清理过期条目
     pub fn cleanup_expired(&self) -> usize {
         let mut data = self.data.write();
-        let expired: Vec<u64> = data.entries
+        let expired: Vec<u64> = data
+            .entries
             .iter()
             .filter(|(_, (_, e))| e.is_expired())
             .map(|(h, _)| *h)
@@ -834,7 +850,7 @@ where
     {
         // 按分片分组
         let mut groups: HashMap<usize, Vec<(K, u64)>> = HashMap::new();
-        
+
         for key in keys.iter().cloned() {
             let (hash, shard_idx) = self.hash_and_shard(&key);
             groups.entry(shard_idx).or_default().push((key, hash));
@@ -861,10 +877,13 @@ where
     {
         // 按分片分组
         let mut groups: HashMap<usize, Vec<(K, u64, V)>> = HashMap::new();
-        
+
         for (key, value) in entries {
             let (hash, shard_idx) = self.hash_and_shard(&key);
-            groups.entry(shard_idx).or_default().push((key, hash, value));
+            groups
+                .entry(shard_idx)
+                .or_default()
+                .push((key, hash, value));
         }
 
         // 处理每个分片

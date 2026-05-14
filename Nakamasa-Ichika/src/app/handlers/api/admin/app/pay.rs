@@ -1,14 +1,14 @@
 //! Admin Pay controller
 //! 管理员支付控制器
 
+use chrono::Utc;
 use salvo::prelude::*;
 use serde::Deserialize;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPlugin, WxPayPlugin};
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
-use crate::app::plugins::pay::{PayPlugin, JiePayPlugin, AliPayPlugin, WxPayPlugin};
 use crate::core::AppState;
 
 /// 获取支付插件列表和配置信息
@@ -21,12 +21,12 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 创建插件实例获取元数据
     let jie_plugin = JiePayPlugin::new();
     let ali_plugin = AliPayPlugin::new();
     let wx_plugin = WxPayPlugin::new();
-    
+
     let pay_plug = serde_json::json!([
         {
             "id": jie_plugin.plugin_type(),
@@ -48,7 +48,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             "form": ali_plugin.config_form()["form"]
         }
     ]);
-    
+
     // 获取appid
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
@@ -69,7 +69,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 从数据库获取当前应用的支付配置
     let pay_config = sqlx::query_as::<_, (
         u64, Option<String>, Option<String>, Option<Vec<u8>>,
@@ -84,7 +84,8 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let info = match pay_config {
         Ok(Some(row)) => {
             // 将BLOB转换为JSON对象
-            let ali_config_json: serde_json::Value = row.3
+            let ali_config_json: serde_json::Value = row
+                .3
                 .and_then(|bytes| String::from_utf8(bytes).ok())
                 .and_then(|s| {
                     if s.trim().is_empty() {
@@ -95,7 +96,8 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 })
                 .unwrap_or_else(|| serde_json::json!({}));
 
-            let wx_config_json: serde_json::Value = row.6
+            let wx_config_json: serde_json::Value = row
+                .6
                 .and_then(|bytes| String::from_utf8(bytes).ok())
                 .and_then(|s| {
                     if s.trim().is_empty() {
@@ -115,7 +117,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 "pay_wx_type": row.5.unwrap_or_else(|| "jie".to_string()),
                 "pay_wx_config": wx_config_json
             })
-        },
+        }
         Ok(None) => serde_json::json!({
             "id": appid,
             "pay_ali_state": "off",
@@ -131,11 +133,14 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
-    res.render(Json(ApiResponse::success("成功", Some(serde_json::json!({
-        "info": info,
-        "plug": pay_plug
-    })))));
+
+    res.render(Json(ApiResponse::success(
+        "成功",
+        Some(serde_json::json!({
+            "info": info,
+            "plug": pay_plug
+        })),
+    )));
 }
 
 /// 编辑支付配置
@@ -165,7 +170,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditPayRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -177,7 +182,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 验证参数
     let mut validator = Validator::new();
     validator.int("id", edit_req.id as i64, 1, 99999999999);
-    
+
     // 验证pay_ali_type
     if let Some(ref ali_type) = edit_req.pay_ali_type {
         if ali_type.len() < 2 || ali_type.len() > 12 {
@@ -189,7 +194,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     }
-    
+
     // 验证pay_wx_type
     if let Some(ref wx_type) = edit_req.pay_wx_type {
         if wx_type.len() < 2 || wx_type.len() > 12 {
@@ -201,52 +206,65 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     }
-    
+
     // 验证pay_ali_config必须是对象
     if let Some(ref ali_config) = edit_req.pay_ali_config
-        && !ali_config.is_object() {
-            res.render(Json(ApiResponse::<()>::error("支付宝支付参数不规范", 201)));
-            return;
-        }
+        && !ali_config.is_object()
+    {
+        res.render(Json(ApiResponse::<()>::error("支付宝支付参数不规范", 201)));
+        return;
+    }
 
     // 验证pay_wx_config必须是对象
     if let Some(ref wx_config) = edit_req.pay_wx_config
-        && !wx_config.is_object() {
-            res.render(Json(ApiResponse::<()>::error("微信支付参数不规范", 201)));
-            return;
-        }
-    
+        && !wx_config.is_object()
+    {
+        res.render(Json(ApiResponse::<()>::error("微信支付参数不规范", 201)));
+        return;
+    }
+
     if let Some(ref state) = edit_req.pay_ali_state
-        && state != "on" && state != "off" {
-            res.render(Json(ApiResponse::<()>::error("支付宝控制状态设置有误", 201)));
-            return;
-        }
-    
+        && state != "on"
+        && state != "off"
+    {
+        res.render(Json(ApiResponse::<()>::error(
+            "支付宝控制状态设置有误",
+            201,
+        )));
+        return;
+    }
+
     if let Some(ref state) = edit_req.pay_wx_state
-        && state != "on" && state != "off" {
-            res.render(Json(ApiResponse::<()>::error("微信控制状态设置有误", 201)));
-            return;
-        }
-    
+        && state != "on"
+        && state != "off"
+    {
+        res.render(Json(ApiResponse::<()>::error("微信控制状态设置有误", 201)));
+        return;
+    }
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
     }
 
     // 准备更新数据
-    let ali_config_json = edit_req.pay_ali_config.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
-    let wx_config_json = edit_req.pay_wx_config.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
-    
+    let ali_config_json = edit_req
+        .pay_ali_config
+        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
+    let wx_config_json = edit_req
+        .pay_wx_config
+        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
+
     // 转换为Vec<u8>以适配BLOB类型
     let ali_config_bytes = ali_config_json.as_ref().map(|s| s.as_bytes().to_vec());
     let wx_config_bytes = wx_config_json.as_ref().map(|s| s.as_bytes().to_vec());
-    
+
     // 更新数据库
     let result = sqlx::query(
         "UPDATE u_app SET 
          pay_ali_state = ?, pay_ali_type = ?, pay_ali_config = ?,
          pay_wx_state = ?, pay_wx_type = ?, pay_wx_config = ?
-         WHERE id = ?"
+         WHERE id = ?",
     )
     .bind(&edit_req.pay_ali_state)
     .bind(&edit_req.pay_ali_type)
@@ -276,7 +294,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(Option::<i64>::None)
                 .execute(app_state.get_db())
                 .await;
-                
+
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));

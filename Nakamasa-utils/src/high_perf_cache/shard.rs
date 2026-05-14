@@ -1,5 +1,5 @@
 //! 缓存分片模块
-//! 
+//!
 //! 核心缓存分片实现，支持高并发读写
 
 use std::collections::HashMap;
@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 
 use super::{
     atomic::StatsCounters,
-    policy::{TtlManager, EvictionStrategy, create_eviction_policy},
-    config::{ShardConfig, EvictionPolicy},
+    config::{EvictionPolicy, ShardConfig},
+    policy::{EvictionStrategy, TtlManager, create_eviction_policy},
 };
 
 // ============================================================================
@@ -74,25 +74,25 @@ where
 {
     /// 数据存储
     data: HashMap<K, CacheEntry<V>>,
-    
+
     /// 键哈希值映射（用于淘汰策略）
     key_hashes: HashMap<u64, K>,
-    
+
     /// TTL 管理器
     ttl_manager: TtlManager,
-    
+
     /// 淘汰策略
     eviction: Box<dyn EvictionStrategy>,
-    
+
     /// 统计计数器
     stats: StatsCounters,
-    
+
     /// 配置
     config: ShardConfig,
-    
+
     /// 默认 TTL
     default_ttl: Duration,
-    
+
     /// 最大大小
     max_size: usize,
 }
@@ -102,7 +102,11 @@ where
     K: Hash + Eq + Clone + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    pub fn new(config: ShardConfig, default_ttl: Duration, eviction_policy: EvictionPolicy) -> Self {
+    pub fn new(
+        config: ShardConfig,
+        default_ttl: Duration,
+        eviction_policy: EvictionPolicy,
+    ) -> Self {
         let capacity = config.capacity;
         Self {
             data: HashMap::with_capacity(capacity),
@@ -121,7 +125,7 @@ where
     pub fn get(&mut self, key: &K) -> Option<V> {
         // 先计算 hash
         let hash = self.key_hash(key);
-        
+
         if let Some(entry) = self.data.get_mut(key) {
             // 检查过期
             if entry.is_expired() {
@@ -133,7 +137,7 @@ where
             // 更新访问信息
             entry.touch();
             self.eviction.on_access(hash, true);
-            
+
             self.stats.record_hit();
             return Some(entry.value.clone());
         }
@@ -152,7 +156,7 @@ where
     #[inline(always)]
     pub fn set_with_ttl(&mut self, key: K, value: V, ttl: Duration) {
         let hash = self.key_hash(&key);
-        
+
         // 检查是否已存在
         if self.data.contains_key(&key) {
             // 更新
@@ -174,12 +178,12 @@ where
 
         // 插入新条目
         let entry = CacheEntry::new(value, ttl);
-        
+
         self.data.insert(key.clone(), entry);
         self.key_hashes.insert(hash, key);
         self.ttl_manager.set_expiry(hash, ttl);
         self.eviction.on_insert(hash);
-        
+
         self.stats.record_insert();
     }
 
@@ -219,10 +223,11 @@ where
 
         // 使用淘汰策略
         if let Some(hash) = self.eviction.select_eviction()
-            && let Some(key) = self.key_hashes.get(&hash).cloned() {
-                self.remove_entry(&key);
-                self.stats.record_eviction();
-            }
+            && let Some(key) = self.key_hashes.get(&hash).cloned()
+        {
+            self.remove_entry(&key);
+            self.stats.record_eviction();
+        }
     }
 
     /// 检查键是否存在
@@ -269,14 +274,14 @@ where
     pub fn cleanup_expired(&mut self) -> usize {
         let expired = self.ttl_manager.cleanup_expired();
         let count = expired.len();
-        
+
         for hash in expired {
             if let Some(key) = self.key_hashes.get(&hash).cloned() {
                 self.remove_entry(&key);
                 self.stats.record_expired();
             }
         }
-        
+
         count
     }
 }
@@ -293,13 +298,13 @@ where
 {
     /// 分片数组
     shards: Vec<RwLock<CacheShard<K, V>>>,
-    
+
     /// 分片数量
     shard_count: usize,
-    
+
     /// 分片掩码
     shard_mask: usize,
-    
+
     /// 配置
     config: super::config::CacheConfig,
 }
@@ -312,11 +317,11 @@ where
     /// 创建分片缓存
     pub fn new(config: super::config::CacheConfig) -> Self {
         config.validate().expect("Invalid cache config");
-        
+
         let shard_count = config.shard_count;
         let shard_mask = shard_count - 1;
         let per_shard_capacity = config.max_entries / shard_count;
-        
+
         let shards = (0..shard_count)
             .map(|i| {
                 let shard_config = ShardConfig {
@@ -438,7 +443,7 @@ where
     /// 获取统计快照
     pub async fn stats(&self) -> CacheStats {
         let mut stats = CacheStats::default();
-        
+
         for shard in &self.shards {
             let shard_stats = shard.read().await.stats();
             stats.hits += shard_stats.hits;
@@ -449,7 +454,7 @@ where
             stats.evictions += shard_stats.evictions;
             stats.expired += shard_stats.expired;
         }
-        
+
         stats.entries = self.len().await;
         stats.hit_rate = stats.calculate_hit_rate();
         stats
@@ -470,25 +475,27 @@ where
         F: FnOnce() -> V,
     {
         let index = self.shard_index(&key);
-        
+
         // 先尝试读
         {
             let shard = self.shards[index].read().await;
             if let Some(entry) = shard.data.get(&key)
-                && !entry.is_expired() {
-                    return entry.value.clone();
-                }
-        }
-        
-        // 需要写入
-        let mut shard = self.shards[index].write().await;
-        
-        // 双重检查
-        if let Some(entry) = shard.data.get(&key)
-            && !entry.is_expired() {
+                && !entry.is_expired()
+            {
                 return entry.value.clone();
             }
-        
+        }
+
+        // 需要写入
+        let mut shard = self.shards[index].write().await;
+
+        // 双重检查
+        if let Some(entry) = shard.data.get(&key)
+            && !entry.is_expired()
+        {
+            return entry.value.clone();
+        }
+
         let value = f();
         shard.set(key.clone(), value.clone());
         value
@@ -497,13 +504,13 @@ where
     /// 批量获取
     pub async fn get_many(&self, keys: &[K]) -> HashMap<K, V> {
         let mut results = HashMap::with_capacity(keys.len());
-        
+
         for key in keys {
             if let Some(value) = self.get(key).await {
                 results.insert(key.clone(), value);
             }
         }
-        
+
         results
     }
 }
@@ -574,9 +581,18 @@ impl CacheMetrics {
             "# HELP {}_hits Total cache hits\n# TYPE {}_hits counter\n{}_hits {}\n\
              # HELP {}_misses Total cache misses\n# TYPE {}_misses counter\n{}_misses {}\n\
              # HELP {}_hit_rate Cache hit rate\n# TYPE {}_hit_rate gauge\n{}_hit_rate {}\n",
-            name, name, name, self.stats.hits,
-            name, name, name, self.stats.misses,
-            name, name, name, self.stats.hit_rate
+            name,
+            name,
+            name,
+            self.stats.hits,
+            name,
+            name,
+            name,
+            self.stats.misses,
+            name,
+            name,
+            name,
+            self.stats.hit_rate
         )
     }
 }

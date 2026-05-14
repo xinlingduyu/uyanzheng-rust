@@ -1,5 +1,5 @@
 //! 绑定设备
-//! 
+//!
 //! 功能说明：
 //! 为已登录用户绑定新的设备码(udid)。每个用户可以绑定多个设备，数量由应用配置决定。
 //!
@@ -13,14 +13,16 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::common::DeviceInfo;
+use crate::app::models::requests::BindUdidRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::BindUdidRequest;
-use crate::app::models::common::DeviceInfo;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -41,7 +43,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let bind_req = match req.parse_json::<BindUdidRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -53,10 +55,12 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
     // PHP: 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']
     let mut validator = Validator::new();
-    validator
-        .wordnum("token", &bind_req.token, 32, 32)
-        .reg("udid", &bind_req.udid, "[a-zA-Z0-9_-]+");
-    
+    validator.wordnum("token", &bind_req.token, 32, 32).reg(
+        "udid",
+        &bind_req.udid,
+        "[a-zA-Z0-9_-]+",
+    );
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -80,10 +84,12 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     // PHP: $snList_Arr = json_decode($this->user['sn_list'],true);
     // PHP: if(count($snList_Arr) >= $this->app['logon_sn_num']+$this->user['sn_max'])$this->out->e(172);
-    let mut sn_list_arr: Vec<DeviceInfo> = user_info.sn_list.as_ref()
+    let mut sn_list_arr: Vec<DeviceInfo> = user_info
+        .sn_list
+        .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
-    
+
     let max_devices = app_info.logon_sn_num + user_info.sn_max;
     if sn_list_arr.len() >= max_devices as usize {
         render_error(res, "绑定上限", 172, app_key);
@@ -109,11 +115,18 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let sn_list_json = serde_json::to_string(&sn_list_arr).unwrap_or_default();
 
     // 根据用户类型选择表（使用静态 str 避免分配）
-    let table_name = if user_type == "kami" { "u_cdk_kami" } else { "u_user" };
-    
+    let table_name = if user_type == "kami" {
+        "u_cdk_kami"
+    } else {
+        "u_user"
+    };
+
     // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['sn_list'=>json_encode($snList_Arr)]);
     // 使用 format! 构建 SQL，因为表名不能参数化
-    let sql = format!("UPDATE {} SET sn_list = ? WHERE id = ? AND appid = ?", table_name);
+    let sql = format!(
+        "UPDATE {} SET sn_list = ? WHERE id = ? AND appid = ?",
+        table_name
+    );
     let result = sqlx::query(&sql)
         .bind(&sn_list_json)
         .bind(uid)
@@ -126,7 +139,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
             // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
             // 记录日志
             let _ = sqlx::query(
-                "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind(user_type)
             .bind(uid)

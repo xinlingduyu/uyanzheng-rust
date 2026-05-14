@@ -1,5 +1,5 @@
 // 通用结构体
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 /// 设备信息
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,13 +1,14 @@
 //! 管理员认证中间件
 //! 参考PHP base/admin.php 的 tokenVerify 方法
 
-use salvo::prelude::*;
+use crate::app::utils::response::ApiResponse;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::ApiResponse;
-use std::sync::Arc;
+use crate::core::middleware::get_client_ip;
 use Nakamasa_utils::jwt::JwtBuilder;
+use salvo::prelude::*;
 use serde::Serialize;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 // 预分配错误消息
@@ -33,15 +34,15 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    
+
     let a_bytes = a.as_bytes();
     let b_bytes = b.as_bytes();
     let mut result: u8 = 0;
-    
+
     for i in 0..a.len() {
         result |= a_bytes[i] ^ b_bytes[i];
     }
-    
+
     result == 0
 }
 
@@ -99,15 +100,39 @@ impl Default for AdminAuth {
 
 #[async_trait]
 impl Handler for AdminAuth {
-    async fn handle(&self, req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
-        let app_state = depot.obtain::<Arc<AppState>>().unwrap();
+    async fn handle(
+        &self,
+        req: &mut Request,
+        depot: &mut Depot,
+        res: &mut Response,
+        ctrl: &mut FlowCtrl,
+    ) {
+        let app_state = match depot.obtain::<Arc<AppState>>() {
+            Ok(s) => s,
+            Err(_) => {
+                res.render(Json(ApiResponse::<()>::error("服务器错误", 201)));
+                ctrl.skip_rest();
+                return;
+            }
+        };
         let app_conf = app_state.config();
+        let security_conf = app_conf.security();
+
+        if !security_conf.admin_token_verify_enabled() {
+            ctrl.call_next(req, depot, res).await;
+            return;
+        }
 
         // 获取Token - 支持 "Token" 和 "HTTP_TOKEN" 两种 header
-        let token = req.headers().get("Token")
+        let token = req
+            .headers()
+            .get("Token")
             .or_else(|| req.headers().get("HTTP_TOKEN"));
-        
-        let token_str = match token.and_then(|t| t.to_str().ok()).filter(|s| !s.is_empty()) {
+
+        let token_str = match token
+            .and_then(|t| t.to_str().ok())
+            .filter(|s| !s.is_empty())
+        {
             Some(s) => s,
             None => {
                 res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_EMPTY, 201)));
@@ -115,15 +140,15 @@ impl Handler for AdminAuth {
                 return;
             }
         };
-        
+
         // 获取客户端IP
-        let ip = get_client_ip(req);
+        let ip = get_client_ip(req).to_string();
         let ip_str: &str = &ip;
 
         // 验证Token
         let jwt_key = app_conf.app().admin().keys();
         let jwt_builder = JwtBuilder::new(jwt_key, 3);
-        
+
         let claims = match jwt_builder.verify(token_str) {
             Ok(c) => c,
             Err(_) => {
@@ -152,20 +177,22 @@ impl Handler for AdminAuth {
             }
         };
 
-        let claim_ip = match claims.custom.get("ip").and_then(|v| v.as_str()) {
-            Some(ip) => ip,
-            None => {
+        if security_conf.admin_ip_bind_enabled() {
+            let claim_ip = match claims.custom.get("ip").and_then(|v| v.as_str()) {
+                Some(ip) => ip,
+                None => {
+                    res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_INVALID, -1)));
+                    ctrl.skip_rest();
+                    return;
+                }
+            };
+
+            // IP验证
+            if claim_ip != ip_str {
                 res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_INVALID, -1)));
                 ctrl.skip_rest();
                 return;
             }
-        };
-
-        // IP验证
-        if claim_ip != ip_str {
-            res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_INVALID, -1)));
-            ctrl.skip_rest();
-            return;
         }
 
         // 查询管理员信息
@@ -202,11 +229,11 @@ impl Handler for AdminAuth {
 
         // 构建管理员信息
         let auth = admin.6.as_ref().and_then(|v| serde_json::from_str(v).ok());
-        
+
         // 存储到Depot供后续使用 - 在move之前
         depot.insert("admin_id", admin.0);
         depot.insert("admin_user", admin.1.clone());
-        
+
         let admin_info = AdminInfo {
             id: admin.0,
             user: admin.1,
@@ -238,12 +265,12 @@ impl Handler for AdminAuth {
                     .add_claim("ip", ip_str)
                     .add_claim("pwd", password_hash_str)
                     .build()
-                {
-                    result.token = Some(TokenRenew {
-                        new: new_token,
-                        exp: exp as i64,
-                    });
-                }
+            {
+                result.token = Some(TokenRenew {
+                    new: new_token,
+                    exp: exp as i64,
+                });
+            }
 
             res.render(Json(ApiResponse::success("成功", Some(result))));
             ctrl.skip_rest();
@@ -253,55 +280,4 @@ impl Handler for AdminAuth {
         // 继续执行下一个处理器
         ctrl.call_next(req, depot, res).await;
     }
-}
-
-/// 获取客户端IP - 返回 String 避免内存泄漏
-/// 注意：在生产环境中，应配置可信代理列表来验证 X-Real-IP 和 X-Forwarded-For
-#[inline]
-fn get_client_ip(req: &Request) -> String {
-    // 尝试从 X-Real-IP 获取
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
-        && let Ok(ip) = x_real_ip.to_str()
-            && is_valid_ip(ip) {
-                return ip.to_string();
-            }
-    
-    // 尝试从 X-Forwarded-For 获取
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
-        && let Ok(ip_list) = x_forwarded_for.to_str()
-            && let Some(ip) = ip_list.split(',').next() {
-                let ip = ip.trim();
-                if is_valid_ip(ip) {
-                    return ip.to_string();
-                }
-            }
-
-    // 默认返回本地IP
-    "127.0.0.1".to_string()
-}
-
-/// 验证 IP 地址格式
-#[inline]
-fn is_valid_ip(ip: &str) -> bool {
-    // 简单验证：检查是否只包含有效的 IP 字符
-    if ip.is_empty() || ip.len() > 45 { // IPv6 最大长度
-        return false;
-    }
-    
-    // 检查字符是否有效
-    let mut dot_count = 0;
-    let mut colon_count = 0;
-    
-    for c in ip.chars() {
-        match c {
-            '0'..='9' => {}
-            'a'..='f' | 'A'..='F' => {} // IPv6 十六进制
-            '.' => dot_count += 1,
-            ':' => colon_count += 1,
-            _ => return false,
-        }
-    }
-    
-    // IPv4 最多 3 个点，IPv6 最多 7 个冒号
-    dot_count <= 3 || colon_count <= 7
 }

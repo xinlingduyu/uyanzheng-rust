@@ -1,15 +1,16 @@
 //! 安装程序
+use deadpool_redis::redis::{Client, cmd};
+use rand::Rng;
 use salvo::prelude::*;
-use std::sync::Arc;
 use std::fs;
 use std::path::Path;
-use rand::Rng;
-use deadpool_redis::redis::{Client, cmd};
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::migration;
 use Nakamasa_utils::encrypt;
 
 /// 检查系统是否已安装（通过 config.yaml 文件是否存在判断）
@@ -80,7 +81,7 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let install_req = match req.parse_json::<InstallRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -93,7 +94,8 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let mut validator = Validator::new();
     validator.string("mysql_host", &install_req.mysql_host, 9, 128);
     validator.int("mysql_port", install_req.mysql_port as i64, 1, 65535);
-    validator.string("mysql_name", &install_req.mysql_name, 1, 64);
+    // 数据库名会用于 CREATE DATABASE 标识符，必须严格限制为 MySQL 安全标识符字符
+    validator.wordnum("mysql_name", &install_req.mysql_name, 1, 64);
     validator.string("mysql_user", &install_req.mysql_user, 4, 64);
     validator.string("mysql_pwd", &install_req.mysql_pwd, 4, 64);
     validator.table_prefix("mysql_pre", &install_req.mysql_pre, 1, 16);
@@ -105,21 +107,27 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator.wordnum("admin_user", &install_req.admin_user, 5, 12);
     validator.password("admin_pwd", &install_req.admin_pwd, 6, 18);
     validator.wordnum("admin_authcode", &install_req.admin_authcode, 16, 32);
-    validator.sameone("install_type", &install_req.install_type, vec!["new", "upgrade"]);
-    
+    validator.sameone(
+        "install_type",
+        &install_req.install_type,
+        vec!["new", "upgrade"],
+    );
+
     if install_req.install_type == "upgrade"
-        && let Some(ref upgrade_ver) = install_req.install_upgrade {
-            let version_re = regex::Regex::new(r"^\d+\.\d+(\.\d+)?$").unwrap();
-            if !version_re.is_match(upgrade_ver) {
-                res.render(Json(ApiResponse::<()>::error("升级版本格式有误", 201)));
-                return;
-            }
+        && let Some(ref upgrade_ver) = install_req.install_upgrade
+    {
+        let version_re = regex::Regex::new(r"^\d+\.\d+(\.\d+)?$").unwrap();
+        if !version_re.is_match(upgrade_ver) {
+            res.render(Json(ApiResponse::<()>::error("升级版本格式有误", 201)));
+            return;
         }
-    
+    }
+
     if install_req.install_type == "upgrade"
-        && let Some(ref adm_pwd) = install_req.adm_pwd {
-            validator.wordnum("adm_pwd", adm_pwd, 32, 32);
-        }
+        && let Some(ref adm_pwd) = install_req.adm_pwd
+    {
+        validator.wordnum("adm_pwd", adm_pwd, 32, 32);
+    }
 
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
@@ -134,13 +142,18 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         if install_req.admin_authcode.len() >= 16 {
             install_req.admin_authcode.clone()
         } else {
-            install_req.adm_pwd.unwrap_or_else(|| generate_random_string(32))
+            install_req
+                .adm_pwd
+                .unwrap_or_else(|| generate_random_string(32))
         }
     } else {
         // 升级模式，必须提供 adm_pwd
-        install_req.adm_pwd.clone().unwrap_or_else(|| generate_random_string(32))
+        install_req
+            .adm_pwd
+            .clone()
+            .unwrap_or_else(|| generate_random_string(32))
     };
-    
+
     // 加密管理员密码
     let encrypted_pwd = md5_hash(&format!("{}{}", install_req.admin_pwd, adm_pwd_key));
 
@@ -179,10 +192,12 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 检查/创建数据库
-    let check_db_sql = format!("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '{}'", install_req.mysql_name);
-    let db_exists: bool = match sqlx::query_as::<_, (String,)>(&check_db_sql)
-        .fetch_optional(&server_pool)
-        .await
+    let db_exists: bool = match sqlx::query_as::<_, (String,)>(
+        "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?",
+    )
+    .bind(&install_req.mysql_name)
+    .fetch_optional(&server_pool)
+    .await
     {
         Ok(Some(_)) => true,
         Ok(None) => false,
@@ -195,10 +210,16 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     if !db_exists {
         // 创建数据库
-        let create_db_sql = format!("CREATE DATABASE `{}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci", install_req.mysql_name);
+        let create_db_sql = format!(
+            "CREATE DATABASE `{}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci",
+            install_req.mysql_name
+        );
         if let Err(e) = sqlx::query(&create_db_sql).execute(&server_pool).await {
             tracing::error!("创建数据库失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error("创建数据库失败，请检查用户权限", 201)));
+            res.render(Json(ApiResponse::<()>::error(
+                "创建数据库失败，请检查用户权限",
+                201,
+            )));
             return;
         }
         tracing::info!("数据库 {} 创建成功", install_req.mysql_name);
@@ -223,7 +244,7 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(pool) => pool,
         Err(e) => {
             tracing::error!("MySQL连接失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error(format!("数据库连接失败: {}", e), 201)));
+            res.render(Json(ApiResponse::<()>::error("数据库连接失败，请检查配置", 201)));
             return;
         }
     };
@@ -233,9 +254,15 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 测试Redis连接
     let redis_url = if let Some(ref pwd) = install_req.redis_pwd {
-        format!("redis://:{}@{}:{}", pwd, install_req.redis_host, install_req.redis_port)
+        format!(
+            "redis://:{}@{}:{}",
+            pwd, install_req.redis_host, install_req.redis_port
+        )
     } else {
-        format!("redis://{}:{}", install_req.redis_host, install_req.redis_port)
+        format!(
+            "redis://{}:{}",
+            install_req.redis_host, install_req.redis_port
+        )
     };
 
     let redis_client = match Client::open(redis_url.as_str()) {
@@ -267,11 +294,21 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         // 处理表前缀：去掉末尾的下划线，避免双下划线问题
         // 用户可能输入 "u_" 或 "u"，都应该生成 "u_admin" 而不是 "u__admin"
         let table_prefix = install_req.mysql_pre.trim_end_matches('_');
-        
+
         // 创建所有必要的数据库表
         if let Err(e) = create_all_tables(&db_pool, table_prefix).await {
             tracing::error!("创建数据库表失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error(format!("创建数据库表失败: {}", e), 201)));
+            res.render(Json(ApiResponse::<()>::error("创建数据库表失败，请检查数据库权限", 201)));
+            return;
+        }
+
+        // 新安装的表结构已包含当前程序版本字段，初始化迁移记录表并标记内置迁移已完成
+        if let Err(e) = migration::init_on_install(&db_pool, table_prefix, None).await {
+            tracing::error!("初始化迁移记录失败: {}", e);
+            res.render(Json(ApiResponse::<()>::error(
+                format!("初始化迁移记录失败: {}", e),
+                201,
+            )));
             return;
         }
 
@@ -287,7 +324,7 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .execute(&db_pool)
             .await
         {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => {
                 tracing::error!("创建管理员失败: {}", e);
                 res.render(Json(ApiResponse::<()>::error("创建管理员账号失败", 201)));
@@ -297,15 +334,14 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     } else {
         // 升级模式，先检查管理员表是否存在
         let table_prefix = install_req.mysql_pre.trim_end_matches('_');
-        
-        let check_table_sql = format!(
-            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '{}_admin'",
-            table_prefix
-        );
-        
-        let table_exists = match sqlx::query_as::<_, (i32,)>(&check_table_sql)
-            .fetch_optional(&db_pool)
-            .await
+
+        let admin_table_name = format!("{}_admin", table_prefix);
+        let table_exists = match sqlx::query_as::<_, (i32,)>(
+            "SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+        )
+        .bind(&admin_table_name)
+        .fetch_optional(&db_pool)
+        .await
         {
             Ok(Some(_)) => true,
             Ok(None) => false,
@@ -317,7 +353,10 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         };
 
         if !table_exists {
-            res.render(Json(ApiResponse::<()>::error("管理员表不存在，请确认数据库已正确初始化", 201)));
+            res.render(Json(ApiResponse::<()>::error(
+                "管理员表不存在，请确认数据库已正确初始化",
+                201,
+            )));
             return;
         }
 
@@ -333,9 +372,12 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .fetch_optional(&db_pool)
             .await
         {
-            Ok(Some(_)) => {},
+            Ok(Some(_)) => {}
             Ok(None) => {
-                res.render(Json(ApiResponse::<()>::error("管理员账号密码有误或管理员密码密钥有误", 201)));
+                res.render(Json(ApiResponse::<()>::error(
+                    "管理员账号密码有误或管理员密码密钥有误",
+                    201,
+                )));
                 return;
             }
             Err(e) => {
@@ -369,12 +411,12 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(content) => content,
         Err(e) => {
             tracing::error!("生成配置文件失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error(format!("生成配置文件失败: {}", e), 201)));
+            res.render(Json(ApiResponse::<()>::error("生成配置文件失败", 201)));
             return;
         }
     };
-    
-    if let Err(e) = fs::write("config.yaml", &config_content) {
+
+    if let Err(e) = write_config_file_secure("config.yaml", &config_content) {
         tracing::error!("创建配置文件失败: {}", e);
         res.render(Json(ApiResponse::<()>::error("创建配置文件失败", 201)));
         return;
@@ -393,15 +435,15 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         tracing::info!("发送重启信号...");
-        
+
         // 发送 SIGTERM 信号给当前进程
         #[cfg(unix)]
         {
-            use nix::sys::signal::{kill, Signal};
+            use nix::sys::signal::{Signal, kill};
             use nix::unistd::Pid;
             let _ = kill(Pid::this(), Signal::SIGTERM);
         }
-        
+
         #[cfg(not(unix))]
         {
             std::process::exit(0);
@@ -409,14 +451,36 @@ pub async fn install(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     });
 }
 
+#[cfg(unix)]
+fn write_config_file_secure(path: &str, content: &str) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    file.write_all(content.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn write_config_file_secure(path: &str, content: &str) -> std::io::Result<()> {
+    fs::write(path, content)
+}
+
 /// 生成 config.yaml 文件内容
-/// 
+///
 /// 敏感信息会被加密：
 /// - MySQL 密码
 /// - Redis 密码
 /// - admin.keys (密码密钥)
 /// - admin.token_key (JWT 密钥)
-/// 
+///
 /// 加密密钥为 app.code
 fn generate_config_yaml(
     mysql_host: &str,
@@ -436,19 +500,19 @@ fn generate_config_yaml(
     // 生成随机密钥
     let app_code = generate_random_string(32);
     let adm_jwt_key = generate_random_string(64);
-    
+
     // 加密敏感信息
-    let encrypted_mysql_pwd = encrypt(mysql_pwd, &app_code)
-        .map_err(|e| format!("MySQL密码加密失败: {}", e))?;
+    let encrypted_mysql_pwd =
+        encrypt(mysql_pwd, &app_code).map_err(|e| format!("MySQL密码加密失败: {}", e))?;
     let encrypted_redis_pwd = redis_pwd
         .map(|p| encrypt(p, &app_code).map_err(|e| format!("Redis密码加密失败: {}", e)))
         .transpose()?
         .unwrap_or_default();
-    let encrypted_adm_pwd_key = encrypt(adm_pwd_key, &app_code)
-        .map_err(|e| format!("管理员密码密钥加密失败: {}", e))?;
-    let encrypted_adm_jwt_key = encrypt(&adm_jwt_key, &app_code)
-        .map_err(|e| format!("JWT密钥加密失败: {}", e))?;
-    
+    let encrypted_adm_pwd_key =
+        encrypt(adm_pwd_key, &app_code).map_err(|e| format!("管理员密码密钥加密失败: {}", e))?;
+    let encrypted_adm_jwt_key =
+        encrypt(&adm_jwt_key, &app_code).map_err(|e| format!("JWT密钥加密失败: {}", e))?;
+
     // 构建TLS配置部分
     let tls_config = if tls_enabled {
         let cert_line = cert_path
@@ -461,11 +525,11 @@ fn generate_config_yaml(
     } else {
         "    tls_enabled: false".to_string()
     };
-    
+
     // 根据TLS状态设置host协议
     let host_protocol = if tls_enabled { "https" } else { "http" };
     let app_version = env!("CARGO_PKG_VERSION");
-    
+
     Ok(format!(
         r#"app:
     host: {}://127.0.0.1:8080
@@ -504,6 +568,31 @@ redis:
     port: {}
     password: "{}"
     db: 0
+security:
+    admin_token_verify_enabled: true
+    user_token_verify_enabled: true
+    admin_ip_bind_enabled: true
+    trust_proxy_headers: false
+    trusted_proxies:
+        - "127.0.0.1"
+        - "::1"
+cors:
+    allowed_origins:
+        - "http://127.0.0.1:8888"
+        - "https://127.0.0.1:8888"
+    allowed_headers:
+        - "content-type"
+        - "authorization"
+        - "accept-language"
+        - "token"
+    allowed_methods:
+        - "GET"
+        - "POST"
+        - "PUT"
+        - "DELETE"
+        - "OPTIONS"
+    allow_credentials: true
+    max_age: 86400
 log:
     path: ./log
     max_size: 100
@@ -575,13 +664,14 @@ pub async fn check(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
 }
 
 /// 创建所有数据库表
-/// 
+///
 /// 根据表前缀创建所有必要的数据库表
 async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<(), String> {
     // 管理员表
     let tables = vec![
         // admin
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_admin` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_admin` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `user` varchar(18) NOT NULL,
             `password` varchar(32) NOT NULL,
@@ -593,10 +683,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` json DEFAULT NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `user` (`user`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app - 应用表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `app_key` varchar(32) NOT NULL,
             `app_type` enum('user','kami') NOT NULL,
@@ -659,10 +751,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `ai_max_tokens` int(10) DEFAULT NULL,
             PRIMARY KEY (`id`),
             UNIQUE KEY `app_key` (`app_key`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // user - 用户表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_user` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_user` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `email` varchar(64) DEFAULT NULL,
             `phone` bigint(11) DEFAULT NULL,
@@ -694,10 +788,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `inviter_id` (`inviter_id`),
             KEY `reg_ip` (`reg_ip`),
             KEY `ban` (`ban`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // login - 登录记录表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_login` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_login` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `uid` bigint(20) NOT NULL,
             `token` varchar(32) NOT NULL,
@@ -710,10 +806,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `uid` (`uid`),
             KEY `sn` (`sn`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // logs - 日志表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_logs` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_logs` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `ug` enum('admin','agent','user','kami') NOT NULL,
             `uid` bigint(20) NOT NULL,
@@ -728,10 +826,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `ug` (`ug`),
             KEY `uid` (`uid`),
             KEY `type` (`type`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // goods - 商品表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_goods` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_goods` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(128) NOT NULL,
             `type` enum('vip','fen','agent','addsn') NOT NULL,
@@ -742,10 +842,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` bigint(20) NOT NULL,
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // order - 订单表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_order` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_order` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `uid` bigint(20) NOT NULL,
             `gid` bigint(20) NOT NULL,
@@ -771,10 +873,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `gid` (`gid`),
             KEY `order_no` (`order_no`),
             KEY `trade_no` (`trade_no`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // vcode - 验证码表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_vcode` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_vcode` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `eorp` varchar(64) NOT NULL,
             `type` varchar(12) NOT NULL,
@@ -788,10 +892,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `type` (`type`),
             KEY `code` (`code`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // message - 消息表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_message` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_message` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `uid` bigint(20) NOT NULL,
             `utype` enum('user','admin') NOT NULL,
@@ -810,10 +916,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `state` (`state`),
             KEY `appid` (`appid`),
             KEY `uid` (`uid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // cdk_group - 卡密组表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_group` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_group` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(64) NOT NULL,
             `val` bigint(10) NOT NULL,
@@ -822,10 +930,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` bigint(20) NOT NULL,
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // cdk_kami - 卡密表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_kami` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_kami` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `gid` bigint(20) NOT NULL,
             `type` enum('vip','fen','addsn') NOT NULL,
@@ -859,10 +969,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `gid` (`gid`),
             KEY `add_uid` (`add_uid`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // cdk_user - 用户卡密表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_user` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_cdk_user` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `gid` bigint(20) NOT NULL,
             `type` enum('vip','fen','addsn') NOT NULL,
@@ -885,10 +997,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             UNIQUE KEY `cdk` (`cdk`,`appid`),
             KEY `gid` (`gid`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_function - 云函数表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_function` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_function` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(64) NOT NULL,
             `code` text NOT NULL,
@@ -900,10 +1014,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             PRIMARY KEY (`id`),
             UNIQUE KEY `name_appid` (`name`, `appid`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_ver - 版本表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_ver` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_ver` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(64) DEFAULT NULL,
             `ver_key` varchar(12) DEFAULT 'default',
@@ -920,10 +1036,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`),
             KEY `ver_key_appid` (`ver_key`,`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_notice - 公告表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_notice` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_notice` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `aid` bigint(20) NOT NULL,
             `visit` bigint(10) DEFAULT '0',
@@ -933,10 +1051,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             PRIMARY KEY (`id`),
             KEY `aid` (`aid`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_blocklist - 黑名单表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_blocklist` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_blocklist` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `type` enum('ip','sn') NOT NULL,
             `val` varchar(64) NOT NULL,
@@ -945,10 +1065,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             PRIMARY KEY (`id`),
             UNIQUE KEY `type_val_appid` (`type`,`val`,`appid`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_extend - 扩展表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_extend` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_extend` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(128) NOT NULL,
             `var_key` varchar(64) NOT NULL,
@@ -956,10 +1078,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` bigint(20) DEFAULT NULL,
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // app_mi - 版本配置表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_app_mi` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_app_mi` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(64) NOT NULL,
             `type` varchar(24) NOT NULL,
@@ -969,10 +1093,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` bigint(20) DEFAULT NULL,
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // fen_event - 积分事件表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_fen_event` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_fen_event` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `name` varchar(128) NOT NULL,
             `fen` bigint(10) DEFAULT '0',
@@ -982,10 +1108,12 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             `appid` bigint(20) NOT NULL,
             PRIMARY KEY (`id`),
             KEY `appid` (`appid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
-        
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
         // fen_order - 积分订单表
-        format!(r#"CREATE TABLE IF NOT EXISTS `{p}_fen_order` (
+        format!(
+            r#"CREATE TABLE IF NOT EXISTS `{p}_fen_order` (
             `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             `fid` bigint(20) NOT NULL,
             `uid` bigint(20) NOT NULL,
@@ -1000,9 +1128,11 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             KEY `mark` (`mark`),
             KEY `appid` (`appid`),
             KEY `fid` (`fid`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#, p = prefix),
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"#,
+            p = prefix
+        ),
     ];
-    
+
     // 逐个创建表
     for (i, sql) in tables.iter().enumerate() {
         tracing::info!("创建表 {}/{}...", i + 1, tables.len());
@@ -1010,7 +1140,7 @@ async fn create_all_tables(db_pool: &sqlx::MySqlPool, prefix: &str) -> Result<()
             return Err(format!("创建表失败: {}", e));
         }
     }
-    
+
     tracing::info!("所有数据库表创建完成 (共 {} 个表)", tables.len());
     Ok(())
 }

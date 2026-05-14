@@ -1,5 +1,5 @@
 //! 修改密码
-//! 
+//!
 //! 功能说明：
 //! 已登录用户修改登录密码，需要验证当前密码。
 //!
@@ -10,18 +10,20 @@
 //! 4. 更新Redis中token关联的密码
 //! 5. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::ModifyPwdRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::ModifyPwdRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 #[handler]
 pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -32,7 +34,7 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -58,7 +60,7 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
         .wordnum("token", &modify_req.token, 32, 32)
         .password("password", &modify_req.password, 6, 18)
         .password("new_password", &modify_req.new_password, 6, 18);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -164,9 +166,9 @@ async fn delete_all_user_tokens(
     // 查找所有匹配的online key
     // 格式: {user_type}_{appid}_online_{uid}_{udid_hash}
     let pattern = format!("{}_{}_online_{}_*", user_type, appid, uid);
-    
+
     tracing::debug!("清除用户 {} 的所有token, pattern: {}", uid, pattern);
-    
+
     // 使用scan_keys查找所有匹配的键
     match redis_util.scan_keys(redis_pool, &pattern, Some(100)).await {
         Ok(keys) => {
@@ -178,7 +180,7 @@ async fn delete_all_user_tokens(
                     let token_key = format!("{}_{}__{}", user_type, appid, token);
                     let _ = redis_util.del(redis_pool, &token_key).await;
                 }
-                
+
                 // 删除online key
                 let _ = redis_util.del(redis_pool, key).await;
             }

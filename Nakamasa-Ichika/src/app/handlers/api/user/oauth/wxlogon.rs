@@ -1,5 +1,5 @@
 //! 微信扫码登录
-//! 
+//!
 //! 功能说明：
 //! 获取微信开放平台扫码登录URL，用于PC端网页扫码登录。
 //!
@@ -10,20 +10,23 @@
 //! 4. 构建微信授权登录URL
 //! 5. 返回登录URL和state供前端生成二维码
 
+use chrono::Utc;
+use rand::Rng;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 use urlencoding::encode;
-use rand::Rng;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::models::requests::WxLogonRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::WxLogonRequest;
-use crate::app::middleware::app_context::AppInfo;
+use crate::core::middleware::get_client_ip;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use serde::{Serialize, Deserialize};
 
 /// 微信登录信息 - 存储在Redis中
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -45,7 +48,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -55,7 +58,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
     let app_key = app_info.app_key.as_str();
-    
+
     let wx_req = match req.parse_json::<WxLogonRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -68,7 +71,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut validator = Validator::new();
     validator.reg("udid", &wx_req.udid, "[a-zA-Z0-9_-]+");
     // invid 是可选的
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -99,9 +102,18 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
 
     // PHP: if(!$wxConfig || !isset($wxConfig['appID']) || !isset($wxConfig['state']) || !isset($wxConfig['appSecret']))$this->out->e(201,'微信登录配置有误');
-    let app_id = wx_config.get("appID").and_then(|v| v.as_str()).unwrap_or("");
-    let app_secret = wx_config.get("appSecret").and_then(|v| v.as_str()).unwrap_or("");
-    let state_config = wx_config.get("state").and_then(|v| v.as_str()).unwrap_or("");
+    let app_id = wx_config
+        .get("appID")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let app_secret = wx_config
+        .get("appSecret")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let state_config = wx_config
+        .get("state")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
 
     // PHP: if($wxConfig['state'] != 'on')$this->out->e(201,'微信登录未开启');
     if state_config != "on" {
@@ -133,9 +145,9 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         let _ = write!(&mut state_data, "{}{}{}", current_time, random_num, appid);
         md5_to_str(&md5_hex(state_data.as_bytes())).to_string()
     };
-    
+
     // 获取客户端IP
-    let client_ip = get_client_ip(req);
+    let client_ip = get_client_ip(req).to_string();
 
     // PHP: $data = ['appid'=>$this->app['id'],'udid'=>$_POST['udid'],'ip'=>$this->ip,'invid'=>isset($_POST['invid']) && !empty($_POST['invid'])?$_POST['invid']:null,'wxConfig'=>$wxConfig];
     let wxlogon_info = WxLogonInfo {
@@ -157,7 +169,7 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let info_json = match serde_json::to_string(&wxlogon_info) {
         Ok(json) => json,
         Err(_) => {
@@ -165,8 +177,11 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
-    if let Err(e) = redis_util.setex(redis_pool, &redis_key, 600, &info_json).await {
+
+    if let Err(e) = redis_util
+        .setex(redis_pool, &redis_key, 600, &info_json)
+        .await
+    {
         tracing::error!("Redis存储失败: {}", e);
         render_error(res, "存储登录信息失败", 201, app_key);
         return;
@@ -183,23 +198,13 @@ pub async fn wx_logon(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     );
 
     // PHP: $this->out->setData(['url'=>$wxurl,'uuid'=>$state])->e(200,'获取成功');
-    render_success(res, app_key, Some(json!({
-        "url": wx_url,
-        "uuid": state
-    })), app_info.mi.as_ref());
-}
-
-/// 获取客户端IP
-fn get_client_ip(req: &Request) -> String {
-    if let Some(x_real_ip) = req.headers().get("X-Real-IP")
-        && let Ok(ip) = x_real_ip.to_str() {
-            return ip.to_string();
-        }
-    
-    if let Some(x_forwarded_for) = req.headers().get("X-Forwarded-For")
-        && let Ok(ip) = x_forwarded_for.to_str() {
-            return ip.split(',').next().unwrap_or("").trim().to_string();
-        }
-
-    "127.0.0.1".to_string()
+    render_success(
+        res,
+        app_key,
+        Some(json!({
+            "url": wx_url,
+            "uuid": state
+        })),
+        app_info.mi.as_ref(),
+    );
 }

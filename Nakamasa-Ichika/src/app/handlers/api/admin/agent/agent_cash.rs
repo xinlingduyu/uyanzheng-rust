@@ -47,7 +47,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -81,7 +81,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let page_size = list_req.size.unwrap_or(10).max(1);
     let offset = (page - 1) * page_size;
 
-    let mut query = String::from("SELECT id, agid, name, account, money, state, rebut_msg, add_time, end_time, IF(state > 0, NULL, true) as disabled FROM u_agent_cash WHERE appid = ?");
+    let mut query = String::from(
+        "SELECT id, agid, name, account, money, state, rebut_msg, add_time, end_time, IF(state > 0, NULL, true) as disabled FROM u_agent_cash WHERE appid = ?",
+    );
     let mut params: Vec<String> = vec![appid.to_string()];
 
     if let Some(so) = list_req.so {
@@ -91,19 +93,34 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
 
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                query.push_str(" AND (id = ? OR name LIKE ? OR account LIKE ?)");
-                params.push(keyword.clone());
-                params.push(format!("%{}%", keyword));
-                params.push(format!("%{}%", keyword));
-            }
+            && !keyword.is_empty()
+        {
+            query.push_str(" AND (id = ? OR name LIKE ? OR account LIKE ?)");
+            params.push(keyword.clone());
+            params.push(format!("%{}%", keyword));
+            params.push(format!("%{}%", keyword));
+        }
     }
 
     query.push_str(" ORDER BY id DESC LIMIT ? OFFSET ?");
     params.push(page_size.to_string());
     params.push(offset.to_string());
 
-    let mut sql_query = sqlx::query_as::<_, (i64, i64, Option<String>, Option<String>, String, i64, Option<String>, i64, Option<i64>, Option<bool>)>(&query);
+    let mut sql_query = sqlx::query_as::<
+        _,
+        (
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            String,
+            i64,
+            Option<String>,
+            i64,
+            Option<i64>,
+            Option<bool>,
+        ),
+    >(&query);
     for param in params {
         sql_query = sql_query.bind(param);
     }
@@ -112,8 +129,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     match result {
         Ok(rows) => {
-            let list: Vec<AgentCashItem> = rows.into_iter().map(|row| {
-                AgentCashItem {
+            let list: Vec<AgentCashItem> = rows
+                .into_iter()
+                .map(|row| AgentCashItem {
                     id: row.0,
                     agid: row.1,
                     name: row.2,
@@ -124,8 +142,8 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     add_time: row.7,
                     end_time: row.8,
                     disabled: row.9,
-                }
-            }).collect();
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -157,7 +175,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditAgentCashRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -172,7 +190,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .required_i64("id", &Some(edit_req.id), "编辑ID")
         .int("id", edit_req.id, 1, 11)
         .betweend("state", edit_req.state.parse::<i64>().unwrap_or(0), 0, 2);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -180,7 +198,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 查询提现记录
     let check_result = sqlx::query_as::<_, (i64, i64, i64)>(
-        "SELECT id, agid, money FROM u_agent_cash WHERE id = ?"
+        "SELECT id, agid, money FROM u_agent_cash WHERE id = ?",
     )
     .bind(edit_req.id)
     .fetch_optional(app_state.get_db())
@@ -210,7 +228,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let state_i64 = edit_req.state.parse::<i64>().unwrap_or(0);
-    
+
     // 更新提现记录
     let end_time = if state_i64 == 0 {
         Some(chrono::Utc::now().timestamp())
@@ -218,15 +236,14 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         None
     };
 
-    let update_result = sqlx::query(
-        "UPDATE u_agent_cash SET rebut_msg = ?, end_time = ?, state = ? WHERE id = ?"
-    )
-    .bind(edit_req.rebut_msg)
-    .bind(end_time)
-    .bind(state_i64)
-    .bind(edit_req.id)
-    .execute(&mut *tx)
-    .await;
+    let update_result =
+        sqlx::query("UPDATE u_agent_cash SET rebut_msg = ?, end_time = ?, state = ? WHERE id = ?")
+            .bind(edit_req.rebut_msg)
+            .bind(end_time)
+            .bind(state_i64)
+            .bind(edit_req.id)
+            .execute(&mut *tx)
+            .await;
 
     match update_result {
         Ok(r) if r.rows_affected() > 0 => {}
@@ -239,13 +256,11 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 如果状态为1（驳回），则退钱
     if state_i64 == 1 {
-        let money_result = sqlx::query(
-            "UPDATE u_agent SET money = money + ? WHERE id = ?"
-        )
-        .bind(money)
-        .bind(agid)
-        .execute(&mut *tx)
-        .await;
+        let money_result = sqlx::query("UPDATE u_agent SET money = money + ? WHERE id = ?")
+            .bind(money)
+            .bind(agid)
+            .execute(&mut *tx)
+            .await;
 
         match money_result {
             Ok(r) if r.rows_affected() > 0 => {}
@@ -283,7 +298,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -294,8 +309,10 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 参数验证
     let mut validator = Validator::new();
-    validator.required_i64("id", &Some(del_req.id), "删除ID").int("id", del_req.id, 1, 11);
-    
+    validator
+        .required_i64("id", &Some(del_req.id), "删除ID")
+        .int("id", del_req.id, 1, 11);
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -321,5 +338,5 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

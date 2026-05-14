@@ -1,11 +1,11 @@
 //! 微信支付插件
 //! 支持 H5 支付、Native 支付、APP 支付
 
-use super::trait_def::{PayPlugin, PayOrder, PayResult};
 use super::http_client;
+use super::trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use serde_json::json;
 use std::collections::BTreeMap;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
 /// 微信支付插件
 pub struct WxPayPlugin {
@@ -111,7 +111,10 @@ impl WxPayPlugin {
         // 构建请求参数
         let mut params = BTreeMap::new();
         params.insert("appid".to_string(), self.wx_appid.as_ref().unwrap().clone());
-        params.insert("mch_id".to_string(), self.wx_mchid.as_ref().unwrap().clone());
+        params.insert(
+            "mch_id".to_string(),
+            self.wx_mchid.as_ref().unwrap().clone(),
+        );
         params.insert("nonce_str".to_string(), nonce_str);
         params.insert("body".to_string(), order.name.clone());
         params.insert("out_trade_no".to_string(), order.order_no.clone());
@@ -147,9 +150,8 @@ impl WxPayPlugin {
 
         // 调用微信统一下单API
         let response = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                http_client::post_xml(&self.unified_order_url, &xml).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { http_client::post_xml(&self.unified_order_url, &xml).await })
         });
 
         match response {
@@ -158,8 +160,9 @@ impl WxPayPlugin {
 
                 // 解析响应
                 if let Ok(json_resp) = Self::xml_to_json(&resp) {
-                    if json_resp.get("return_code").and_then(|v| v.as_str()) == Some("SUCCESS") &&
-                       json_resp.get("result_code").and_then(|v| v.as_str()) == Some("SUCCESS") {
+                    if json_resp.get("return_code").and_then(|v| v.as_str()) == Some("SUCCESS")
+                        && json_resp.get("result_code").and_then(|v| v.as_str()) == Some("SUCCESS")
+                    {
                         // 获取 mweb_url
                         if let Some(mweb_url) = json_resp.get("mweb_url").and_then(|v| v.as_str()) {
                             return Ok(PayResult {
@@ -172,7 +175,8 @@ impl WxPayPlugin {
                     }
 
                     // 返回错误信息
-                    let err_msg = json_resp.get("return_msg")
+                    let err_msg = json_resp
+                        .get("return_msg")
                         .and_then(|v| v.as_str())
                         .unwrap_or("创建失败");
                     return Err(err_msg.to_string());
@@ -186,7 +190,10 @@ impl WxPayPlugin {
         // 失败时返回模拟结果
         Ok(PayResult {
             success: true,
-            pay_url: Some(format!("weixin://wxpay/bizpayurl?pr=xxx&out_trade_no={}", order.order_no)),
+            pay_url: Some(format!(
+                "weixin://wxpay/bizpayurl?pr=xxx&out_trade_no={}",
+                order.order_no
+            )),
             qrcode: None,
             message: "创建成功".to_string(),
         })
@@ -204,7 +211,10 @@ impl WxPayPlugin {
         // 构建请求参数
         let mut params = BTreeMap::new();
         params.insert("appid".to_string(), self.wx_appid.as_ref().unwrap().clone());
-        params.insert("mch_id".to_string(), self.wx_mchid.as_ref().unwrap().clone());
+        params.insert(
+            "mch_id".to_string(),
+            self.wx_mchid.as_ref().unwrap().clone(),
+        );
         params.insert("nonce_str".to_string(), nonce_str);
         params.insert("body".to_string(), order.name.clone());
         params.insert("out_trade_no".to_string(), order.order_no.clone());
@@ -234,9 +244,8 @@ impl WxPayPlugin {
 
         // 调用微信统一下单API
         let response = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                http_client::post_xml(&self.unified_order_url, &xml).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { http_client::post_xml(&self.unified_order_url, &xml).await })
         });
 
         match response {
@@ -245,8 +254,9 @@ impl WxPayPlugin {
 
                 // 解析响应
                 if let Ok(json_resp) = Self::xml_to_json(&resp) {
-                    if json_resp.get("return_code").and_then(|v| v.as_str()) == Some("SUCCESS") &&
-                       json_resp.get("result_code").and_then(|v| v.as_str()) == Some("SUCCESS") {
+                    if json_resp.get("return_code").and_then(|v| v.as_str()) == Some("SUCCESS")
+                        && json_resp.get("result_code").and_then(|v| v.as_str()) == Some("SUCCESS")
+                    {
                         // 获取 code_url
                         if let Some(code_url) = json_resp.get("code_url").and_then(|v| v.as_str()) {
                             return Ok(PayResult {
@@ -259,7 +269,8 @@ impl WxPayPlugin {
                     }
 
                     // 返回错误信息
-                    let err_msg = json_resp.get("return_msg")
+                    let err_msg = json_resp
+                        .get("return_msg")
                         .and_then(|v| v.as_str())
                         .unwrap_or("创建失败");
                     return Err(err_msg.to_string());
@@ -274,7 +285,10 @@ impl WxPayPlugin {
         Ok(PayResult {
             success: true,
             pay_url: None,
-            qrcode: Some(format!("weixin://wxpay/bizpayurl?product_id={}", order.order_no)),
+            qrcode: Some(format!(
+                "weixin://wxpay/bizpayurl?product_id={}",
+                order.order_no
+            )),
             message: "创建成功".to_string(),
         })
     }
@@ -373,37 +387,60 @@ impl PayPlugin for WxPayPlugin {
         }
     }
 
-    fn verify_notify(&self, data: serde_json::Value) -> Result<String, String> {
+    fn verify_notify(&self, data: serde_json::Value) -> Result<NotifyVerifyResult, String> {
         if self.wx_key.is_none() {
             return Err("微信支付密钥未配置".to_string());
         }
 
         if let Some(obj) = data.as_object() {
-            // 提取签名
             let sign = match obj.get("sign") {
                 Some(s) => s.as_str().unwrap_or("").to_string(),
                 None => return Err("缺少签名参数".to_string()),
             };
 
-            // 构建验签参数（排除sign）
             let mut params = BTreeMap::new();
             for (k, v) in obj {
                 if k != "sign"
-                    && let Some(s) = v.as_str() {
-                        params.insert(k.clone(), s.to_string());
-                    }
+                    && let Some(s) = v.as_str()
+                {
+                    params.insert(k.clone(), s.to_string());
+                }
             }
 
-            // 验证签名
             if self.verify(&params, &sign) {
-                if let Some(out_trade_no) = obj.get("out_trade_no")
-                    && let Some(result_code) = obj.get("result_code")
-                        && let Some(return_code) = obj.get("return_code")
-                            && return_code.as_str() == Some("SUCCESS") &&
-                               result_code.as_str() == Some("SUCCESS") {
-                                return Ok(out_trade_no.as_str().unwrap_or("").to_string());
-                            }
-                return Err("订单支付未成功".to_string());
+                let return_code = obj
+                    .get("return_code")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let result_code = obj
+                    .get("result_code")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if return_code != "SUCCESS" || result_code != "SUCCESS" {
+                    return Err("订单支付未成功".to_string());
+                }
+                let order_no = obj
+                    .get("out_trade_no")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if order_no.is_empty() {
+                    return Err("缺少商户订单号".to_string());
+                }
+                let trade_no = obj
+                    .get("transaction_id")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(order_no)
+                    .to_string();
+                let amount = obj
+                    .get("total_fee")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse::<i64>().ok());
+                return Ok(NotifyVerifyResult {
+                    order_no: order_no.to_string(),
+                    trade_no,
+                    amount,
+                });
             }
         }
         Err("签名验证失败".to_string())
@@ -424,7 +461,10 @@ impl PayPlugin for WxPayPlugin {
         // 构建查询参数
         let mut params = BTreeMap::new();
         params.insert("appid".to_string(), self.wx_appid.as_ref().unwrap().clone());
-        params.insert("mch_id".to_string(), self.wx_mchid.as_ref().unwrap().clone());
+        params.insert(
+            "mch_id".to_string(),
+            self.wx_mchid.as_ref().unwrap().clone(),
+        );
         params.insert("out_trade_no".to_string(), out_trade_no.clone());
         params.insert("nonce_str".to_string(), nonce_str);
 
@@ -437,9 +477,8 @@ impl PayPlugin for WxPayPlugin {
 
         // 调用微信查询订单API
         let response = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(async {
-                http_client::post_xml(&self.order_query_url, &xml).await
-            })
+            tokio::runtime::Handle::current()
+                .block_on(async { http_client::post_xml(&self.order_query_url, &xml).await })
         });
 
         match response {

@@ -3,11 +3,13 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 use serde::Deserialize;
 
 /// Ban请求参数
@@ -36,7 +38,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -46,7 +48,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let ban_req = match req.parse_json::<BanRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -58,7 +60,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 验证参数
     let mut validator = Validator::new();
     validator.wordnum("token", &ban_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -81,23 +83,22 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let uid = user_info.uid;
     let appid = user_info.appid;
     let current_time = chrono::Utc::now().timestamp();
-    
+
     // 计算禁用到期时间
     let ban_time = current_time + second;
-    
+
     // 禁用提示信息（避免 unnecessary allocation）
     let ban_msg = ban_req.message.as_deref().unwrap_or("账户已被禁用");
 
     // 更新用户禁用状态
-    let update_result = sqlx::query(
-        "UPDATE u_user SET ban = ?, ban_msg = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(ban_time)
-    .bind(ban_msg)
-    .bind(uid as i64)
-    .bind(appid)
-    .execute(app_state.get_db())
-    .await;
+    let update_result =
+        sqlx::query("UPDATE u_user SET ban = ?, ban_msg = ? WHERE id = ? AND appid = ?")
+            .bind(ban_time)
+            .bind(ban_msg)
+            .bind(uid as i64)
+            .bind(appid)
+            .execute(app_state.get_db())
+            .await;
 
     match update_result {
         Ok(result) if result.rows_affected() > 0 => {
@@ -112,7 +113,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
             // 异步记录日志（fire-and-forget，不阻塞响应）
             let _ = sqlx::query(
-                "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind("user")
             .bind(uid as i64)

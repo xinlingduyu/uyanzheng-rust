@@ -46,9 +46,9 @@
 use salvo::Router;
 
 use super::handlers;
-use super::handlers::api::{admin_routes, user_routes, index_routes, install_routes};
-use super::middleware::cors::cors;
+use super::handlers::api::{admin_routes, index_routes, install_routes, user_routes};
 use super::middleware::connect::connect_handler;
+use super::middleware::cors::cors;
 use crate::core::is_installed;
 
 /// 构建应用路由
@@ -76,7 +76,7 @@ pub fn routes() -> Router {
     if !is_installed() {
         return build_installation_routes();
     }
-    
+
     build_production_routes()
 }
 
@@ -94,7 +94,8 @@ fn build_installation_routes() -> Router {
         // 安装 API 路由
         .push(install_routes())
         // 欢迎页
-        .get(handlers::hello::hello).hoop(connect_handler)
+        .get(handlers::hello::hello)
+        .hoop(connect_handler)
 }
 
 /// 构建生产模式路由
@@ -106,36 +107,40 @@ fn build_production_routes() -> Router {
         // ========================================
         // 静态资源路由
         // ========================================
-        
         // 上传文件访问路由 - 安全访问上传的图片/文件
         .push(static_files::upload_files_route())
-        
         // 静态资源路由 - 优先级较高
         .push(static_files::static_files_route())
         .push(static_files::admin_static_route())
         .push(static_files::root_static_route())
-        
         // ========================================
         // API 路由
         // ========================================
-        
         // 健康检查
         .push(health::health_check::route())
-        
+        // 安装状态检查路由 - 已安装后前端仍会请求 /api/install/check 判断状态
+        // 生产模式只暴露只读检查接口，不暴露 POST /api/install 和 /api/install/env
+        .push(install_check_routes())
         // 管理后台 API 路由 - /api/admin/*
         .push(admin_routes())
-        
         // 用户 API 路由
         .push(user_routes())
-        
         // OAuth2.0 回调路由
         .push(oauth2_routes())
-        
         // 索引 API 路由
         .push(index_routes())
-        
         // 欢迎页
-        .get(handlers::hello::hello).hoop(connect_handler)
+        .get(handlers::hello::hello)
+        .hoop(connect_handler)
+}
+
+/// 构建生产模式安装状态检查路由
+///
+/// 已安装后前端仍需要调用 `/api/install/check` 判断安装状态。
+/// 这里只注册只读检查接口，避免生产模式暴露安装写接口和环境探测接口。
+fn install_check_routes() -> Router {
+    Router::with_path("/api/install")
+        .push(Router::with_path("/check").get(api::index::install::check))
 }
 
 /// OAuth2.0 回调路由
@@ -149,17 +154,21 @@ fn build_production_routes() -> Router {
 fn oauth2_routes() -> Router {
     Router::with_path("/api/oauth2.0")
         // QQ 登录回调
-        .push(Router::with_path("/qqlogon/callback")
-            .get(handlers::api::user::oauth::qqlogonCallback::qq_logon_callback))
+        .push(
+            Router::with_path("/qqlogon/callback")
+                .get(handlers::api::user::oauth::qqlogonCallback::qq_logon_callback),
+        )
         // 微信登录回调
-        .push(Router::with_path("/wxlogon/callback")
-            .get(handlers::api::user::oauth::wxlogonCallback::wx_logon_callback))
+        .push(
+            Router::with_path("/wxlogon/callback")
+                .get(handlers::api::user::oauth::wxlogonCallback::wx_logon_callback),
+        )
 }
 
 // ============================================================================
 // 模块导入
 // ============================================================================
 
-use handlers::static_files;
-use handlers::health;
 use handlers::api;
+use handlers::health;
+use handlers::static_files;

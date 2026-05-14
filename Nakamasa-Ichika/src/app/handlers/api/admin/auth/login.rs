@@ -1,20 +1,20 @@
 //! Admin login controller
 //! 管理员登录控制器
 
+use Nakamasa_utils::jwt::JwtBuilder;
 use salvo::prelude::*;
 use serde::Serialize;
-use std::time::{SystemTime, UNIX_EPOCH};
-use Nakamasa_utils::jwt::JwtBuilder;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::app::models::admin_requests::AdminLoginRequest;
+use crate::app::models::admin_responses::{AdminInfo, AdminLoginResponse};
+use crate::app::utils::response::ApiResponse;
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::admin_cache::{AdminData, CacheResult};
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::ApiResponse;
-use crate::app::utils::validator::Validator;
-use crate::app::models::admin_requests::AdminLoginRequest;
-use crate::app::models::admin_responses::{AdminInfo, AdminLoginResponse};
 
 // 预分配错误消息 - 静态字符串零分配
 static ERR_PARSE_FAIL: &str = "参数解析失败";
@@ -75,8 +75,14 @@ fn admin_data_to_info(data: &AdminData) -> AdminInfo {
 
 #[handler]
 pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
-    
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("服务器错误", 201)));
+            return;
+        }
+    };
+
     // 解析请求
     let login_req = match req.parse_json::<AdminLoginRequest>().await {
         Ok(data) => data,
@@ -93,7 +99,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .wordnum("user", &login_req.user, 5, 12)
         .required_ref("password", &login_req.password, "管理员密码")
         .password("password", &login_req.password, 6, 32);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -103,12 +109,13 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let adm_pwd_salt = app_state.config().app().admin().keys();
     let password_hash = compute_password_hash(&login_req.password, adm_pwd_salt);
     let password_hash_str = md5_to_str(&password_hash);
-    
+
     // 使用缓存服务验证登录
-    let result = app_state.admin_cache
+    let result = app_state
+        .admin_cache
         .verify_login(&login_req.user, password_hash_str)
         .await;
-    
+
     let admin = match result {
         CacheResult::Hit(data) => data,  // 缓存命中
         CacheResult::Miss(data) => data, // 数据库查询成功
@@ -127,22 +134,23 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let jwt_builder = JwtBuilder::new(adm_pwd_salt, 3);
     let password_md5_bytes = md5_hex(admin.password.as_bytes());
     let password_md5_str = md5_to_str(&password_md5_bytes);
-    
+
     let info = admin_data_to_info(&admin);
     let ip = "127.0.0.1";
-    
+
     let token = match jwt_builder
         .set_iss("admin")
         .add_claim("id", admin.id)
         .add_claim("ip", ip)
         .add_claim("pwd", password_md5_str)
-        .build() {
-            Ok(t) => t,
-            Err(_) => {
-                res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_GEN_FAIL, 201)));
-                return;
-            }
-        };
+        .build()
+    {
+        Ok(t) => t,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error(ERR_TOKEN_GEN_FAIL, 201)));
+            return;
+        }
+    };
 
     // 记录日志（异步）
     let now = current_timestamp();
@@ -165,11 +173,14 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let token_exp = now + 259200; // 3天
 
-    res.render(Json(ApiResponse::success(MSG_LOGIN_SUCCESS, Some(AdminLoginResponse {
-        token,
-        info,
-        exp: token_exp,
-    }))));
+    res.render(Json(ApiResponse::success(
+        MSG_LOGIN_SUCCESS,
+        Some(AdminLoginResponse {
+            token,
+            info,
+            exp: token_exp,
+        }),
+    )));
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -200,8 +211,14 @@ struct TokenRenew {
 
 #[handler]
 pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = depot.obtain::<Arc<AppState>>().unwrap();
-    
+    let app_state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s,
+        Err(_) => {
+            res.render(Json(ApiResponse::<()>::error("服务器错误", 201)));
+            return;
+        }
+    };
+
     // 从Header获取Token
     let token = match req.headers().get("Token") {
         Some(t) => match t.to_str() {
@@ -220,7 +237,7 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // 验证Token
     let jwt_key = app_state.config().app().admin().keys();
     let jwt_builder = JwtBuilder::new(jwt_key, 3);
-    
+
     let claims = match jwt_builder.verify(token) {
         Ok(c) => c,
         Err(_) => {
@@ -255,10 +272,8 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     // 使用缓存服务验证Token
-    let result = app_state.admin_cache
-        .verify_token(admin_id, pwd)
-        .await;
-    
+    let result = app_state.admin_cache.verify_token(admin_id, pwd).await;
+
     let admin = match result {
         CacheResult::Hit(data) => data,
         CacheResult::Miss(data) => data,
@@ -276,7 +291,7 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
     // 构造返回信息
     let password_md5_bytes = md5_hex(admin.password.as_bytes());
     let password_md5_str = md5_to_str(&password_md5_bytes);
-    
+
     let info = TokenVerifyInfo {
         id: admin.id,
         user: admin.user.clone(),
@@ -289,10 +304,7 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
         appid: admin.appid,
     };
 
-    let mut data = TokenVerifyData {
-        info,
-        token: None,
-    };
+    let mut data = TokenVerifyData { info, token: None };
 
     // 检查Token是否需要刷新（剩余时间小于24小时）
     let exp = claims.exp as i64;
@@ -304,12 +316,12 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
             .add_claim("ip", ip)
             .add_claim("pwd", password_md5_str)
             .build()
-        {
-            data.token = Some(TokenRenew {
-                new: new_token,
-                exp,
-            });
-        }
+    {
+        data.token = Some(TokenRenew {
+            new: new_token,
+            exp,
+        });
+    }
 
     res.render(Json(ApiResponse::success("成功", Some(data))));
 }

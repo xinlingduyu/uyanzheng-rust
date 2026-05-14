@@ -152,9 +152,12 @@ impl AiProvider for OpenAiProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(false),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         let url = format!("{}/chat/completions", self.api_base);
@@ -212,9 +215,12 @@ impl AiProvider for OpenAiProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(true),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         let url = format!("{}/chat/completions", self.api_base);

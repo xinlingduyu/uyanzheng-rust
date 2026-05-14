@@ -7,40 +7,40 @@ use std::time::Duration;
 pub struct CacheConfig {
     /// 最大条目数
     pub max_entries: usize,
-    
+
     /// 默认 TTL
     pub default_ttl: Duration,
-    
+
     /// 分片数量（必须是 2 的幂）
     pub shard_count: usize,
-    
+
     /// 初始容量（每个分片）
     pub initial_capacity: usize,
-    
+
     /// 淘汰策略
     pub eviction_policy: EvictionPolicy,
-    
+
     /// 后台清理间隔
     pub cleanup_interval: Duration,
-    
+
     /// 是否启用统计
     pub enable_stats: bool,
-    
+
     /// 是否启用预取
     pub enable_prefetch: bool,
-    
+
     /// 是否启用内存池
     pub enable_pool: bool,
-    
+
     /// 内存池大小
     pub pool_size: usize,
-    
+
     /// 写入缓冲区大小
     pub write_buffer_size: usize,
-    
+
     /// 批量淘汰阈值（容量百分比）
     pub eviction_threshold: f32,
-    
+
     /// 每次淘汰的数量
     pub eviction_batch_size: usize,
 }
@@ -114,22 +114,21 @@ impl CacheConfig {
 }
 
 /// 淘汰策略
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum EvictionPolicy {
     /// 最近最少使用
     LRU,
-    
+
     /// 最不经常使用
     LFU,
-    
+
     /// 先进先出
     FIFO,
-    
+
     /// 自适应策略（根据访问模式动态调整）
     #[default]
     Adaptive,
-    
+
     /// 混合策略（LFU + LRU）
     Hybrid {
         /// LFU 权重 (0.0 - 1.0)
@@ -137,21 +136,23 @@ pub enum EvictionPolicy {
         /// LRU 权重 (0.0 - 1.0)
         lru_weight: f32,
     },
-    
+
     /// 基于大小（优先淘汰大对象）
     SizeBased,
-    
+
     /// 随机淘汰（最低开销）
     Random,
 }
-
 
 impl EvictionPolicy {
     /// 创建混合策略
     pub fn hybrid(lfu_weight: f32) -> Self {
         let lfu_weight = lfu_weight.clamp(0.0, 1.0);
         let lru_weight = 1.0 - lfu_weight;
-        Self::Hybrid { lfu_weight, lru_weight }
+        Self::Hybrid {
+            lfu_weight,
+            lru_weight,
+        }
     }
 }
 
@@ -160,10 +161,10 @@ impl EvictionPolicy {
 pub enum ConfigError {
     #[error("Invalid max entries")]
     InvalidMaxEntries,
-    
+
     #[error("Invalid shard count (must be power of 2)")]
     InvalidShardCount,
-    
+
     #[error("Invalid eviction threshold (must be 0.0-1.0)")]
     InvalidEvictionThreshold,
 }
@@ -173,13 +174,13 @@ pub enum ConfigError {
 pub struct ShardConfig {
     /// 分片容量
     pub capacity: usize,
-    
+
     /// 初始容量
     pub initial_capacity: usize,
-    
+
     /// 分片索引
     pub index: usize,
-    
+
     /// 总分片数
     pub total_shards: usize,
 }
@@ -200,16 +201,16 @@ impl ShardConfig {
 pub struct TtlConfig {
     /// 默认 TTL
     pub default: Duration,
-    
+
     /// 最小 TTL
     pub min: Duration,
-    
+
     /// 最大 TTL
     pub max: Duration,
-    
+
     /// 是否启用滑动过期（每次访问延长 TTL）
     pub sliding: bool,
-    
+
     /// 滑动延长因子（乘以剩余时间）
     pub sliding_factor: f32,
 }

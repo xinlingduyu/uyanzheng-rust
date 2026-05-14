@@ -140,7 +140,9 @@ pub async fn get_plug(_req: &mut Request, _depot: &mut Depot, res: &mut Response
                 app_private_key: Some(FormField {
                     field_type: "textarea".to_string(),
                     name: "客户端私钥".to_string(),
-                    placeholder: Some("（可空）此私钥仅用于客户端在获取到服务端返回的数据时进行解密".to_string()),
+                    placeholder: Some(
+                        "（可空）此私钥仅用于客户端在获取到服务端返回的数据时进行解密".to_string(),
+                    ),
                     options: None,
                     default: None,
                     max_length: None,
@@ -156,7 +158,9 @@ pub async fn get_plug(_req: &mut Request, _depot: &mut Depot, res: &mut Response
                 service_private_key: Some(FormField {
                     field_type: "textarea".to_string(),
                     name: "服务端私钥".to_string(),
-                    placeholder: Some("此私钥保留在服务端，用于解密客户端提交过来的参数".to_string()),
+                    placeholder: Some(
+                        "此私钥保留在服务端，用于解密客户端提交过来的参数".to_string(),
+                    ),
                     options: None,
                     default: None,
                     max_length: None,
@@ -191,16 +195,22 @@ pub async fn get_all_list(_req: &mut Request, depot: &mut Depot, res: &mut Respo
             return;
         }
     };
-    
+
     let result = sqlx::query_as::<_, (u64, String)>(
-        "SELECT id, name FROM u_app_mi WHERE appid IS NULL ORDER BY id DESC"
+        "SELECT id, name FROM u_app_mi WHERE appid IS NULL ORDER BY id DESC",
     )
     .fetch_all(app_state.get_db())
     .await;
 
     match result {
         Ok(rows) => {
-            let list: Vec<EncryptionItem> = rows.into_iter().map(|row| EncryptionItem { id: row.0, name: row.1 }).collect();
+            let list: Vec<EncryptionItem> = rows
+                .into_iter()
+                .map(|row| EncryptionItem {
+                    id: row.0,
+                    name: row.1,
+                })
+                .collect();
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
         Err(e) => {
@@ -253,7 +263,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -289,14 +299,15 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 构建查询条件和参数
     let mut where_clause = String::from("(appid = ? OR appid IS NULL)");
     let mut params: Vec<String> = vec![appid.to_string()];
-    
+
     // 处理搜索条件 - 与PHP源码逻辑一致
     if let Some(so) = &list_req.so
         && let Some(keyword) = &so.keyword
-            && !keyword.is_empty() {
-                where_clause.push_str(" AND name LIKE ?");
-                params.push(format!("%{}%", keyword));
-            }
+        && !keyword.is_empty()
+    {
+        where_clause.push_str(" AND name LIKE ?");
+        params.push(format!("%{}%", keyword));
+    }
 
     // 查询总数
     let count_query = format!("SELECT COUNT(*) FROM u_app_mi WHERE {}", where_clause);
@@ -304,7 +315,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     for param in &params {
         count_query_builder = count_query_builder.bind(param);
     }
-    
+
     let data_total = match count_query_builder.fetch_one(app_state.get_db()).await {
         Ok((count,)) => count as u64,
         Err(e) => {
@@ -321,42 +332,52 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
 
     // 查询列表
-    let list_query = format!("SELECT id, name, type, config, sign, time, appid FROM u_app_mi WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?", where_clause);
-    
-    let mut query = sqlx::query_as::<sqlx::MySql, (u64, String, String, Vec<u8>, String, i64, Option<i64>)>(&list_query);
-    
+    let list_query = format!(
+        "SELECT id, name, type, config, sign, time, appid FROM u_app_mi WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?",
+        where_clause
+    );
+
+    let mut query = sqlx::query_as::<
+        sqlx::MySql,
+        (u64, String, String, Vec<u8>, String, i64, Option<i64>),
+    >(&list_query);
+
     // 绑定参数
     for param in &params {
         query = query.bind(param);
     }
     query = query.bind(page_size).bind(offset);
-    
+
     let result = query.fetch_all(app_state.get_db()).await;
 
     match result {
         Ok(rows) => {
-            let list: Vec<EncryptionListItem> = rows.into_iter().map(|row| {
-                let config_str = String::from_utf8_lossy(&row.3).to_string();
-                let config: serde_json::Value = serde_json::from_str(&config_str).unwrap_or_else(|_| serde_json::json!({}));
-                
-                EncryptionListItem {
-                    id: row.0,
-                    name: row.1,
-                    enc_type: row.2,
-                    config,
-                    sign: row.4,
-                    time: row.5,
-                    appid: row.6,
-                }
-            }).collect();
-            
+            let list: Vec<EncryptionListItem> = rows
+                .into_iter()
+                .map(|row| {
+                    let config_str = String::from_utf8_lossy(&row.3).to_string();
+                    let config: serde_json::Value =
+                        serde_json::from_str(&config_str).unwrap_or_else(|_| serde_json::json!({}));
+
+                    EncryptionListItem {
+                        id: row.0,
+                        name: row.1,
+                        enc_type: row.2,
+                        config,
+                        sign: row.4,
+                        time: row.5,
+                        appid: row.6,
+                    }
+                })
+                .collect();
+
             let response = ListResponse {
                 currentPage: page,
                 dataTotal: data_total,
                 list,
                 pageTotal: page_total,
             };
-            
+
             res.render(Json(ApiResponse::success("成功", Some(response))));
         }
         Err(e) => {
@@ -391,7 +412,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddEncryptionRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -420,11 +441,15 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let appid_value = if add_req.all == "n" { Some(appid) } else { None };
+    let appid_value = if add_req.all == "n" {
+        Some(appid)
+    } else {
+        None
+    };
     let config_json = add_req.config.map(|v| v.to_string());
 
     let insert_result = sqlx::query(
-        "INSERT INTO u_app_mi (name, type, config, time, sign, appid) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO u_app_mi (name, type, config, time, sign, appid) VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&add_req.name)
     .bind(&add_req.enc_type)
@@ -472,7 +497,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditEncryptionRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -501,7 +526,11 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let appid_value = if edit_req.all == "n" { Some(appid) } else { None };
+    let appid_value = if edit_req.all == "n" {
+        Some(appid)
+    } else {
+        None
+    };
     let config_json = edit_req.config.map(|v| v.to_string());
 
     let result = sqlx::query(
@@ -546,7 +575,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -590,7 +619,7 @@ pub async fn edit_sign(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     let sign_req = match req.parse_json::<EditSignRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -644,7 +673,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let submit_req = match req.parse_json::<SubmitRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -677,7 +706,8 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let config_str = serde_json::to_string(&submit_req.config.unwrap_or(serde_json::json!({}))).unwrap_or_else(|_| "{}".to_string());
+    let config_str = serde_json::to_string(&submit_req.config.unwrap_or(serde_json::json!({})))
+        .unwrap_or_else(|_| "{}".to_string());
 
     if let Some(id) = submit_req.id {
         // 编辑模式
@@ -733,5 +763,5 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

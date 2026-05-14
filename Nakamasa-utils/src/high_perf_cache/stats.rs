@@ -3,7 +3,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use super::atomic::{AtomicCounter};
+use super::atomic::AtomicCounter;
 use super::shard::CacheStats;
 
 /// 实时统计
@@ -31,7 +31,7 @@ impl RealtimeStats {
         self.bytes.fetch_add(bytes as u64, Ordering::Relaxed);
         let latency_ns = latency.as_nanos() as u64;
         self.latency_ns.fetch_add(latency_ns, Ordering::Relaxed);
-        
+
         let mut max = self.max_latency_ns.load(Ordering::Relaxed);
         while latency_ns > max {
             match self.max_latency_ns.compare_exchange_weak(
@@ -118,7 +118,13 @@ impl CacheMonitor {
         &self.write_stats
     }
 
-    pub fn metrics(&self, stats: CacheStats, memory_used: usize, memory_capacity: usize, shard_count: usize) -> super::shard::CacheMetrics {
+    pub fn metrics(
+        &self,
+        stats: CacheStats,
+        memory_used: usize,
+        memory_capacity: usize,
+        shard_count: usize,
+    ) -> super::shard::CacheMetrics {
         super::shard::CacheMetrics {
             stats,
             memory_used,

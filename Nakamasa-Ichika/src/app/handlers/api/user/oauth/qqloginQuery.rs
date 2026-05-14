@@ -1,5 +1,5 @@
 //! QQ网页登录状态查询
-//! 
+//!
 //! 功能说明：
 //! 轮询检查QQ网页扫码登录状态，返回登录结果。
 //!
@@ -9,21 +9,23 @@
 //! 3. 如已登录，生成token并返回用户信息
 //! 4. 如未登录，返回待扫码状态
 
-use salvo::prelude::*;
-use std::sync::Arc;
 use chrono::Utc;
 use rand::Rng;
+use salvo::prelude::*;
 use sqlx::Row;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::md5_optimize::{md5_hex, md5_to_str, md5_concat_3};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::WxQueryRequest;
 use crate::app::middleware::app_context::AppInfo;
-use crate::app::middleware::user_auth::{set_token, TokenData};
+use crate::app::middleware::user_auth::{TokenData, set_token};
+use crate::app::models::requests::WxQueryRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_concat_3, md5_hex, md5_to_str};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
-use serde::{Serialize, Deserialize};
 
 /// QQ登录信息 - 存储在Redis中
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,7 +46,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -54,7 +56,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
     let app_key = app_info.app_key.as_str();
-    
+
     let query_req = match req.parse_json::<WxQueryRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -66,7 +68,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // PHP: $checkRules = ['uuid' => ['wordnum','32,32','二维码参数有误']];
     let mut validator = Validator::new();
     validator.wordnum("uuid", &query_req.uuid, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -108,7 +110,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // PHP: $uid = $this->redis->get('logon_'.$_POST['uuid']);
     let logon_key = format!("logon_{}", query_req.uuid);
     let uid_str = redis_util.get(redis_pool, &logon_key).await;
-    
+
     // PHP: if(!$uid)$this->out->e(0,'待扫码');
     let uid = match uid_str {
         Ok(Some(s)) => match s.parse::<u64>() {
@@ -137,7 +139,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         FROM u_user AS U 
         LEFT JOIN u_agent AS A ON U.id = A.uid 
         WHERE U.id = ?
-        "#
+        "#,
     )
     .bind(uid)
     .fetch_optional(app_state.get_db())
@@ -176,11 +178,12 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
 
     // PHP: if($Ures['ban'] > time())$this->out->e(127,$Ures['ban_msg']);
     if let Some(ban_time) = ban
-        && ban_time > Utc::now().timestamp() {
-            let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
-            render_error(res, msg, 127, app_key);
-            return;
-        }
+        && ban_time > Utc::now().timestamp()
+    {
+        let msg = ban_msg.unwrap_or_else(|| "账号已被禁用".to_string());
+        render_error(res, msg, 127, app_key);
+        return;
+    }
 
     let current_time = Utc::now().timestamp();
     let mut token_state = "y".to_string();
@@ -197,12 +200,13 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
             .await;
     } else {
         // PHP: $client_Arr = json_decode($Ures['sn_list'],true);
-        let client_arr: Vec<serde_json::Value> = serde_json::from_str(sn_list_val.as_ref().unwrap()).unwrap_or_default();
-        
+        let client_arr: Vec<serde_json::Value> =
+            serde_json::from_str(sn_list_val.as_ref().unwrap()).unwrap_or_default();
+
         // PHP: $found_key = array_search($logonInfo['udid'],array_column($client_Arr,'udid'));
-        let found = client_arr.iter().any(|item| {
-            item.get("udid").and_then(|v| v.as_str()) == Some(&qqlogon_info.udid)
-        });
+        let found = client_arr
+            .iter()
+            .any(|item| item.get("udid").and_then(|v| v.as_str()) == Some(&qqlogon_info.udid));
 
         if !found {
             // PHP: 新设备登录
@@ -221,7 +225,8 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 }
             } else {
                 // PHP: 不限制设备数，绑定新设备并踢掉其他设备
-                let new_sn_list = json!([{"udid": &qqlogon_info.udid, "time": current_time}]).to_string();
+                let new_sn_list =
+                    json!([{"udid": &qqlogon_info.udid, "time": current_time}]).to_string();
                 let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                     .bind(&new_sn_list)
                     .bind(user_id)
@@ -235,7 +240,11 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 let udid_md5_bytes = md5_hex(qqlogon_info.udid.as_bytes());
                 let udid_md5 = md5_to_str(&udid_md5_bytes);
                 let dk_key = format!("logon_{}_{}_{}", app_info.id, user_id, udid_md5);
-                if redis_util.exists(redis_pool, &dk_key).await.unwrap_or(false) {
+                if redis_util
+                    .exists(redis_pool, &dk_key)
+                    .await
+                    .unwrap_or(false)
+                {
                     render_error(res, "已经登录了", 201, app_key);
                     return;
                 }
@@ -248,21 +257,30 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let token = md5_concat_3(
         &Utc::now().timestamp_millis().to_string(),
         &user_id.to_string(),
-        &qqlogon_info.udid
+        &qqlogon_info.udid,
     );
 
     // 构建用户信息
     let vip_exp_time = vip.unwrap_or(0);
     let vip_exp_date = if vip_exp_time > 0 {
         let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(vip_exp_time, 0);
-        dt.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string()).unwrap_or_default()
+        dt.map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_default()
     } else {
         "未开通".to_string()
     };
 
     let extend_val: Option<serde_json::Value> = extend.and_then(|s| serde_json::from_str(&s).ok());
     let app_url = app_state.config().app().host().to_string();
-    let pic_url = avatars.map(|a| if a.starts_with("http") { a } else { format!("{}{}", app_url, a) }).unwrap_or_default();
+    let pic_url = avatars
+        .map(|a| {
+            if a.starts_with("http") {
+                a
+            } else {
+                format!("{}{}", app_url, a)
+            }
+        })
+        .unwrap_or_default();
 
     // PHP: $this->__setToken($token,['uid'=>$Ures['id'],'udid'=>$logonInfo['udid'],'p'=>$Ures['password'],'appid'=>$this->app['id']]);
     let token_data = TokenData {
@@ -274,29 +292,43 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     };
 
     let token_pre = format!("{}_{}_", app_info.app_type, app_info.id);
-    if let Err(e) = set_token(redis_util, redis_pool, &token_pre, &token, &token_data, app_info.logon_token_exp).await {
+    if let Err(e) = set_token(
+        redis_util,
+        redis_pool,
+        &token_pre,
+        &token,
+        &token_data,
+        app_info.logon_token_exp,
+    )
+    .await
+    {
         tracing::error!("设置Token失败: {}", e);
         render_error(res, "登录失败，token记录失败", 201, app_key);
         return;
     }
 
     // PHP: 返回登录信息 - 按API文档格式
-    render_success(res, app_key, Some(json!({
-        "token": token,
-        "state": token_state,
-        "info": {
-            "uid": user_id,
-            "phone": phone,
-            "email": email,
-            "acctno": acctno,
-            "name": nickname,
-            "pic": pic_url,
-            "invID": inviter_id.unwrap_or(0),
-            "invCode": inv_code,
-            "fen": fen,
-            "vipExpTime": vip_exp_time,
-            "vipExpDate": vip_exp_date,
-            "extend": extend_val
-        }
-    })), app_info.mi.as_ref());
+    render_success(
+        res,
+        app_key,
+        Some(json!({
+            "token": token,
+            "state": token_state,
+            "info": {
+                "uid": user_id,
+                "phone": phone,
+                "email": email,
+                "acctno": acctno,
+                "name": nickname,
+                "pic": pic_url,
+                "invID": inviter_id.unwrap_or(0),
+                "invCode": inv_code,
+                "fen": fen,
+                "vipExpTime": vip_exp_time,
+                "vipExpDate": vip_exp_date,
+                "extend": extend_val
+            }
+        })),
+        app_info.mi.as_ref(),
+    );
 }

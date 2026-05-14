@@ -1,17 +1,17 @@
 //! 高性能内存缓存实现
-//! 
+//!
 //! 特性:
 //! - 分片 LRU 减少锁竞争
 //! - TTL 过期支持
 //! - 高并发读写
 //! - 可配置容量和淘汰策略
 
+use serde::{Serialize, de::DeserializeOwned};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use serde::{Serialize, de::DeserializeOwned};
 
 // ============================================================================
 // 缓存节点
@@ -55,10 +55,11 @@ where
 
     fn get(&mut self, key: &K) -> Option<V> {
         // 先检查是否存在且未过期
-        let exists_and_valid = self.data.get(key).is_some_and(|node| {
-            Instant::now() < node.expires_at
-        });
-        
+        let exists_and_valid = self
+            .data
+            .get(key)
+            .is_some_and(|node| Instant::now() < node.expires_at);
+
         if exists_and_valid {
             // 更新访问信息
             if let Some(node) = self.data.get_mut(key) {
@@ -73,7 +74,7 @@ where
             self.data.remove(key);
             self.access_order.retain(|k| k != key);
         }
-        
+
         self.misses += 1;
         None
     }
@@ -100,18 +101,22 @@ where
         }
 
         self.access_order.push(key.clone());
-        self.data.insert(key, CacheNode {
-            value,
-            expires_at: now + ttl,
-            access_count: 1,
-        });
+        self.data.insert(
+            key,
+            CacheNode {
+                value,
+                expires_at: now + ttl,
+                access_count: 1,
+            },
+        );
     }
 
     fn evict(&mut self) {
         let now = Instant::now();
 
         // 先清理过期项
-        let expired: Vec<K> = self.data
+        let expired: Vec<K> = self
+            .data
             .iter()
             .filter(|(_, node)| now >= node.expires_at)
             .map(|(k, _)| k.clone())
@@ -185,7 +190,11 @@ where
             .map(|_| RwLock::new(CacheShard::new(shard_size, default_ttl)))
             .collect();
 
-        Self { shards, shard_count, shard_mask }
+        Self {
+            shards,
+            shard_count,
+            shard_mask,
+        }
     }
 
     #[inline]
@@ -393,11 +402,12 @@ impl CacheManager {
         V: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
     {
         let mut caches = self.caches.write().await;
-        
+
         if let Some(cache) = caches.get(name)
-            && let Ok(typed) = cache.clone().downcast::<TypedCache<K, V>>() {
-                return typed;
-            }
+            && let Ok(typed) = cache.clone().downcast::<TypedCache<K, V>>()
+        {
+            return typed;
+        }
 
         let cache = Arc::new(TypedCache::<K, V>::new(self.default_config.clone()));
         caches.insert(name.to_string(), cache.clone());
@@ -427,11 +437,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_sharded_cache_basic() {
-        let cache = ShardedCache::<String, String>::new(
-            100,
-            Duration::from_secs(60),
-            4,
-        );
+        let cache = ShardedCache::<String, String>::new(100, Duration::from_secs(60), 4);
 
         cache.set("a".to_string(), "1".to_string()).await;
         cache.set("b".to_string(), "2".to_string()).await;
@@ -460,14 +466,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_ttl_expiry() {
-        let cache = ShardedCache::<String, String>::new(
-            100,
-            Duration::from_millis(50),
-            1,
-        );
+        let cache = ShardedCache::<String, String>::new(100, Duration::from_millis(50), 1);
 
         cache.set("key".to_string(), "value".to_string()).await;
-        assert_eq!(cache.get(&"key".to_string()).await, Some("value".to_string()));
+        assert_eq!(
+            cache.get(&"key".to_string()).await,
+            Some("value".to_string())
+        );
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(cache.get(&"key".to_string()).await, None);
@@ -475,11 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_hit_rate() {
-        let cache = ShardedCache::<String, String>::new(
-            100,
-            Duration::from_secs(60),
-            1,
-        );
+        let cache = ShardedCache::<String, String>::new(100, Duration::from_secs(60), 1);
 
         cache.set("a".to_string(), "1".to_string()).await;
 

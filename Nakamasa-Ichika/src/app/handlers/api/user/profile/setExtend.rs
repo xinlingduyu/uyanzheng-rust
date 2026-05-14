@@ -1,5 +1,5 @@
 //! 设置扩展信息
-//! 
+//!
 //! 功能说明：
 //! 设置用户的扩展字段，用于存储自定义用户数据。
 //! 通过key-value方式存储，存储在用户extend字段（JSON格式）。
@@ -11,17 +11,19 @@
 //! 4. 保存回用户extend字段
 //! 5. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::SetExtendRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::SetExtendRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -32,7 +34,7 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -42,7 +44,7 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
     let app_key = app_info.app_key.as_str();
-    
+
     let set_req = match req.parse_json::<SetExtendRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -55,11 +57,13 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     // PHP: 'key' => ['Reg','[a-zA-Z0-9_-]{2,12}','变量名不规范']
     // PHP: 'value'  => ['String','1,128','变量值不规范',true]
     let mut validator = Validator::new();
-    validator
-        .wordnum("token", &set_req.token, 32, 32)
-        .reg("key", &set_req.key, "[a-zA-Z0-9_-]{2,12}");
+    validator.wordnum("token", &set_req.token, 32, 32).reg(
+        "key",
+        &set_req.key,
+        "[a-zA-Z0-9_-]{2,12}",
+    );
     // value是可选的
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -86,10 +90,11 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     if let Some(ref extend) = user_info.extend
         && !extend.is_empty()
-            && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(extend)
-                && let Some(obj) = parsed.as_object() {
-                    extend_map = obj.clone();
-                }
+        && let Ok(parsed) = serde_json::from_str::<serde_json::Value>(extend)
+        && let Some(obj) = parsed.as_object()
+    {
+        extend_map = obj.clone();
+    }
 
     // 更新扩展信息 - 一比一还原PHP逻辑
     let value = set_req.value.as_deref().unwrap_or("");

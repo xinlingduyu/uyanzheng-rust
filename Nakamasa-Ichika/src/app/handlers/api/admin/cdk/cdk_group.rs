@@ -5,8 +5,8 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
-use crate::core::zero_copy::StringBuilder;
 use crate::app::utils::response::ApiResponse;
+use crate::core::zero_copy::StringBuilder;
 
 #[derive(Debug, Serialize)]
 struct CDKGroupItem {
@@ -23,7 +23,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<i64>() {
@@ -45,7 +45,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     };
 
     let result = sqlx::query_as::<_, (u64, String)>(
-        "SELECT id, name FROM u_cdk_group WHERE appid = ? ORDER BY id DESC"
+        "SELECT id, name FROM u_cdk_group WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
     .fetch_all(app_state.get_db())
@@ -53,7 +53,13 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     match result {
         Ok(rows) => {
-            let list: Vec<CDKGroupItem> = rows.into_iter().map(|row| CDKGroupItem { id: row.0, name: row.1 }).collect();
+            let list: Vec<CDKGroupItem> = rows
+                .into_iter()
+                .map(|row| CDKGroupItem {
+                    id: row.0,
+                    name: row.1,
+                })
+                .collect();
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
         Err(e) => {
@@ -110,7 +116,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let list_req = match req.parse_json::<GetListRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -147,7 +153,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let count_query = String::from("SELECT COUNT(*) FROM ");
     let data_query = String::from("SELECT id, name, type, val, price, appid FROM ");
 
-    let keyword = list_req.so.as_ref().map(|s| s.keyword.as_str()).unwrap_or("");
+    let keyword = list_req
+        .so
+        .as_ref()
+        .map(|s| s.keyword.as_str())
+        .unwrap_or("");
     let has_keyword = !keyword.is_empty();
 
     if has_keyword {
@@ -162,7 +172,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
     let list_query = {
         let mut sb = StringBuilder::with_capacity(data_query.len() + base_query.len() + 40);
-        sb.append(&data_query).append(&base_query).append(" ORDER BY id DESC LIMIT ? OFFSET ?");
+        sb.append(&data_query)
+            .append(&base_query)
+            .append(" ORDER BY id DESC LIMIT ? OFFSET ?");
         sb.finish()
     };
 
@@ -214,14 +226,17 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 0
             };
 
-            let list: Vec<CDKGroupListItem> = rows.into_iter().map(|row| CDKGroupListItem {
-                id: row.0,
-                name: row.1,
-                cdk_type: row.2,
-                val: row.3,
-                price: row.4,
-                appid: row.5,
-            }).collect();
+            let list: Vec<CDKGroupListItem> = rows
+                .into_iter()
+                .map(|row| CDKGroupListItem {
+                    id: row.0,
+                    name: row.1,
+                    cdk_type: row.2,
+                    val: row.3,
+                    price: row.4,
+                    appid: row.5,
+                })
+                .collect();
 
             let page_data = PageData {
                 current_page: page,
@@ -266,7 +281,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let add_req = match req.parse_json::<AddCDKGroupRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -296,13 +311,12 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 检查重复卡密组名称
-    let check_result = sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?"
-    )
-    .bind(appid)
-    .bind(&add_req.name)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (u64,)>("SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?")
+            .bind(appid)
+            .bind(&add_req.name)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some(_)) => {
@@ -318,7 +332,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let insert_result = sqlx::query(
-        "INSERT INTO u_cdk_group (name, type, val, price, appid) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO u_cdk_group (name, type, val, price, appid) VALUES (?, ?, ?, ?, ?)",
     )
     .bind(&add_req.name)
     .bind(&add_req.cdk_type)
@@ -363,7 +377,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditCDKGroupRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -393,13 +407,12 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 检查重复卡密组名称（同appid下且ID不同）
-    let check_result = sqlx::query_as::<_, (u64,)>(
-        "SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?"
-    )
-    .bind(appid)
-    .bind(&edit_req.name)
-    .fetch_optional(app_state.get_db())
-    .await;
+    let check_result =
+        sqlx::query_as::<_, (u64,)>("SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?")
+            .bind(appid)
+            .bind(&edit_req.name)
+            .fetch_optional(app_state.get_db())
+            .await;
 
     match check_result {
         Ok(Some(existing_id)) if existing_id.0 != edit_req.id => {
@@ -414,16 +427,15 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         _ => {}
     }
 
-    let result = sqlx::query(
-        "UPDATE u_cdk_group SET name = ?, type = ?, val = ?, price = ? WHERE id = ?"
-    )
-    .bind(&edit_req.name)
-    .bind(&edit_req.cdk_type)
-    .bind(edit_req.val)
-    .bind(edit_req.price)
-    .bind(edit_req.id)
-    .execute(app_state.get_db())
-    .await;
+    let result =
+        sqlx::query("UPDATE u_cdk_group SET name = ?, type = ?, val = ?, price = ? WHERE id = ?")
+            .bind(&edit_req.name)
+            .bind(&edit_req.cdk_type)
+            .bind(edit_req.val)
+            .bind(edit_req.price)
+            .bind(edit_req.id)
+            .execute(app_state.get_db())
+            .await;
 
     match result {
         Ok(r) => {
@@ -454,7 +466,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -497,7 +509,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_all_req = match req.parse_json::<DelAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -506,12 +518,17 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_all_req.ids.is_empty() {
-        res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
+    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 {
+        res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }
 
-    let placeholders = del_all_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = del_all_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM u_cdk_group WHERE id IN ({})", placeholders);
 
     let mut sql_query = sqlx::query(&query);
@@ -536,5 +553,5 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

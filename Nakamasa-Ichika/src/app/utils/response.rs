@@ -1,8 +1,8 @@
+use crate::app::plugins::encryption::{Encryption, EncryptionConfig, create_encryption};
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use salvo::prelude::Json;
 use serde::Serialize;
 use std::borrow::Cow;
-use salvo::prelude::Json;
-use crate::app::plugins::encryption::{EncryptionConfig, Encryption, create_encryption};
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
 /// 高性能API响应结构 - 使用Cow避免不必要的String分配
 #[derive(Serialize)]
@@ -33,7 +33,7 @@ impl<T: Serialize> ApiResponse<T> {
             data: None,
         }
     }
-    
+
     /// 创建成功响应 - 静态字符串零分配
     #[inline]
     pub fn success_static(msg: &'static str, data: Option<T>) -> Self {
@@ -87,12 +87,17 @@ impl<T: Serialize> SignedApiResponse<T> {
     /// 创建带签名的响应 - 核心方法
     /// 签名算法: md5(code + time + appkey)
     #[inline]
-    pub fn new(code: i32, msg: impl Into<Cow<'static, str>>, app_key: &str, data: Option<T>) -> Self {
+    pub fn new(
+        code: i32,
+        msg: impl Into<Cow<'static, str>>,
+        app_key: &str,
+        data: Option<T>,
+    ) -> Self {
         let time = chrono::Utc::now().timestamp();
         // 签名算法: md5(code + time + appkey) - 与PHP保持一致
         let sign_data = format!("{}{}{}", code, time, app_key);
         let sign = md5_to_str(&md5_hex(sign_data.as_bytes())).to_string();
-        
+
         Self {
             code,
             msg: msg.into(),
@@ -117,7 +122,7 @@ impl SignedApiResponse<()> {
             time: chrono::Utc::now().timestamp(),
         }
     }
-    
+
     /// 创建自定义消息的无数据带签名成功响应
     /// code = 0 表示成功
     #[inline]
@@ -125,7 +130,7 @@ impl SignedApiResponse<()> {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
         let sign = md5_to_str(&md5_hex(sign_data.as_bytes())).to_string();
-        
+
         Self {
             code: 0,
             msg: msg.into(),
@@ -148,11 +153,15 @@ impl<T: Serialize> SignedApiResponse<T> {
     /// 创建带签名、数据和自定义消息的成功响应
     /// code = 0 表示成功
     #[inline]
-    pub fn success_msg_data(app_key: &str, data: Option<T>, msg: impl Into<Cow<'static, str>>) -> Self {
+    pub fn success_msg_data(
+        app_key: &str,
+        data: Option<T>,
+        msg: impl Into<Cow<'static, str>>,
+    ) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
         let sign = md5_to_str(&md5_hex(sign_data.as_bytes())).to_string();
-        
+
         Self {
             code: 0,
             msg: msg.into(),
@@ -175,20 +184,20 @@ pub struct EncryptedApiResponse {
     pub code: i32,
     pub msg: Cow<'static, str>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<String>,  // 加密后的数据字符串
+    pub data: Option<String>, // 加密后的数据字符串
     pub sign: String,
     pub time: i64,
 }
 
 impl EncryptedApiResponse {
     /// 创建带加密的成功响应
-    /// 
+    ///
     /// # 参数
     /// - `app_key`: 应用密钥，用于签名
     /// - `data`: 要返回的数据（会被序列化并加密）
     /// - `encryption_config`: 加密配置
     /// - `enc_type`: 加密类型 ("aes", "des", "rc4", "rsa")
-    /// 
+    ///
     /// # 示例
     /// ```ignore
     /// let response = EncryptedApiResponse::success(
@@ -199,8 +208,8 @@ impl EncryptedApiResponse {
     /// );
     /// ```
     pub fn success<T: Serialize>(
-        app_key: &str, 
-        data: Option<T>, 
+        app_key: &str,
+        data: Option<T>,
         encryption_config: &EncryptionConfig,
     ) -> Self {
         Self::new(0, "成功", app_key, data, encryption_config)
@@ -211,7 +220,7 @@ impl EncryptedApiResponse {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", code, time, app_key);
         let sign = format!("{:x}", md5::compute(sign_data.as_bytes()));
-        
+
         Self {
             code,
             msg: msg.into(),
@@ -227,17 +236,17 @@ impl EncryptedApiResponse {
     /// 2. 使用加密器加密
     /// 3. 返回加密后的字符串
     pub fn new<T: Serialize>(
-        code: i32, 
-        msg: impl Into<Cow<'static, str>>, 
-        app_key: &str, 
+        code: i32,
+        msg: impl Into<Cow<'static, str>>,
+        app_key: &str,
         data: Option<T>,
         encryption_config: &EncryptionConfig,
     ) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", code, time, app_key);
         let sign = format!("{:x}", md5::compute(sign_data.as_bytes()));
-        
-        // 加密data字段 
+
+        // 加密data字段
         let encrypted_data = if let Some(d) = data {
             match serde_json::to_string(&d) {
                 Ok(json_str) => {
@@ -258,7 +267,7 @@ impl EncryptedApiResponse {
         } else {
             None
         };
-        
+
         Self {
             code,
             msg: msg.into(),
@@ -267,14 +276,14 @@ impl EncryptedApiResponse {
             time,
         }
     }
-    
+
     /// 创建无数据的带签名成功响应
     #[inline]
     pub fn success_msg(app_key: &str) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
         let sign = format!("{:x}", md5::compute(sign_data.as_bytes()));
-        
+
         Self {
             code: 0,
             msg: "成功".into(),
@@ -283,14 +292,14 @@ impl EncryptedApiResponse {
             time,
         }
     }
-    
+
     /// 创建带自定义消息的无数据成功响应
     #[inline]
     pub fn success_with_msg(msg: impl Into<Cow<'static, str>>, app_key: &str) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
         let sign = format!("{:x}", md5::compute(sign_data.as_bytes()));
-        
+
         Self {
             code: 0,
             msg: msg.into(),
@@ -321,14 +330,14 @@ impl<'a> ApiResponseBuilder<'a> {
             encryption_config: None,
         }
     }
-    
+
     /// 设置加密配置
     #[inline]
     pub fn with_encryption(mut self, config: &'a EncryptionConfig) -> Self {
         self.encryption_config = Some(config);
         self
     }
-    
+
     /// 构建成功响应 - 自动选择加密或非加密
     pub fn build_success<T: Serialize + Clone>(&self, data: Option<T>) -> ResponseType<T> {
         if let Some(config) = self.encryption_config {
@@ -337,9 +346,13 @@ impl<'a> ApiResponseBuilder<'a> {
             ResponseType::Signed(SignedApiResponse::success(self.app_key, data))
         }
     }
-    
+
     /// 构建错误响应
-    pub fn build_error<T: Serialize>(&self, msg: impl Into<Cow<'static, str>>, code: i32) -> ResponseType<T> {
+    pub fn build_error<T: Serialize>(
+        &self,
+        msg: impl Into<Cow<'static, str>>,
+        code: i32,
+    ) -> ResponseType<T> {
         if let Some(_config) = self.encryption_config {
             ResponseType::Encrypted(EncryptedApiResponse::error(msg, code, self.app_key))
         } else {
@@ -362,17 +375,17 @@ use crate::app::middleware::app_context::EncryptionInfo;
 use salvo::http::response::Response;
 
 /// 智能渲染成功响应
-/// 
+///
 /// 根据 APP 版本的加密配置自动选择加密或非加密响应：
 /// - 如果 `enc_info` 为 `Some` 且有数据，则加密响应
 /// - 否则返回普通签名响应
-/// 
+///
 /// # 参数
 /// - `res`: Salvo Response 对象
 /// - `app_key`: 应用密钥
 /// - `data`: 响应数据
 /// - `enc_info`: 加密配置信息（来自 AppInfo.mi）
-/// 
+///
 /// # 示例
 /// ```ignore
 /// let app_info = depot.get::<AppInfo>("app_info")?;
@@ -388,7 +401,11 @@ pub fn render_success<T: Serialize + Send>(
     if let Some(enc) = enc_info {
         // 版本配置了加密，且可能有数据 -> 加密响应
         let enc_config = EncryptionConfig::from_json_value(&enc.config, &enc.enc_type);
-        res.render(Json(EncryptedApiResponse::success(app_key, data, &enc_config)));
+        res.render(Json(EncryptedApiResponse::success(
+            app_key,
+            data,
+            &enc_config,
+        )));
     } else {
         // 无加密配置 -> 普通签名响应
         res.render(Json(SignedApiResponse::success(app_key, data)));
@@ -396,7 +413,7 @@ pub fn render_success<T: Serialize + Send>(
 }
 
 /// 智能渲染成功响应（无数据，仅消息）
-/// 
+///
 /// 用于不需要返回数据的成功响应，始终使用签名响应
 #[inline]
 pub fn render_success_msg(res: &mut Response, app_key: &str) {
@@ -404,7 +421,7 @@ pub fn render_success_msg(res: &mut Response, app_key: &str) {
 }
 
 /// 强制不加密的渲染成功响应
-/// 
+///
 /// 用于白名单接口（如 upload），无论是否配置加密都使用普通签名响应
 #[inline]
 pub fn render_success_no_encrypt<T: Serialize + Send>(
@@ -417,7 +434,11 @@ pub fn render_success_no_encrypt<T: Serialize + Send>(
 
 /// 智能渲染成功响应（自定义消息）
 #[inline]
-pub fn render_success_with_msg(res: &mut Response, msg: impl Into<Cow<'static, str>>, app_key: &str) {
+pub fn render_success_with_msg(
+    res: &mut Response,
+    msg: impl Into<Cow<'static, str>>,
+    app_key: &str,
+) {
     res.render(Json(SignedApiResponse::success_with_msg(msg, app_key)));
 }
 
@@ -429,13 +450,20 @@ pub fn render_success_msg_data<T: Serialize + Send>(
     data: Option<T>,
     msg: String,
 ) {
-    res.render(Json(SignedApiResponse::success_msg_data(app_key, data, msg)));
+    res.render(Json(SignedApiResponse::success_msg_data(
+        app_key, data, msg,
+    )));
 }
 
 /// 智能渲染错误响应
-/// 
+///
 /// 错误响应始终不加密（因为没有数据）
 #[inline]
-pub fn render_error(res: &mut Response, msg: impl Into<Cow<'static, str>>, code: i32, app_key: &str) {
+pub fn render_error(
+    res: &mut Response,
+    msg: impl Into<Cow<'static, str>>,
+    code: i32,
+    app_key: &str,
+) {
     res.render(Json(SignedApiResponse::<()>::error(msg, code, app_key)));
 }

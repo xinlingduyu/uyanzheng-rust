@@ -1,10 +1,10 @@
 //! Admin Send controller
 //! 管理员发送控制器
 
+use chrono::Utc;
 use salvo::prelude::*;
 use serde::Deserialize;
 use std::sync::Arc;
-use chrono::Utc;
 
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
@@ -20,7 +20,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 从请求头读取appid
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
@@ -41,7 +41,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 从数据库获取当前应用的配置
     let app_config = sqlx::query_as::<_, (
         u64, Option<String>, Option<String>, Option<String>, Option<String>,
@@ -65,7 +65,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             } else {
                 serde_json::json!({})
             };
-            
+
             serde_json::json!({
                 "id": row.0,
                 "smtp_state": row.1.unwrap_or_else(|| "on".to_string()),
@@ -81,7 +81,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 "vc_frequency": 120,
                 "vc_maximum": 10
             })
-        },
+        }
         Ok(None) => serde_json::json!({
             "id": appid,
             "smtp_state": "on",
@@ -103,7 +103,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 构建插件列表，严格按照用户要求的格式
     let plug = serde_json::json!([
         {
@@ -198,11 +198,14 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             }
         }
     ]);
-    
-    res.render(Json(ApiResponse::success("成功", Some(serde_json::json!({
-        "info": info,
-        "plug": plug
-    })))));
+
+    res.render(Json(ApiResponse::success(
+        "成功",
+        Some(serde_json::json!({
+            "info": info,
+            "plug": plug
+        })),
+    )));
 }
 
 /// 编辑短信配置
@@ -240,7 +243,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditSendRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -252,57 +255,70 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 验证参数
     let mut validator = Validator::new();
     validator.int_u64("id", edit_req.id, 1, 99999999999);
-    
+
     // 验证vc_length和vc_time范围
     if let Some(ref vc_length) = edit_req.vc_length
-        && (*vc_length < 4 || *vc_length > 6) {
-            res.render(Json(ApiResponse::<()>::error("验证码长度有误", 201)));
-            return;
-        }
-    
+        && (*vc_length < 4 || *vc_length > 6)
+    {
+        res.render(Json(ApiResponse::<()>::error("验证码长度有误", 201)));
+        return;
+    }
+
     if let Some(ref vc_time) = edit_req.vc_time
-        && (*vc_time < 1 || *vc_time > 30) {
-            res.render(Json(ApiResponse::<()>::error("验证码有效期有误", 201)));
-            return;
-        }
-    
+        && (*vc_time < 1 || *vc_time > 30)
+    {
+        res.render(Json(ApiResponse::<()>::error("验证码有效期有误", 201)));
+        return;
+    }
+
     if let Some(ref state) = edit_req.smtp_state
-        && state != "on" && state != "off" {
-            res.render(Json(ApiResponse::<()>::error("邮箱控制状态设置有误", 201)));
-            return;
-        }
-    
+        && state != "on"
+        && state != "off"
+    {
+        res.render(Json(ApiResponse::<()>::error("邮箱控制状态设置有误", 201)));
+        return;
+    }
+
     if let Some(ref state) = edit_req.sms_state
-        && state != "on" && state != "off" {
-            res.render(Json(ApiResponse::<()>::error("短信控制状态设置有误", 201)));
-            return;
-        }
-    
+        && state != "on"
+        && state != "off"
+    {
+        res.render(Json(ApiResponse::<()>::error("短信控制状态设置有误", 201)));
+        return;
+    }
+
     // 验证SMTP配置
     if let Some(ref host) = edit_req.smtp_host
-        && (host.len() < 8 || host.len() > 64) {
-            res.render(Json(ApiResponse::<()>::error("邮箱发信服务器设置有误", 201)));
-            return;
-        }
-    
+        && (host.len() < 8 || host.len() > 64)
+    {
+        res.render(Json(ApiResponse::<()>::error(
+            "邮箱发信服务器设置有误",
+            201,
+        )));
+        return;
+    }
+
     if let Some(ref port) = edit_req.smtp_port
-        && (*port < 10 || *port > 9999) {
-            res.render(Json(ApiResponse::<()>::error("邮箱端口设置有误", 201)));
-            return;
-        }
-    
+        && (*port < 10 || *port > 9999)
+    {
+        res.render(Json(ApiResponse::<()>::error("邮箱端口设置有误", 201)));
+        return;
+    }
+
     if let Some(ref user) = edit_req.smtp_user
-        && (user.len() < 4 || user.len() > 64) {
-            res.render(Json(ApiResponse::<()>::error("邮箱发信账号设置有误", 201)));
-            return;
-        }
-    
+        && (user.len() < 4 || user.len() > 64)
+    {
+        res.render(Json(ApiResponse::<()>::error("邮箱发信账号设置有误", 201)));
+        return;
+    }
+
     if let Some(ref pass) = edit_req.smtp_pass
-        && (pass.len() < 4 || pass.len() > 64) {
-            res.render(Json(ApiResponse::<()>::error("邮箱发信密码设置有误", 201)));
-            return;
-        }
-    
+        && (pass.len() < 4 || pass.len() > 64)
+    {
+        res.render(Json(ApiResponse::<()>::error("邮箱发信密码设置有误", 201)));
+        return;
+    }
+
     // 验证sms_type
     if let Some(ref sms_type) = edit_req.sms_type {
         if sms_type.len() < 2 || sms_type.len() > 12 {
@@ -314,29 +330,32 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     }
-    
+
     // 验证sms_config必须是数组
     if let Some(ref sms_config) = edit_req.sms_config
-        && !sms_config.is_array() {
-            res.render(Json(ApiResponse::<()>::error("短信发信参数不规范", 201)));
-            return;
-        }
-    
+        && !sms_config.is_array()
+    {
+        res.render(Json(ApiResponse::<()>::error("短信发信参数不规范", 201)));
+        return;
+    }
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
     }
 
     // 准备更新数据
-    let sms_config_json = edit_req.sms_config.map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
-    
+    let sms_config_json = edit_req
+        .sms_config
+        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
+
     // 更新数据库
     let result = sqlx::query(
         "UPDATE u_app SET 
          vc_length = ?, vc_time = ?, smtp_state = ?, sms_state = ?,
          smtp_host = ?, smtp_port = ?, smtp_user = ?, smtp_pass = ?,
          sms_type = ?, sms_config = ?
-         WHERE id = ?"
+         WHERE id = ?",
     )
     .bind(edit_req.vc_length)
     .bind(edit_req.vc_time)
@@ -370,7 +389,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(Option::<i64>::None)
                 .execute(app_state.get_db())
                 .await;
-                
+
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));

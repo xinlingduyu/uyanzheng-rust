@@ -1,7 +1,7 @@
-use serde::{Serialize, Deserialize};
-use sqlx::{FromRow, Type};
-use sqlx::types::Json;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sqlx::types::Json;
+use sqlx::{FromRow, Type};
 
 /// App 类型枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
@@ -23,7 +23,6 @@ pub enum SwitchState {
     Off,
 }
 
-
 /// 模式状态枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
@@ -34,7 +33,6 @@ pub enum ModeState {
     Y,
     N,
 }
-
 
 /// 注册方式枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
@@ -48,7 +46,6 @@ pub enum RegWay {
     Wordnum,
 }
 
-
 /// 奖励类型枚举
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('vip','fen')")]
@@ -60,151 +57,150 @@ pub enum AwardType {
     Fen,
 }
 
-
 /// 应用模型 (对应 u_app 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
 pub struct App {
     #[sqlx(rename = "id")]
     pub id: i32,
-    
+
     #[sqlx(rename = "app_key")]
     pub key: String,
-    
+
     #[sqlx(rename = "app_type")]
     pub app_type: AppType,
-    
+
     #[sqlx(rename = "app_name")]
     pub name: String,
-    
+
     #[sqlx(rename = "app_logo")]
     pub logo: Option<String>,
-    
+
     #[sqlx(rename = "app_mode")]
     pub mode: ModeState,
-    
+
     #[sqlx(rename = "app_state")]
     pub state: SwitchState,
-    
+
     #[sqlx(rename = "app_off_msg")]
     pub off_message: Option<String>,
-    
+
     #[sqlx(rename = "reg_state")]
     pub reg_state: SwitchState,
-    
+
     #[sqlx(rename = "reg_off_msg")]
     pub reg_off_message: Option<String>,
-    
+
     #[sqlx(rename = "reg_way")]
     pub reg_way: RegWay,
-    
+
     #[sqlx(rename = "reg_is_inviter")]
     pub reg_inviter_required: ModeState,
-    
+
     #[sqlx(rename = "reg_time_sn")]
     pub reg_sn_interval: i32,
-    
+
     #[sqlx(rename = "reg_time_ip")]
     pub reg_ip_interval: i32,
-    
+
     #[sqlx(rename = "reg_award")]
     pub reg_award_type: AwardType,
-    
+
     #[sqlx(rename = "reg_award_val")]
     pub reg_award_value: i64,
-    
+
     #[sqlx(rename = "logon_state")]
     pub login_state: SwitchState,
-    
+
     #[sqlx(rename = "logon_off_msg")]
     pub login_off_message: Option<String>,
-    
+
     #[sqlx(rename = "logon_wxopen_config")]
     pub wx_login_config: Option<Json<Value>>,
-    
+
     #[sqlx(rename = "logon_qqopen_config")]
     pub qq_login_config: Option<Json<Value>>,
-    
+
     #[sqlx(rename = "logon_token_exp")]
     pub token_expiration: i32,
-    
+
     #[sqlx(rename = "logon_ban_expire")]
     pub ban_expire_login: ModeState,
-    
+
     #[sqlx(rename = "logon_sn_dk")]
     pub multi_device_login: ModeState,
-    
+
     #[sqlx(rename = "logon_sn_num")]
     pub max_devices: i32,
-    
+
     #[sqlx(rename = "logon_sn_unbdeType")]
     pub unbind_deduct_type: AwardType,
-    
+
     #[sqlx(rename = "logon_sn_unbdeVal")]
     pub unbind_deduct_value: i32,
-    
+
     #[sqlx(rename = "invitee_award")]
     pub invitee_award_type: AwardType,
-    
+
     #[sqlx(rename = "invitee_award_val")]
     pub invitee_award_value: i32,
-    
+
     #[sqlx(rename = "inviter_award")]
     pub inviter_award_type: AwardType,
-    
+
     #[sqlx(rename = "inviter_award_val")]
     pub inviter_award_value: i32,
-    
+
     #[sqlx(rename = "diary_award")]
     pub daily_award_type: AwardType,
-    
+
     #[sqlx(rename = "diary_award_val")]
     pub daily_award_value: i32,
-    
+
     #[sqlx(rename = "smtp_state")]
     pub smtp_state: SwitchState,
-    
+
     #[sqlx(rename = "smtp_host")]
     pub smtp_host: String,
-    
+
     #[sqlx(rename = "smtp_user")]
     pub smtp_user: Option<String>,
-    
+
     #[sqlx(rename = "smtp_pass")]
     pub smtp_pass: Option<String>,
-    
+
     #[sqlx(rename = "smtp_port")]
     pub smtp_port: i32,
-    
+
     #[sqlx(rename = "sms_state")]
     pub sms_state: SwitchState,
-    
+
     #[sqlx(rename = "sms_type")]
     pub sms_type: String,
-    
+
     #[sqlx(rename = "sms_config")]
     pub sms_config: Option<String>,
-    
+
     #[sqlx(rename = "vc_time")]
     pub verification_code_expiration: i32,
-    
+
     #[sqlx(rename = "vc_length")]
     pub verification_code_length: i32,
-    
+
     #[sqlx(rename = "pay_ali_state")]
     pub alipay_state: SwitchState,
-    
+
     #[sqlx(rename = "pay_ali_type")]
     pub alipay_type: String,
-    
+
     #[sqlx(rename = "pay_ali_config")]
     pub alipay_config: Option<Vec<u8>>,
-    
+
     #[sqlx(rename = "pay_wx_state")]
     pub wechat_pay_state: SwitchState,
-    
+
     #[sqlx(rename = "pay_wx_type")]
     pub wechat_pay_type: String,
-    
+
     #[sqlx(rename = "pay_wx_config")]
     pub wechat_pay_config: Option<Vec<u8>>,
 }
@@ -212,11 +208,7 @@ pub struct App {
 // 实现自定义方法
 impl App {
     /// 创建新应用
-    pub fn new(
-        key: String,
-        app_type: AppType,
-        name: String,
-    ) -> Self {
+    pub fn new(key: String, app_type: AppType, name: String) -> Self {
         Self {
             id: 0, // 数据库自增
             key,

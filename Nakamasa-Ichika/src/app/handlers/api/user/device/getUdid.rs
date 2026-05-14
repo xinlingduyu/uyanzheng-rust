@@ -1,5 +1,5 @@
 //! 获取设备列表
-//! 
+//!
 //! 功能说明：
 //! 获取当前用户已绑定的所有设备列表。
 //!
@@ -9,15 +9,17 @@
 //! 3. 返回设备码和绑定时间列表
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::GetUdidRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::GetUdidRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 /// 设备信息 - 匹配JSON响应格式
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,7 +37,7 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -45,7 +47,7 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let get_req = match req.parse_json::<GetUdidRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -57,7 +59,7 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &get_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -74,7 +76,9 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     // 直接从用户信息中获取设备列表（避免额外数据库查询）
     // PHP: $this->out->setData(['list'=>json_decode($this->user['sn_list'],true)])->e(200,'获取成功');
-    let device_list: Vec<DeviceItem> = user_info.sn_list.as_ref()
+    let device_list: Vec<DeviceItem> = user_info
+        .sn_list
+        .as_ref()
         .and_then(|v| serde_json::from_value(v.clone()).ok())
         .unwrap_or_default();
 

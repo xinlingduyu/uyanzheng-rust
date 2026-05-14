@@ -104,7 +104,7 @@ impl SglangProvider {
             .unwrap_or_else(|| "http://localhost:30000/v1".to_string());
 
         let mut headers = HeaderMap::new();
-        
+
         // SGLang 支持 Bearer token 认证（可选）
         if !config.api_key.is_empty() {
             let auth_value = format!("Bearer {}", config.api_key);
@@ -164,9 +164,12 @@ impl AiProvider for SglangProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(false),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
             top_k: None,
             repetition_penalty: None,
         };
@@ -226,9 +229,12 @@ impl AiProvider for SglangProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(true),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
             top_k: None,
             repetition_penalty: None,
         };
@@ -262,12 +268,12 @@ impl AiProvider for SglangProvider {
 
     async fn list_models(&self) -> Result<Vec<String>> {
         let url = format!("{}/models", self.api_base);
-        
+
         #[derive(Deserialize)]
         struct ModelsResponse {
             data: Vec<ModelData>,
         }
-        
+
         #[derive(Deserialize)]
         struct ModelData {
             id: String,

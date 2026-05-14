@@ -1,5 +1,5 @@
 //! 高性能哈希函数模块
-//! 
+//!
 //! 使用 SIMD 和平台特定指令优化的哈希实现
 
 use std::hash::Hasher;
@@ -49,7 +49,7 @@ pub fn fnv1a_64_unrolled(data: &[u8]) -> u64 {
                 prefetch_l1(chunk.as_ptr().add(8));
             }
         }
-        
+
         for &byte in chunk {
             hash ^= byte as u64;
             hash = hash.wrapping_mul(FNV_PRIME);
@@ -185,7 +185,7 @@ impl XxHash64 {
     #[inline(always)]
     fn process_chunk(&mut self, chunk: &[u8]) {
         debug_assert_eq!(chunk.len(), 32);
-        
+
         let v1 = u64::from_le_bytes(chunk[0..8].try_into().unwrap());
         let v2 = u64::from_le_bytes(chunk[8..16].try_into().unwrap());
         let v3 = u64::from_le_bytes(chunk[16..24].try_into().unwrap());
@@ -201,9 +201,18 @@ impl XxHash64 {
         let mut hash = if self.total_len >= 32 {
             let mut h = self.state;
             h = Self::merge_round(h, u64::from_le_bytes(self.buffer[0..8].try_into().unwrap()));
-            h = Self::merge_round(h, u64::from_le_bytes(self.buffer[8..16].try_into().unwrap()));
-            h = Self::merge_round(h, u64::from_le_bytes(self.buffer[16..24].try_into().unwrap()));
-            h = Self::merge_round(h, u64::from_le_bytes(self.buffer[24..32].try_into().unwrap()));
+            h = Self::merge_round(
+                h,
+                u64::from_le_bytes(self.buffer[8..16].try_into().unwrap()),
+            );
+            h = Self::merge_round(
+                h,
+                u64::from_le_bytes(self.buffer[16..24].try_into().unwrap()),
+            );
+            h = Self::merge_round(
+                h,
+                u64::from_le_bytes(self.buffer[24..32].try_into().unwrap()),
+            );
             h
         } else {
             self.state.wrapping_add(Self::PRIME5)
@@ -278,7 +287,6 @@ impl WyHash {
 
     #[inline(always)]
     fn wyr3(data: &[u8], len: usize) -> u64 {
-        
         if len >= 3 {
             ((data[2] as u64) << 16) | ((data[1] as u64) << 8) | (data[0] as u64)
         } else if len >= 2 {
@@ -303,10 +311,7 @@ impl WyHash {
         }
 
         if len < 4 {
-            self.state = Self::wymum(
-                Self::wyr3(data, len) ^ seed ^ Self::P0,
-                seed ^ Self::P1,
-            );
+            self.state = Self::wymum(Self::wyr3(data, len) ^ seed ^ Self::P0, seed ^ Self::P1);
             return;
         }
 
@@ -347,9 +352,15 @@ impl WyHash {
         }
 
         if i + 4 <= len {
-            self.state = Self::wymum(self.state ^ Self::wyr4(&data[i..]), Self::wyr4(&data[len - 4..]) ^ Self::P2);
+            self.state = Self::wymum(
+                self.state ^ Self::wyr4(&data[i..]),
+                Self::wyr4(&data[len - 4..]) ^ Self::P2,
+            );
         } else if i < len {
-            self.state = Self::wymum(self.state ^ Self::wyr3(&data[i..], len - i), Self::wyr3(&data[len - 3..], 3.min(len - i)) ^ Self::P3);
+            self.state = Self::wymum(
+                self.state ^ Self::wyr3(&data[i..], len - i),
+                Self::wyr3(&data[len - 3..], 3.min(len - i)) ^ Self::P3,
+            );
         }
 
         self.state = Self::wymum(self.state ^ (len as u64), self.seed ^ Self::P4);
@@ -403,11 +414,11 @@ pub mod aarch64_hash {
         while i + 16 <= len {
             unsafe {
                 use std::arch::aarch64::*;
-                
+
                 let va = vld1q_u8(a.as_ptr().add(i));
                 let vb = vld1q_u8(b.as_ptr().add(i));
                 let cmp = vceqq_u8(va, vb);
-                
+
                 // 检查是否所有字节都相等
                 let result = vreinterpretq_u64_u8(cmp);
                 if vgetq_lane_u64(result, 0) != u64::MAX || vgetq_lane_u64(result, 1) != u64::MAX {
@@ -432,7 +443,7 @@ pub mod aarch64_hash {
     #[target_feature(enable = "neon")]
     pub unsafe fn hash_neon(data: &[u8], seed: u64) -> u64 {
         use std::arch::aarch64::*;
-        
+
         let mut hash = seed;
         let len = data.len();
         let mut i = 0;
@@ -443,7 +454,7 @@ pub mod aarch64_hash {
                 let chunk = vld1q_u8(data.as_ptr().add(i));
                 let hash_vec = vdupq_n_u8(hash as u8);
                 let xor = veorq_u8(chunk, hash_vec);
-                
+
                 // 简单混合
                 let result = vreinterpretq_u64_u8(xor);
                 hash = hash.wrapping_add(vgetq_lane_u64(result, 0));
@@ -491,7 +502,7 @@ pub mod x86_64_hash {
                 let vb = _mm256_loadu_si256(b.as_ptr().add(i) as *const __m256i);
                 let cmp = _mm256_cmpeq_epi8(va, vb);
                 let mask = _mm256_movemask_epi8(cmp);
-                
+
                 if mask != -1 {
                     return false;
                 }
@@ -506,7 +517,7 @@ pub mod x86_64_hash {
                 let vb = _mm_loadu_si128(b.as_ptr().add(i) as *const __m128i);
                 let cmp = _mm_cmpeq_epi8(va, vb);
                 let mask = _mm_movemask_epi8(cmp);
-                
+
                 if mask != 0xFFFF {
                     return false;
                 }
@@ -528,24 +539,24 @@ pub mod x86_64_hash {
     /// 使用 CRC32 指令的快速哈希
     #[target_feature(enable = "sse4.2")]
     pub unsafe fn hash_crc32(data: &[u8], seed: u64) -> u64 {
-        use std::arch::x86_64::_mm_crc32_u64;
-        use std::arch::x86_64::_mm_crc32_u32;
         use std::arch::x86_64::_mm_crc32_u8;
-        
+        use std::arch::x86_64::_mm_crc32_u32;
+        use std::arch::x86_64::_mm_crc32_u64;
+
         let mut hash = seed;
         let len = data.len();
         let mut i = 0;
 
         // 处理 8 字节块
         while i + 8 <= len {
-            let chunk = u64::from_le_bytes(data[i..i+8].try_into().unwrap());
+            let chunk = u64::from_le_bytes(data[i..i + 8].try_into().unwrap());
             hash = _mm_crc32_u64(hash, chunk);
             i += 8;
         }
 
         // 处理剩余 4 字节
         if i + 4 <= len {
-            let chunk = u32::from_le_bytes(data[i..i+4].try_into().unwrap());
+            let chunk = u32::from_le_bytes(data[i..i + 4].try_into().unwrap());
             hash = _mm_crc32_u32(hash as u32, chunk) as u64;
             i += 4;
         }
@@ -568,8 +579,7 @@ pub use x86_64_hash::*;
 // ============================================================================
 
 /// 高性能哈希函数选择
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum HashAlgorithm {
     /// FNV-1a（短键最优）
     Fnv1a,
@@ -581,7 +591,6 @@ pub enum HashAlgorithm {
     #[default]
     Auto,
 }
-
 
 /// 计算哈希值
 #[inline(always)]
@@ -638,10 +647,7 @@ impl FastHashBuilder {
     }
 
     pub fn with_algorithm(algorithm: HashAlgorithm) -> Self {
-        Self {
-            seed: 0,
-            algorithm,
-        }
+        Self { seed: 0, algorithm }
     }
 }
 

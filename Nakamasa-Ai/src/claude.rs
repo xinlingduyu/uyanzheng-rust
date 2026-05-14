@@ -2,7 +2,7 @@
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
@@ -92,7 +92,7 @@ impl ClaudeProvider {
             .unwrap_or_else(|| "https://api.anthropic.com".to_string());
 
         let mut headers = HeaderMap::new();
-        
+
         // Claude API key 使用 x-api-key 头部
         let api_key = config.api_key.clone();
         headers.insert(
@@ -100,17 +100,11 @@ impl ClaudeProvider {
             HeaderValue::from_str(&api_key)
                 .map_err(|e| crate::error::AiError::ConfigError(e.to_string()))?,
         );
-        
-        // Claude 需要 anthropic-version 头部
-        headers.insert(
-            "anthropic-version",
-            HeaderValue::from_static("2023-06-01"),
-        );
 
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        // Claude 需要 anthropic-version 头部
+        headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
         // 添加额外的自定义头部
         for (key, value) in &config.extra_headers {
@@ -174,18 +168,21 @@ impl AiProvider for ClaudeProvider {
             temperature: request.temperature,
             top_p: request.top_p,
             stream: Some(false),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         // 处理 system 消息
         let system_message = Self::extract_system_message(&request.messages);
-        
+
         let url = format!("{}/v1/messages", self.api_base);
 
         let mut req_builder = self.client.post(&url).json(&claude_req);
-        
+
         if let Some(system) = system_message {
             req_builder = req_builder.header("x-system-prompt", system);
         }
@@ -238,24 +235,24 @@ impl AiProvider for ClaudeProvider {
             temperature: request.temperature,
             top_p: request.top_p,
             stream: Some(true),
-            tools: request
-                .tools
-                .map(|skills| skills.into_iter().map(|s| serde_json::to_value(s).unwrap()).collect()),
+            tools: request.tools.map(|skills| {
+                skills
+                    .into_iter()
+                    .map(|s| serde_json::to_value(s).unwrap())
+                    .collect()
+            }),
         };
 
         let system_message = Self::extract_system_message(&request.messages);
         let url = format!("{}/v1/messages", self.api_base);
 
         let mut req_builder = self.client.post(&url).json(&claude_req);
-        
+
         if let Some(system) = system_message {
             req_builder = req_builder.header("x-system-prompt", system);
         }
 
-        let response = req_builder
-            .send()
-            .await?
-            .error_for_status()?;
+        let response = req_builder.send().await?.error_for_status()?;
 
         let stream = response.bytes_stream().map(|chunk| {
             let chunk = chunk.map_err(crate::error::AiError::from)?;
@@ -293,7 +290,7 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
         if line.is_empty() {
             continue;
         }
-        
+
         // Claude 流式响应是 JSON 对象
         match serde_json::from_str::<ClaudeStreamChunk>(line) {
             Ok(chunk) => {

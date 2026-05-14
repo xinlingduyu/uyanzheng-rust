@@ -1,15 +1,15 @@
 //! Admin CDK Kami controller
 //! 管理员CDK卡密控制器
 
+use chrono::Utc;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
-use chrono::Utc;
 
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::core::zero_copy::StringBuilder;
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::zero_copy::StringBuilder;
 
 #[derive(Debug, Deserialize)]
 struct GetListRequest {
@@ -108,7 +108,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let page = list_req.page.unwrap_or(1).max(1);
     let page_size = list_req.size.unwrap_or(10).max(1);
     let offset = (page - 1) * page_size;
-    
+
     // 性能优化：在函数开头计算时间戳，避免重复调用
     let now_ts = Utc::now().timestamp();
 
@@ -123,101 +123,110 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
          LEFT JOIN u_cdk_group AS G ON (K.gid = G.id)
          WHERE K.appid = ?"
     );
-    let mut count_query = String::from("SELECT COUNT(*) as total FROM u_cdk_kami AS K WHERE K.appid = ?");
+    let mut count_query =
+        String::from("SELECT COUNT(*) as total FROM u_cdk_kami AS K WHERE K.appid = ?");
     let mut params: Vec<String> = vec![appid.to_string()];
 
     if let Some(so) = list_req.so {
         // 添加时间范围
         if let Some(add_time_range) = so.add_time
-            && add_time_range.len() == 2 {
-                let condition = " AND K.add_time >= ? AND K.add_time <= ?";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                if let Ok(start) = add_time_range[0].parse::<i64>() {
-                    params.push(start.to_string());
-                }
-                // 结束时间加23:59:59，即+86399秒
-                if let Ok(end) = add_time_range[1].parse::<i64>() {
-                    params.push((end + 86399).to_string());
-                }
+            && add_time_range.len() == 2
+        {
+            let condition = " AND K.add_time >= ? AND K.add_time <= ?";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            if let Ok(start) = add_time_range[0].parse::<i64>() {
+                params.push(start.to_string());
             }
+            // 结束时间加23:59:59，即+86399秒
+            if let Ok(end) = add_time_range[1].parse::<i64>() {
+                params.push((end + 86399).to_string());
+            }
+        }
 
         // 使用时间范围
         if let Some(use_time_range) = so.use_time
-            && use_time_range.len() == 2 {
-                let condition = " AND K.use_time >= ? AND K.use_time <= ?";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                if let Ok(start) = use_time_range[0].parse::<i64>() {
-                    params.push(start.to_string());
-                }
-                if let Ok(end) = use_time_range[1].parse::<i64>() {
-                    params.push((end + 86399).to_string());
-                }
+            && use_time_range.len() == 2
+        {
+            let condition = " AND K.use_time >= ? AND K.use_time <= ?";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            if let Ok(start) = use_time_range[0].parse::<i64>() {
+                params.push(start.to_string());
             }
+            if let Ok(end) = use_time_range[1].parse::<i64>() {
+                params.push((end + 86399).to_string());
+            }
+        }
 
         // 添加角色
         if let Some(add_role) = so.add_role
-            && !add_role.is_empty() {
-                let condition = " AND K.add_role = ?";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                params.push(add_role);
-            }
+            && !add_role.is_empty()
+        {
+            let condition = " AND K.add_role = ?";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            params.push(add_role);
+        }
 
         // 状态
         if let Some(state) = so.state
-            && !state.is_empty() {
-                let condition = if state == "y" {
-                    format!(" AND (K.ban < {} OR K.ban IS NULL)", now_ts)
-                } else {
-                    format!(" AND K.ban >= {}", now_ts)
-                };
-                query.push_str(&condition);
-                count_query.push_str(&condition);
-            }
+            && !state.is_empty()
+        {
+            let condition = if state == "y" {
+                format!(" AND (K.ban < {} OR K.ban IS NULL)", now_ts)
+            } else {
+                format!(" AND K.ban >= {}", now_ts)
+            };
+            query.push_str(&condition);
+            count_query.push_str(&condition);
+        }
 
         // 导出状态
         if let Some(out_state) = so.out_state
-            && !out_state.is_empty() {
-                let condition = " AND K.out_state = ?";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                params.push(out_state);
-            }
+            && !out_state.is_empty()
+        {
+            let condition = " AND K.out_state = ?";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            params.push(out_state);
+        }
 
         // 类型
         if let Some(type_val) = so.type_val
-            && !type_val.is_empty() {
-                let condition = " AND K.type = ?";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                params.push(type_val);
-            }
+            && !type_val.is_empty()
+        {
+            let condition = " AND K.type = ?";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            params.push(type_val);
+        }
 
         // 使用状态
         if let Some(use_state) = so.use_state
-            && !use_state.is_empty() {
-                let condition = if use_state == "y" {
-                    " AND K.use_time IS NOT NULL"
-                } else {
-                    " AND K.use_time IS NULL"
-                };
-                query.push_str(condition);
-                count_query.push_str(condition);
-            }
+            && !use_state.is_empty()
+        {
+            let condition = if use_state == "y" {
+                " AND K.use_time IS NOT NULL"
+            } else {
+                " AND K.use_time IS NULL"
+            };
+            query.push_str(condition);
+            count_query.push_str(condition);
+        }
 
         // 关键词 - 使用OR条件，与PHP一致
         if let Some(keyword) = so.keyword
-            && !keyword.is_empty() {
-                let condition = " AND (K.cdk = ? OR K.note = ? OR K.email = ? OR K.phone = ?)";
-                query.push_str(condition);
-                count_query.push_str(condition);
-                params.push(keyword.clone());
-                params.push(keyword.clone());
-                params.push(keyword.clone());
-                params.push(keyword);
-            }
+            && !keyword.is_empty()
+        {
+            let condition = " AND (K.cdk = ? OR K.note = ? OR K.email = ? OR K.phone = ?)";
+            query.push_str(condition);
+            count_query.push_str(condition);
+            params.push(keyword.clone());
+            params.push(keyword.clone());
+            params.push(keyword.clone());
+            params.push(keyword);
+        }
     }
 
     // 查询总数
@@ -260,7 +269,11 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 };
 
                 // phone 字段在数据库中是 BIGINT，需要转换为 String
-                let phone: Option<String> = row.try_get::<Option<i64>, _>("phone").ok().flatten().map(|p| p.to_string());
+                let phone: Option<String> = row
+                    .try_get::<Option<i64>, _>("phone")
+                    .ok()
+                    .flatten()
+                    .map(|p| p.to_string());
 
                 list.push(CDKKamiItem {
                     id: row.try_get("id").unwrap_or(0),
@@ -287,7 +300,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     ban: row.try_get("ban").ok(),
                     ban_msg: row.try_get("ban_msg").ok(),
                     sn_max: row.try_get("sn_max").ok(),
-                    sn_list: row.try_get("sn_list").ok().and_then(|s: String| serde_json::from_str(&s).ok()),
+                    sn_list: row
+                        .try_get("sn_list")
+                        .ok()
+                        .and_then(|s: String| serde_json::from_str(&s).ok()),
                     Gname: row.try_get("Gname").ok(),
                     state: _state.to_string(),
                 });
@@ -379,7 +395,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 检查卡密组是否存在
     let group_result = sqlx::query_as::<_, (u64, String, i64, String)>(
-        "SELECT id, name, val, type FROM u_cdk_group WHERE id = ? AND appid = ?"
+        "SELECT id, name, val, type FROM u_cdk_group WHERE id = ? AND appid = ?",
     )
     .bind(add_req.gid)
     .bind(appid)
@@ -429,7 +445,11 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     for i in 0..add_req.num {
         // 生成随机卡密 - 使用栈上MD5优化
-        let kami = format!("{}{}", prefix, generate_kami_code(now, add_req.length as usize));
+        let kami = format!(
+            "{}{}",
+            prefix,
+            generate_kami_code(now, add_req.length as usize)
+        );
 
         // 使用参数化查询替代SQL拼接（修复SQL注入漏洞）
         let result = if has_out {
@@ -489,7 +509,10 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let failed = add_req.num - success_count;
             if success_count >= 1 {
                 res.render(Json(ApiResponse::success(
-                    format!("创建成功，本次添加：{}条卡密，失败：{}条", success_count, failed),
+                    format!(
+                        "创建成功，本次添加：{}条卡密，失败：{}条",
+                        success_count, failed
+                    ),
                     Some(serde_json::json!({})),
                 )));
             } else {
@@ -530,7 +553,7 @@ fn generate_kami_code(now: i64, length: usize) -> String {
     let mut sb = StringBuilder::with_capacity(uniqid.len() + code.len());
     sb.append(uniqid).append(&code);
     let combined = sb.finish();
-    
+
     let mut chars: Vec<char> = combined.chars().collect();
     for i in (1..chars.len()).rev() {
         let j = rng.gen_range(0..=i);
@@ -557,7 +580,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let award_req = match req.parse_json::<AwardRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -591,14 +614,14 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     validator
         .sameone("object", &award_req.award_object, vec!["vip", "fen"])
         .int("val", award_req.val, 1, 9999999999);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
     }
 
     let now = Utc::now().timestamp();
-    
+
     let result = if award_req.award_object == "fen" {
         // 奖励积分卡密
         sqlx::query("UPDATE u_cdk_kami SET val = val + ? WHERE type = 'fen' AND val < 9999999999 AND use_id IS NULL AND use_time IS NOT NULL AND appid = ?")
@@ -652,7 +675,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditCDKKamiRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -663,8 +686,10 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 参数验证
     let mut validator = Validator::new();
-    validator.required_i64("id", &Some(edit_req.id), "编辑ID").int("id", edit_req.id, 1, 11);
-    
+    validator
+        .required_i64("id", &Some(edit_req.id), "编辑ID")
+        .int("id", edit_req.id, 1, 11);
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -672,7 +697,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 检查卡密是否存在
     let check_result = sqlx::query_as::<_, (u64, String, Option<i64>)>(
-        "SELECT id, type, use_time FROM u_cdk_kami WHERE id = ?"
+        "SELECT id, type, use_time FROM u_cdk_kami WHERE id = ?",
     )
     .bind(edit_req.id)
     .fetch_optional(app_state.get_db())
@@ -705,18 +730,20 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     if let Some(password) = edit_req.password
-        && !password.is_empty() {
-            updates.push("password = ?");
-            let pwd_hash_bytes = md5_hex(password.as_bytes());
-            params.push(md5_to_str(&pwd_hash_bytes).to_string());
-        }
+        && !password.is_empty()
+    {
+        updates.push("password = ?");
+        let pwd_hash_bytes = md5_hex(password.as_bytes());
+        params.push(md5_to_str(&pwd_hash_bytes).to_string());
+    }
 
     if use_time.is_some() {
         if cdk_type == "vip"
-            && let Some(vip) = edit_req.vip {
-                updates.push("vip = ?");
-                params.push(vip.to_string());
-            }
+            && let Some(vip) = edit_req.vip
+        {
+            updates.push("vip = ?");
+            params.push(vip.to_string());
+        }
 
         if cdk_type == "fen" || cdk_type == "addsn" {
             updates.push("val = ?");
@@ -740,7 +767,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     let query = format!("UPDATE u_cdk_kami SET {} WHERE id = ?", updates.join(", "));
-    
+
     let mut sql_query = sqlx::query(&query);
     for param in params {
         sql_query = sql_query.bind(param);
@@ -778,7 +805,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -822,7 +849,7 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditStateRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -879,7 +906,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let del_req = match req.parse_json::<DelAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -893,7 +920,12 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    let placeholders = del_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let placeholders = del_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
     let query = format!("DELETE FROM u_cdk_kami WHERE id IN ({})", placeholders);
 
     let mut sql_query = sqlx::query(&query);
@@ -934,7 +966,7 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let out_req = match req.parse_json::<OutAllRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -948,8 +980,13 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    let placeholders = out_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    
+    let placeholders = out_req
+        .ids
+        .iter()
+        .map(|_| "?")
+        .collect::<Vec<_>>()
+        .join(",");
+
     let query = format!(
         "SELECT K.type, K.cdk, K.note, G.name as Gname, K.use_time, K.add_time
          FROM u_cdk_kami AS K 
@@ -973,8 +1010,16 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
 
             // 更新导出状态
-            let update_placeholders = out_req.ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-            let update_query = format!("UPDATE u_cdk_kami SET out_state = 'y', out_time = ? WHERE id IN ({})", update_placeholders);
+            let update_placeholders = out_req
+                .ids
+                .iter()
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(",");
+            let update_query = format!(
+                "UPDATE u_cdk_kami SET out_state = 'y', out_time = ? WHERE id IN ({})",
+                update_placeholders
+            );
             let now = Utc::now().timestamp();
 
             let mut update_sql = sqlx::query(&update_query);
@@ -1008,7 +1053,7 @@ pub async fn get_log(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     let log_req = match req.parse_json::<GetLogRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -1050,7 +1095,8 @@ pub async fn get_log(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let mut list = Vec::new();
             for row in rows {
                 let details: Option<String> = row.try_get("details").ok();
-                let details_json: Option<serde_json::Value> = details.and_then(|s| serde_json::from_str(&s).ok());
+                let details_json: Option<serde_json::Value> =
+                    details.and_then(|s| serde_json::from_str(&s).ok());
                 let time: i64 = row.try_get("time").unwrap_or(0);
 
                 list.push(serde_json::json!({
@@ -1063,7 +1109,10 @@ pub async fn get_log(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }));
             }
 
-            res.render(Json(ApiResponse::success("成功", Some(serde_json::json!({"list": list})))));
+            res.render(Json(ApiResponse::success(
+                "成功",
+                Some(serde_json::json!({"list": list})),
+            )));
         }
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
@@ -1087,7 +1136,7 @@ pub async fn unbind_sn(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     let unbind_req = match req.parse_json::<UnbindSnRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -1103,7 +1152,7 @@ pub async fn unbind_sn(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .int("id", unbind_req.id, 1, 11)
         .required("udid", &Some(unbind_req.udid.clone()), "解绑机器码")
         .udid("udid", &unbind_req.udid, 1, 128);
-    
+
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
         return;
@@ -1111,7 +1160,7 @@ pub async fn unbind_sn(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     // 查询卡密
     let check_result = sqlx::query_as::<_, (i64, Option<String>)>(
-        "SELECT id, sn_list FROM u_cdk_kami WHERE id = ?"
+        "SELECT id, sn_list FROM u_cdk_kami WHERE id = ?",
     )
     .bind(unbind_req.id)
     .fetch_optional(app_state.get_db())
@@ -1216,7 +1265,10 @@ pub async fn clear(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(r) => {
-            res.render(Json(ApiResponse::success_msg(format!("清理成功，共删除 {} 条卡密", r.rows_affected()))));
+            res.render(Json(ApiResponse::success_msg(format!(
+                "清理成功，共删除 {} 条卡密",
+                r.rows_affected()
+            ))));
         }
         Err(e) => {
             tracing::error!("清理失败: {}", e);
@@ -1225,5 +1277,5 @@ pub async fn clear(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;

@@ -1,5 +1,5 @@
-use sqlx::FromRow;
 use super::super::common::enums::CashWay;
+use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
 pub struct AgentCash {
@@ -21,15 +21,15 @@ impl AgentCash {
     pub fn is_pending(&self) -> bool {
         self.state == Some(0)
     }
-    
+
     pub fn is_approved(&self) -> bool {
         self.state == Some(1)
     }
-    
+
     pub fn is_rejected(&self) -> bool {
         self.state == Some(2)
     }
-    
+
     pub fn processing_time(&self) -> Option<i32> {
         self.end_time.map(|end| end - self.add_time)
     }

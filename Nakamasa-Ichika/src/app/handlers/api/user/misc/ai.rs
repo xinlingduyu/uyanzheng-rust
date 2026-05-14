@@ -8,18 +8,18 @@
 //! - AI 配置从数据库 u_app 表读取（缓存在 AppInfo 中）
 //! - 参考 vip.rs 的模式
 
+use futures_util::StreamExt;
 use salvo::prelude::*;
 use serde::Serialize;
-use futures_util::StreamExt;
 
 use nakamasa_ai::{
-    AiConfig, ProviderType, Message, MessageRole, CompletionRequest,
-    AiProvider, StreamChunk, PresetConfigs,
+    AiConfig, AiError, AiProvider, CompletionRequest, Message, MessageRole, PresetConfigs,
+    ProviderType, StreamChunk,
 };
 
-use crate::app::utils::response::{render_success, render_error};
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::{AppInfo, EncryptionInfo};
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::utils::response::{render_error, render_success};
 
 /// AI 请求体
 #[derive(serde::Deserialize)]
@@ -54,13 +54,69 @@ pub struct AiUsage {
     pub total_tokens: u32,
 }
 
+fn is_safe_business_message(message: &str) -> bool {
+    let msg = message.trim();
+    if msg.is_empty() || msg.len() > 200 {
+        return false;
+    }
+
+    let lower = msg.to_ascii_lowercase();
+    let sensitive_markers = [
+        "api_key",
+        "apikey",
+        "authorization",
+        "bearer ",
+        "password",
+        "secret",
+        "token",
+        "stack backtrace",
+        "panicked at",
+        "mysql://",
+        "redis://",
+        "http://",
+        "https://",
+    ];
+
+    !sensitive_markers
+        .iter()
+        .any(|marker| lower.contains(marker))
+}
+
+fn ai_business_error_message(error: &AiError) -> &'static str {
+    match error {
+        AiError::RateLimitError => "AI请求过于频繁，请稍后再试",
+        AiError::AuthError => "AI认证失败，请检查配置",
+        AiError::UnsupportedProvider(_) => "不支持的AI提供商",
+        AiError::ConfigError(_) => "AI配置错误",
+        AiError::ProviderError(msg) if is_safe_business_message(msg) => "AI服务返回错误",
+        AiError::StreamError(msg) if is_safe_business_message(msg) => "AI流式响应中断",
+        AiError::HttpError(e) if e.is_timeout() => "AI请求超时，请稍后重试",
+        AiError::HttpError(e) if e.is_connect() => "AI服务连接失败",
+        _ => "AI请求失败",
+    }
+}
+
+fn ai_stream_business_error_message(error: &AiError) -> &'static str {
+    match error {
+        AiError::RateLimitError => "AI请求过于频繁，请稍后再试",
+        AiError::AuthError => "AI认证失败，请检查配置",
+        AiError::UnsupportedProvider(_) => "不支持的AI提供商",
+        AiError::ConfigError(_) => "AI配置错误",
+        AiError::ProviderError(msg) if is_safe_business_message(msg) => "AI服务返回错误",
+        AiError::StreamError(msg) if is_safe_business_message(msg) => "AI流式响应中断",
+        AiError::HttpError(e) if e.is_timeout() => "AI请求超时，请稍后重试",
+        AiError::HttpError(e) if e.is_connect() => "AI服务连接失败",
+        _ => "AI流式请求失败",
+    }
+}
+
 /// 从 AppInfo 创建 AI 配置
 /// 使用 Nakamasa-Ai 的 PresetConfigs 更好地支持本地模型
 fn create_ai_config_from_app_info(app_info: &AppInfo) -> Result<AiConfig, String> {
     if app_info.ai_state != "on" {
         return Err("AI功能未开启".to_string());
     }
-    
+
     let provider_str = app_info.ai_provider.as_deref().unwrap_or("openai");
     let provider_type = match provider_str.to_lowercase().as_str() {
         "openai" => ProviderType::OpenAI,
@@ -74,37 +130,37 @@ fn create_ai_config_from_app_info(app_info: &AppInfo) -> Result<AiConfig, String
         "mistral" | "mistral_rust" => ProviderType::MistralRust,
         _ => return Err(format!("不支持的AI提供商: {}", provider_str)),
     };
-    
+
     let model = app_info.ai_model.as_deref().unwrap_or("default");
-    
+
     // 使用 PresetConfigs 创建基础配置（已包含本地模型的默认端口和设置）
     let mut builder = PresetConfigs::from_provider_type(provider_type, model);
-    
+
     // 用数据库中的值覆盖默认值
     if let Some(api_base) = &app_info.ai_api_base {
         builder = builder.api_base(api_base);
     }
-    
+
     // API key：优先使用数据库中的值，否则保持预设配置的默认值（本地模型为 "EMPTY"）
     if let Some(api_key) = &app_info.ai_api_key {
         builder = builder.api_key(api_key);
     }
     // 如果数据库中是 None，就不设置，保持预设配置中的默认值（对于本地模型是 "EMPTY"）
-    
+
     // 温度参数：如果数据库中有有效值则使用，否则使用预设配置的默认值（通常为0.7）
     if let Some(temp) = app_info.ai_temperature {
         if temp > 0.0 && temp <= 2.0 {
             builder = builder.temperature(temp);
         }
     }
-    
+
     // 最大token数：如果数据库中有有效值则使用，否则使用预设配置的默认值
     if let Some(max_tok) = app_info.ai_max_tokens {
         if max_tok > 0 && max_tok <= 32000 {
             builder = builder.max_tokens(max_tok as u32);
         }
     }
-    
+
     Ok(builder.build())
 }
 /// 转换消息格式
@@ -138,7 +194,7 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 2. 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -149,16 +205,17 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     let app_key = &app_info.app_key;
     let enc_info = app_info.mi.as_ref();
-    
+
     // 3. 解析请求
     let ai_req = match req.parse_json::<AiRequest>().await {
         Ok(r) => r,
         Err(e) => {
-            render_error(res, format!("参数解析失败: {}", e), 201, app_key);
+            tracing::warn!("AI参数解析失败: {}", e);
+            render_error(res, "参数解析失败", 201, app_key);
             return;
         }
     };
-    
+
     // 4. 从 AppInfo 创建 AI 配置
     let mut config = match create_ai_config_from_app_info(&app_info) {
         Ok(cfg) => cfg,
@@ -167,30 +224,31 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 5. 允许请求参数覆盖配置
     if let Some(temp) = ai_req.temperature {
         config.temperature = Some(temp);
     }
-    
+
     if let Some(max_tok) = ai_req.max_tokens {
         config.max_tokens = Some(max_tok);
     }
-    
+
     // 6. 创建 AI 提供商
     let provider: Box<dyn AiProvider> = match nakamasa_ai::create_provider(config) {
         Ok(p) => p,
         Err(e) => {
-            render_error(res, format!("创建AI提供商失败: {}", e), 201, app_key);
+            tracing::error!("创建AI提供商失败: {}", e);
+            render_error(res, "创建AI提供商失败", 201, app_key);
             return;
         }
     };
-    
+
     // 7. 构建请求
     let messages = convert_messages(ai_req.messages);
     let model = provider.model().to_string();
     let mut completion_req = CompletionRequest::new(messages, &model);
-    
+
     // 8. 处理响应
     if ai_req.stream {
         handle_stream_response(provider, completion_req, res, app_key, enc_info).await;
@@ -209,28 +267,30 @@ async fn handle_normal_response(
 ) {
     match provider.completion(request).await {
         Ok(response) => {
-            let content = response.choices
+            let content = response
+                .choices
                 .first()
                 .map(|c| c.message.content.clone())
                 .unwrap_or_default();
-            
+
             let usage = response.usage.map(|u| AiUsage {
                 prompt_tokens: u.prompt_tokens,
                 completion_tokens: u.completion_tokens,
                 total_tokens: u.total_tokens,
             });
-            
+
             let ai_response = AiCompletionResponse {
                 id: response.id,
                 model: response.model,
                 content,
                 usage,
             };
-            
+
             render_success(res, app_key, Some(ai_response), enc_info);
         }
         Err(e) => {
-            render_error(res, format!("AI请求失败: {}", e), 201, app_key);
+            tracing::error!("AI请求失败: {}", e);
+            render_error(res, ai_business_error_message(&e), 201, app_key);
         }
     }
 }
@@ -244,24 +304,18 @@ async fn handle_stream_response(
     enc_info: Option<&EncryptionInfo>,
 ) {
     use futures_util::StreamExt;
-    
-    res.headers_mut().insert(
-        "Content-Type",
-        "text/event-stream".parse().unwrap(),
-    );
-    res.headers_mut().insert(
-        "Cache-Control",
-        "no-cache".parse().unwrap(),
-    );
-    res.headers_mut().insert(
-        "Connection",
-        "keep-alive".parse().unwrap(),
-    );
-    
+
+    res.headers_mut()
+        .insert("Content-Type", "text/event-stream".parse().unwrap());
+    res.headers_mut()
+        .insert("Cache-Control", "no-cache".parse().unwrap());
+    res.headers_mut()
+        .insert("Connection", "keep-alive".parse().unwrap());
+
     match provider.completion_stream(request).await {
         Ok(mut stream) => {
             let mut full_text = String::new();
-            
+
             while let Some(chunk_result) = stream.next().await {
                 match chunk_result {
                     Ok(chunk) => {
@@ -279,11 +333,12 @@ async fn handle_stream_response(
                     }
                 }
             }
-            
+
             render_success(res, app_key, Some(full_text), enc_info);
         }
         Err(e) => {
-            render_error(res, format!("AI流式请求失败: {}", e), 201, app_key);
+            tracing::error!("AI流式请求失败: {}", e);
+            render_error(res, ai_stream_business_error_message(&e), 201, app_key);
         }
     }
 }

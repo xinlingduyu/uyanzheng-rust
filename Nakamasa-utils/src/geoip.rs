@@ -16,8 +16,8 @@
 //! println!("国家: {}, 城市: {}", location.country, location.city);
 //! ```
 
-use maxminddb::geoip2::City;
 use maxminddb::Reader;
+use maxminddb::geoip2::City;
 use std::net::IpAddr;
 use std::path::Path;
 use std::sync::Arc;
@@ -95,8 +95,8 @@ impl GeoIpReader {
     /// let reader = GeoIpReader::new("GeoLite2-City.mmdb")?;
     /// ```
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, GeoIpError> {
-        let reader = Reader::open_readfile(path)
-            .map_err(|e| GeoIpError::OpenFailed(e.to_string()))?;
+        let reader =
+            Reader::open_readfile(path).map_err(|e| GeoIpError::OpenFailed(e.to_string()))?;
         Ok(GeoIpReader {
             reader: Arc::new(reader),
         })

@@ -1,5 +1,5 @@
 //! 会员验证
-//! 
+//!
 //! 功能说明：
 //! 验证用户的VIP状态，返回VIP到期时间。
 //!
@@ -9,14 +9,16 @@
 //! 3. 判断VIP是否有效
 //! 4. 返回VIP状态和到期时间
 
-use salvo::prelude::*;
 use chrono::Utc;
+use salvo::prelude::*;
 
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::VipRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::VipRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 
 #[handler]
 pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -42,7 +44,7 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &vip_req.token, 32, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -84,7 +86,7 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
         render_error(res, "用户类型错误", 201, app_key);
         return;
     }
-    
+
     // PHP: $this->out->e(200,'验证成功');
     render_success_with_msg(res, "验证成功", app_key);
 }

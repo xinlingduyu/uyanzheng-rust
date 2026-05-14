@@ -1,5 +1,5 @@
 //! 卡密充值
-//! 
+//!
 //! 功能说明：
 //! 使用卡密为用户账户充值VIP时长或积分。
 //! 支持多种卡密类型和密码验证。
@@ -7,14 +7,16 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::KamiTopupRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::KamiTopupRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 /// 卡密信息结构体
 struct KamiInfo {
@@ -41,7 +43,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -51,7 +53,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let topup_req = match req.parse_json::<KamiTopupRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -62,14 +64,16 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // 参数验证
     let mut validator = Validator::new();
-    validator
-        .wordnum("token", &topup_req.token, 32, 32)
-        .reg("kami", &topup_req.kami, "[a-zA-Z0-9]{16,32}");
-    
+    validator.wordnum("token", &topup_req.token, 32, 32).reg(
+        "kami",
+        &topup_req.kami,
+        "[a-zA-Z0-9]{16,32}",
+    );
+
     if let Some(ref pwd) = topup_req.kami_pwd {
         validator.password("kami_pwd", pwd, 5, 18);
     }
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -93,22 +97,28 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     let current_time = chrono::Utc::now().timestamp();
     let ip = get_client_ip(req);
     let redis_util = &app_state.redis_util;
-    
+
     // 检查IP失败次数（防刷）- 使用优化的 MD5 计算
     let ip_hash_bytes = md5_hex(ip.as_bytes());
     let ip_hash = md5_to_str(&ip_hash_bytes);
     let fail_ip_key = format!("fail_ip_{}", ip_hash);
-    
+
     if let Some(redis_pool) = app_state.redis_pool.as_ref()
         && let Ok(Some(fail_time_str)) = redis_util.get(redis_pool, &fail_ip_key).await
-            && let Ok(fail_time) = fail_time_str.parse::<i64>()
-                && fail_time > current_time {
-                    render_error(res, 
-                        format!("由于您操作失败次数过多，该功能已锁定，请{}秒后重试", fail_time - current_time), 
-                        201, app_key
-                    );
-                    return;
-                }
+        && let Ok(fail_time) = fail_time_str.parse::<i64>()
+        && fail_time > current_time
+    {
+        render_error(
+            res,
+            format!(
+                "由于您操作失败次数过多，该功能已锁定，请{}秒后重试",
+                fail_time - current_time
+            ),
+            201,
+            app_key,
+        );
+        return;
+    }
 
     // 根据应用类型查询卡密
     let kami_info = if app_info.app_type == "user" {
@@ -121,20 +131,29 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
         Ok(Some(kami)) => {
             // 验证密码 - 使用优化的 MD5 计算
             if let Some(ref pwd) = kami.password
-                && !pwd.is_empty() {
-                    let pwd_valid = topup_req.kami_pwd.as_ref()
-                        .map(|p| {
-                            let pwd_hash_bytes = md5_hex(p.as_bytes());
-                            md5_to_str(&pwd_hash_bytes) == *pwd
-                        })
-                        .unwrap_or(false);
-                    
-                    if !pwd_valid {
-                        increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
-                        render_error(res, "未填写卡密密码或卡密密码有误", 140, app_key);
-                        return;
-                    }
+                && !pwd.is_empty()
+            {
+                let pwd_valid = topup_req
+                    .kami_pwd
+                    .as_ref()
+                    .map(|p| {
+                        let pwd_hash_bytes = md5_hex(p.as_bytes());
+                        md5_to_str(&pwd_hash_bytes) == *pwd
+                    })
+                    .unwrap_or(false);
+
+                if !pwd_valid {
+                    increment_fail_count(
+                        redis_util,
+                        app_state.redis_pool.as_ref(),
+                        ip_hash,
+                        current_time,
+                    )
+                    .await;
+                    render_error(res, "未填写卡密密码或卡密密码有误", 140, app_key);
+                    return;
                 }
+            }
 
             // 卡密版检查：除了设备增绑卡只能同类型的卡密才能充值
             if app_info.app_type != "user" && user_type == "kami" {
@@ -147,11 +166,15 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
 
             // 检查卡密状态
             if let Some(ban_time) = kami.ban
-                && ban_time > current_time {
-                    let msg = kami.ban_msg.clone().unwrap_or_else(|| "卡密已被禁用".to_string());
-                    render_error(res, msg, 143, app_key);
-                    return;
-                }
+                && ban_time > current_time
+            {
+                let msg = kami
+                    .ban_msg
+                    .clone()
+                    .unwrap_or_else(|| "卡密已被禁用".to_string());
+                render_error(res, msg, 143, app_key);
+                return;
+            }
 
             // 检查是否已使用
             if kami.use_id.is_some() {
@@ -227,7 +250,13 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             }
         }
         Ok(None) => {
-            increment_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash, current_time).await;
+            increment_fail_count(
+                redis_util,
+                app_state.redis_pool.as_ref(),
+                ip_hash,
+                current_time,
+            )
+            .await;
             render_error(res, "充值卡密不存在", 140, app_key);
         }
         Err(e) => {
@@ -238,38 +267,72 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
 }
 
 /// 查询用户版卡密
-async fn query_user_cdk(pool: &sqlx::MySqlPool, kami: &str, appid: u64, current_time: i64) -> Result<Option<KamiInfo>, sqlx::Error> {
+async fn query_user_cdk(
+    pool: &sqlx::MySqlPool,
+    kami: &str,
+    appid: u64,
+    current_time: i64,
+) -> Result<Option<KamiInfo>, sqlx::Error> {
     let result = sqlx::query_as::<_, (i64, String, i64, Option<String>, Option<i64>, Option<String>, String)>(
         "SELECT id, type, val, password, use_uid, state, cardNo FROM u_cdk_user WHERE cardNo = ? AND appid = ?"
     )
     .bind(kami).bind(appid)
     .fetch_optional(pool).await?;
 
-    Ok(result.map(|(id, kami_type, val, password, use_uid, state, card_no)| KamiInfo {
-        id, kami_type, val, password, use_id: use_uid, use_time: None,
-        ban: if state == Some("n".to_string()) { Some(current_time + 31536000) } else { None },
-        ban_msg: None, card_no,
-    }))
+    Ok(result.map(
+        |(id, kami_type, val, password, use_uid, state, card_no)| KamiInfo {
+            id,
+            kami_type,
+            val,
+            password,
+            use_id: use_uid,
+            use_time: None,
+            ban: if state == Some("n".to_string()) {
+                Some(current_time + 31536000)
+            } else {
+                None
+            },
+            ban_msg: None,
+            card_no,
+        },
+    ))
 }
 
 /// 查询卡密版卡密
-async fn query_kami_cdk(pool: &sqlx::MySqlPool, kami: &str, appid: u64) -> Result<Option<KamiInfo>, sqlx::Error> {
+async fn query_kami_cdk(
+    pool: &sqlx::MySqlPool,
+    kami: &str,
+    appid: u64,
+) -> Result<Option<KamiInfo>, sqlx::Error> {
     let result = sqlx::query_as::<_, (i64, String, i64, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, String)>(
         "SELECT id, type, val, password, use_id, use_time, ban, ban_msg, cardNo FROM u_cdk_kami WHERE cardNo = ? AND appid = ?"
     )
     .bind(kami).bind(appid)
     .fetch_optional(pool).await?;
 
-    Ok(result.map(|(id, kami_type, val, password, use_id, use_time, ban, ban_msg, card_no)| KamiInfo {
-        id, kami_type, val, password, use_id, use_time, ban, ban_msg, card_no,
-    }))
+    Ok(result.map(
+        |(id, kami_type, val, password, use_id, use_time, ban, ban_msg, card_no)| KamiInfo {
+            id,
+            kami_type,
+            val,
+            password,
+            use_id,
+            use_time,
+            ban,
+            ban_msg,
+            card_no,
+        },
+    ))
 }
 
 /// 用户版充值处理
 async fn process_user_topup(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
-    uid: u64, appid: u64, kami: &KamiInfo,
-    user_vip: i64, current_time: i64,
+    uid: u64,
+    appid: u64,
+    kami: &KamiInfo,
+    user_vip: i64,
+    current_time: i64,
 ) -> Result<(), String> {
     match kami.kami_type.as_str() {
         "vip" => {
@@ -284,18 +347,30 @@ async fn process_user_topup(
                 current_time + kami.val
             };
             sqlx::query("UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?")
-                .bind(new_vip).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新VIP失败: {}", e))?;
+                .bind(new_vip)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新VIP失败: {}", e))?;
         }
         "fen" => {
             sqlx::query("UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?")
-                .bind(kami.val).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新积分失败: {}", e))?;
+                .bind(kami.val)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新积分失败: {}", e))?;
         }
         "addsn" => {
             sqlx::query("UPDATE u_user SET sn_max = sn_max + ? WHERE id = ? AND appid = ?")
-                .bind(kami.val).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新设备数失败: {}", e))?;
+                .bind(kami.val)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新设备数失败: {}", e))?;
         }
         _ => return Err("卡密类型错误".to_string()),
     }
@@ -305,15 +380,19 @@ async fn process_user_topup(
 /// 卡密版充值处理
 async fn process_kami_user_topup(
     tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
-    uid: u64, appid: u64, kami: &KamiInfo,
+    uid: u64,
+    appid: u64,
+    kami: &KamiInfo,
     current_time: i64,
 ) -> Result<(), String> {
     // 获取卡密用户的当前VIP
     let kami_vip = sqlx::query_as::<_, (Option<i64>,)>(
-        "SELECT vip_exp FROM u_cdk_kami WHERE id = ? AND appid = ?"
+        "SELECT vip_exp FROM u_cdk_kami WHERE id = ? AND appid = ?",
     )
-    .bind(uid).bind(appid)
-    .fetch_optional(&mut **tx).await
+    .bind(uid)
+    .bind(appid)
+    .fetch_optional(&mut **tx)
+    .await
     .map(|r| r.map(|row| row.0.unwrap_or(0)).unwrap_or(0))
     .map_err(|e| format!("查询失败: {}", e))?;
 
@@ -330,18 +409,30 @@ async fn process_kami_user_topup(
                 current_time + kami.val
             };
             sqlx::query("UPDATE u_cdk_kami SET vip_exp = ? WHERE id = ? AND appid = ?")
-                .bind(new_vip).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新VIP失败: {}", e))?;
+                .bind(new_vip)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新VIP失败: {}", e))?;
         }
         "fen" => {
             sqlx::query("UPDATE u_cdk_kami SET val = val + ? WHERE id = ? AND appid = ?")
-                .bind(kami.val).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新积分失败: {}", e))?;
+                .bind(kami.val)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新积分失败: {}", e))?;
         }
         "addsn" => {
             sqlx::query("UPDATE u_cdk_kami SET sn_max = sn_max + ? WHERE id = ? AND appid = ?")
-                .bind(kami.val).bind(uid).bind(appid)
-                .execute(&mut **tx).await.map_err(|e| format!("更新设备数失败: {}", e))?;
+                .bind(kami.val)
+                .bind(uid)
+                .bind(appid)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| format!("更新设备数失败: {}", e))?;
         }
         _ => return Err("卡密类型错误".to_string()),
     }
@@ -351,8 +442,10 @@ async fn process_kami_user_topup(
 /// 获取用户的卡密类型
 async fn get_user_kami_type(pool: &sqlx::MySqlPool, uid: u64, appid: u64) -> String {
     sqlx::query_as::<_, (String,)>("SELECT type FROM u_cdk_kami WHERE id = ? AND appid = ?")
-        .bind(uid).bind(appid)
-        .fetch_optional(pool).await
+        .bind(uid)
+        .bind(appid)
+        .fetch_optional(pool)
+        .await
         .map(|r| r.map(|r| r.0).unwrap_or_else(|| "vip".to_string()))
         .unwrap_or_else(|_| "vip".to_string())
 }
@@ -367,17 +460,27 @@ async fn increment_fail_count(
     if let Some(pool) = redis_pool {
         // 预分配字符串容量
         let mut fail_ip_num_key = String::with_capacity(32);
-        let _ = std::fmt::write(&mut fail_ip_num_key, format_args!("fail_ip_{}_num", ip_hash));
-        
+        let _ = std::fmt::write(
+            &mut fail_ip_num_key,
+            format_args!("fail_ip_{}_num", ip_hash),
+        );
+
         let mut fail_ip_key = String::with_capacity(24);
         let _ = std::fmt::write(&mut fail_ip_key, format_args!("fail_ip_{}", ip_hash));
-        
-        let num: i32 = redis_util.get(pool, &fail_ip_num_key).await
-            .ok().flatten().and_then(|s| s.parse().ok()).unwrap_or(0);
-        
+
+        let num: i32 = redis_util
+            .get(pool, &fail_ip_num_key)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+
         let new_num = num + 1;
-        let _ = redis_util.set(pool, &fail_ip_num_key, &new_num.to_string(), Some(600)).await;
-        
+        let _ = redis_util
+            .set(pool, &fail_ip_num_key, &new_num.to_string(), Some(600))
+            .await;
+
         let (lock_time, ttl) = if new_num >= 10 {
             (current_time + 1800, 1800)
         } else if new_num >= 5 {
@@ -385,6 +488,8 @@ async fn increment_fail_count(
         } else {
             return;
         };
-        let _ = redis_util.set(pool, &fail_ip_key, &lock_time.to_string(), Some(ttl)).await;
+        let _ = redis_util
+            .set(pool, &fail_ip_key, &lock_time.to_string(), Some(ttl))
+            .await;
     }
 }

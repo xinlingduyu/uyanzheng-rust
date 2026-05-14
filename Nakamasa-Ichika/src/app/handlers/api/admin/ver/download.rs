@@ -16,7 +16,7 @@ struct KamiRequestParam {
 #[handler]
 pub async fn index(req: &mut Request, _depot: &mut Depot, res: &mut Response) {
     let param = req.query::<String>("param").unwrap_or_default();
-    
+
     if param.is_empty() {
         res.render(Json(ApiResponse::<()>::error("缺少参数", 201)));
         return;

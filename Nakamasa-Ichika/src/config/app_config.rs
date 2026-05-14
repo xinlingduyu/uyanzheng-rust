@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct AppConfig {
@@ -25,7 +25,7 @@ impl AppConfig {
     pub fn host(&self) -> &str {
         &self.host
     }
-    
+
     /// 获取加密密钥（app.code）
     pub fn code(&self) -> &str {
         &self.code
@@ -35,7 +35,7 @@ impl AppConfig {
     pub fn token_key(&self) -> String {
         self.admin.decrypted_token_key(&self.code)
     }
-    
+
     /// 获取原始 token_key（可能加密）
     pub fn raw_token_key(&self) -> &str {
         &self.admin.token_key
@@ -60,7 +60,7 @@ impl AppConfig {
     pub fn admin(&self) -> &AdminConfig {
         &self.admin
     }
-    
+
     /// 获取解密后的 admin keys
     pub fn admin_keys(&self) -> String {
         self.admin.decrypted_keys(&self.code)
@@ -80,7 +80,7 @@ impl AdminConfig {
     pub fn keys(&self) -> &str {
         &self.keys
     }
-    
+
     /// 获取解密后的 keys
     pub fn decrypted_keys(&self, secret: &str) -> String {
         decrypt_if_needed(&self.keys, secret).unwrap_or_else(|_| self.keys.clone())
@@ -90,17 +90,17 @@ impl AdminConfig {
     pub fn token_key(&self) -> &str {
         &self.token_key
     }
-    
+
     /// 获取解密后的 token_key
     pub fn decrypted_token_key(&self, secret: &str) -> String {
         decrypt_if_needed(&self.token_key, secret).unwrap_or_else(|_| self.token_key.clone())
     }
-    
+
     /// 检查 keys 是否已加密
     pub fn is_keys_encrypted(&self) -> bool {
         is_encrypted(&self.keys)
     }
-    
+
     /// 检查 token_key 是否已加密
     pub fn is_token_key_encrypted(&self) -> bool {
         is_encrypted(&self.token_key)

@@ -1,5 +1,5 @@
 //! 商品列表
-//! 
+//!
 //! 功能说明：
 //! 获取应用的商品列表，用于在线充值展示可选商品。
 //!
@@ -11,11 +11,13 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
+use crate::app::middleware::app_context::AppInfo;
 use crate::app::models::requests::GoodsRequest;
 use crate::app::models::responses::{GoodsItem, GoodsListResponse};
-use crate::app::middleware::app_context::AppInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::core::AppState;
 
 /// 默认每页数量
 const PAGE_SIZE: u32 = 10;
@@ -29,7 +31,7 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -61,12 +63,11 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let offset = page.saturating_sub(1) * PAGE_SIZE;
 
     // 查询数据总量
-    let count_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT COUNT(*) FROM u_goods WHERE state = 'y' AND appid = ?"
-    )
-    .bind(appid)
-    .fetch_one(app_state.get_db())
-    .await;
+    let count_result =
+        sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM u_goods WHERE state = 'y' AND appid = ?")
+            .bind(appid)
+            .fetch_one(app_state.get_db())
+            .await;
 
     let data_total = match count_result {
         Ok(row) => row.0 as u32,
@@ -92,17 +93,24 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(rows) => {
-            let goods_list: Vec<GoodsItem> = rows.into_iter().map(|(id, name, r#type, money, blurb)| {
-                GoodsItem { id, name, r#type, money, blurb }
-            }).collect();
-            
+            let goods_list: Vec<GoodsItem> = rows
+                .into_iter()
+                .map(|(id, name, r#type, money, blurb)| GoodsItem {
+                    id,
+                    name,
+                    r#type,
+                    money,
+                    blurb,
+                })
+                .collect();
+
             let response = GoodsListResponse {
                 currentPage: page,
                 dataTotal: data_total,
                 list: goods_list,
                 pageTotal: page_total,
             };
-            
+
             render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Err(e) => {

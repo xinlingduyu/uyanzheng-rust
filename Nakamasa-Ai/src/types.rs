@@ -1,8 +1,8 @@
 //! AI 相关类型定义
 
+use crate::skills::Skill;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::skills::Skill;
 
 /// AI 提供商类型
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

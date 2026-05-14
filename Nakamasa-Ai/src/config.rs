@@ -198,7 +198,7 @@ impl PresetConfigs {
 pub fn from_env() -> Result<AiConfig> {
     let provider_str = std::env::var("AI_PROVIDER")
         .map_err(|_| crate::error::AiError::ConfigError("AI_PROVIDER not set".to_string()))?;
-    
+
     let provider_type = match provider_str.to_lowercase().as_str() {
         "openai" => ProviderType::OpenAI,
         "claude" => ProviderType::Claude,
@@ -214,7 +214,7 @@ pub fn from_env() -> Result<AiConfig> {
             return Err(crate::error::AiError::ConfigError(format!(
                 "Unknown provider: {}",
                 provider_str
-            )))
+            )));
         }
     };
 
@@ -226,26 +226,26 @@ pub fn from_env() -> Result<AiConfig> {
     if let Ok(api_base) = std::env::var("AI_API_BASE") {
         builder = builder.api_base(api_base);
     }
-    
+
     if let Ok(api_key) = std::env::var("AI_API_KEY") {
         builder = builder.api_key(api_key);
     } else if matches!(provider_type, ProviderType::Vllm | ProviderType::Sglang) {
         // VLLM/SGLang 默认不需要 key，但环境变量可以覆盖
         builder = builder.api_key("EMPTY");
     }
-    
+
     if let Ok(temp) = std::env::var("AI_TEMPERATURE") {
         if let Ok(t) = temp.parse::<f32>() {
             builder = builder.temperature(t);
         }
     }
-    
+
     if let Ok(top_p) = std::env::var("AI_TOP_P") {
         if let Ok(p) = top_p.parse::<f32>() {
             builder = builder.top_p(p);
         }
     }
-    
+
     if let Ok(max_tok) = std::env::var("AI_MAX_TOKENS") {
         if let Ok(m) = max_tok.parse::<u32>() {
             builder = builder.max_tokens(m);
@@ -281,7 +281,7 @@ mod tests {
             .api_key("test-key")
             .temperature(0.5)
             .build();
-        
+
         assert_eq!(config.provider_type, ProviderType::OpenAI);
         assert_eq!(config.model, "gpt-4");
         assert_eq!(config.api_key, "test-key");

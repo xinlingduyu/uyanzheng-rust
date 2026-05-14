@@ -14,7 +14,7 @@ impl I18nConfig {
     pub fn default_language(&self) -> &str {
         self.default_language.as_deref().unwrap_or("en")
     }
-    
+
     pub fn supported_languages(&self) -> Vec<&str> {
         self.supported_languages
             .as_deref()
@@ -23,19 +23,19 @@ impl I18nConfig {
             .map(|s| s.as_str())
             .collect()
     }
-    
+
     pub fn resources_path(&self) -> &str {
         self.resources_path.as_deref().unwrap_or("locales")
     }
-    
+
     pub fn cookie_name(&self) -> &str {
         self.cookie_name.as_deref().unwrap_or("lang")
     }
-    
+
     pub fn query_param(&self) -> &str {
         self.query_param.as_deref().unwrap_or("lang")
     }
-    
+
     pub fn header_name(&self) -> &str {
         self.header_name.as_deref().unwrap_or("Accept-Language")
     }

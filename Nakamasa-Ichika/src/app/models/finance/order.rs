@@ -1,6 +1,6 @@
-use sqlx::FromRow;
-use serde::{Serialize, Deserialize};
 use super::super::common::enums::{OrderType, PayType};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
 /// 订单模型 - 对应 u_order 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]

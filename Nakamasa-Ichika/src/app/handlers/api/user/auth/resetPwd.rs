@@ -1,5 +1,5 @@
 //! 重置密码
-//! 
+//!
 //! 功能说明：
 //! 用户忘记密码时通过邮箱或手机验证码重置密码。
 //!
@@ -10,17 +10,19 @@
 //! 4. 更新用户密码（MD5加密）
 //! 5. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
-use crate::core::AppState;
-use crate::core::middleware::get_client_ip;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::ResetPwdRequest;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::models::requests::ResetPwdRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::md5_optimize::{md5_hex, md5_to_str};
+use crate::core::middleware::get_client_ip;
 
 #[handler]
 pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     // 获取应用信息（零拷贝）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -43,7 +45,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let app_key = app_info.app_key.as_str();
     let appid = app_info.id;
     let vc_time = app_info.vc_time;
-    
+
     let reset_req = match req.parse_json::<ResetPwdRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -61,11 +63,11 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
     } else {
         validator.phone("account", account);
     }
-    
+
     validator
         .password("new_password", &reset_req.new_password, 6, 18)
         .int("code", reset_req.code as i64, 4, 6);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -97,7 +99,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
     .bind(appid)
     .execute(app_state.get_db())
     .await;
-    
+
     match verify_result {
         Ok(result) => {
             if result.rows_affected() < 1 {
@@ -116,7 +118,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: if(!$Ures)$this->out->e(129);
     // 查询用户
     let user_result = sqlx::query_as::<_, (i64, String)>(
-        "SELECT id, password FROM u_user WHERE (phone = ? OR email = ?) AND appid = ?"
+        "SELECT id, password FROM u_user WHERE (phone = ? OR email = ?) AND appid = ?",
     )
     .bind(&reset_req.account)
     .bind(&reset_req.account)
@@ -130,15 +132,13 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
             // 使用优化的 MD5 计算
             let new_hash_bytes = md5_hex(reset_req.new_password.as_bytes());
             let new_hash = md5_to_str(&new_hash_bytes).to_string();
-            
-            let result = sqlx::query(
-                "UPDATE u_user SET password = ? WHERE id = ? AND appid = ?"
-            )
-            .bind(&new_hash)
-            .bind(uid)
-            .bind(appid)
-            .execute(app_state.get_db())
-            .await;
+
+            let result = sqlx::query("UPDATE u_user SET password = ? WHERE id = ? AND appid = ?")
+                .bind(&new_hash)
+                .bind(uid)
+                .bind(appid)
+                .execute(app_state.get_db())
+                .await;
 
             match result {
                 Ok(r) => {
@@ -161,7 +161,8 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
                         // PHP: $this->__delToken($Ures['id']);
                         // 删除该用户的所有token（踢下线）
                         if let Some(redis_pool) = app_state.redis_pool.as_ref() {
-                            delete_all_user_tokens(&app_state.redis_util, redis_pool, appid, uid).await;
+                            delete_all_user_tokens(&app_state.redis_util, redis_pool, appid, uid)
+                                .await;
                         }
 
                         // PHP: $this->out->e(200,"重置密码成功");
@@ -207,12 +208,12 @@ async fn delete_all_user_tokens(
 ) {
     // PHP: $this->tokenPre = $this->appConfig['USER_TOKEN_PRE'].$this->app['app_type'].'_'.$this->app['id'].'_';
     // token前缀格式: user_{appid}_
-    
+
     // PHP: $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
     let pattern = format!("user_{}_online_{}_*", appid, uid);
-    
+
     tracing::debug!("清除用户 {} 的所有token, pattern: {}", uid, pattern);
-    
+
     // 使用scan_keys查找所有匹配的键
     match redis_util.scan_keys(redis_pool, &pattern, Some(100)).await {
         Ok(keys) => {
@@ -225,7 +226,7 @@ async fn delete_all_user_tokens(
                         tracing::debug!("删除token失败: {}, key: {}", e, token_key);
                     }
                 }
-                
+
                 // PHP: $this->redis->del($key);
                 if let Err(e) = redis_util.del(redis_pool, key).await {
                     tracing::debug!("删除online key失败: {}, key: {}", e, key);

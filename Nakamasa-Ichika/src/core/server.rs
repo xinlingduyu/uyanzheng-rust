@@ -1,18 +1,18 @@
 //! HTTP 服务器模块
-//! 
+//!
 //! 提供高性能、安全的 HTTP/HTTPS/QUIC 服务器配置
 //! 支持HTTP/HTTPS切换和自定义证书路径
 
-use salvo::Router;
-use salvo::prelude::*;
-use salvo::logging::Logger;
-use salvo::conn::rustls::{RustlsConfig, Keycert};
-use salvo::affix_state;
-use std::sync::Arc;
-use std::collections::HashMap;
-use crate::core::{AppState, I18nMiddleware, terminal_t, t_with_args};
-use crate::config::ServerConfig;
 use crate::config;
+use crate::config::ServerConfig;
+use crate::core::{AppState, I18nMiddleware, t_with_args, terminal_t};
+use salvo::Router;
+use salvo::affix_state;
+use salvo::conn::rustls::{Keycert, RustlsConfig};
+use salvo::logging::Logger;
+use salvo::prelude::*;
+use std::collections::HashMap;
+use std::sync::Arc;
 
 /// 内置证书（编译时嵌入二进制文件）
 const BUILTIN_CERT: &[u8] = include_bytes!("../../certs/ssl.crt");
@@ -29,7 +29,7 @@ impl Server {
     }
 
     /// 加载TLS证书
-    /// 
+    ///
     /// 优先级：
     /// 1. 配置文件中指定的自定义证书路径
     /// 2. 内置证书（编译时嵌入）
@@ -38,12 +38,14 @@ impl Server {
         match (self.config.cert_path(), self.config.key_path()) {
             (Some(cert_path), Some(key_path)) => {
                 tracing::info!("加载自定义证书: cert={}, key={}", cert_path, key_path);
-                
-                let cert = tokio::fs::read(cert_path).await
+
+                let cert = tokio::fs::read(cert_path)
+                    .await
                     .map_err(|e| anyhow::anyhow!("读取证书文件失败: {}", e))?;
-                let key = tokio::fs::read(key_path).await
+                let key = tokio::fs::read(key_path)
+                    .await
                     .map_err(|e| anyhow::anyhow!("读取私钥文件失败: {}", e))?;
-                
+
                 tracing::info!("自定义证书加载成功");
                 Ok((cert, key))
             }
@@ -75,16 +77,13 @@ impl Server {
             tracing::info!("{}", terminal_t("tls.loading_certs"));
             let (cert, key) = self.load_certificates().await?;
             tracing::info!("{}", terminal_t("tls.loaded"));
-            
+
             tracing::info!("{}", terminal_t("tls.configuring"));
-            let rustls_config = RustlsConfig::new(
-                Keycert::new()
-                    .cert(cert.as_slice())
-                    .key(key.as_slice())
-            );
-        
+            let rustls_config =
+                RustlsConfig::new(Keycert::new().cert(cert.as_slice()).key(key.as_slice()));
+
             tracing::info!("{}", terminal_t("server.creating_listener"));
-            
+
             // 根据平台选择监听方式
             #[cfg(target_os = "android")]
             let acceptor = {
@@ -94,23 +93,24 @@ impl Server {
                     .bind()
                     .await
             };
-            
+
             #[cfg(not(target_os = "android"))]
             let acceptor = {
                 tracing::info!("服务器模式: TCP + TLS (HTTPS) + QUIC");
-                let tcp_listener = TcpListener::new(("0.0.0.0", port))
-                    .rustls(rustls_config.clone());
-                
+                let tcp_listener =
+                    TcpListener::new(("0.0.0.0", port)).rustls(rustls_config.clone());
+
                 tracing::info!("{}", terminal_t("quic.enabling"));
-                let quic_config = rustls_config.build_quinn_config()
+                let quic_config = rustls_config
+                    .build_quinn_config()
                     .map_err(|e| anyhow::anyhow!("构建QUIC配置失败: {}", e))?;
-                
+
                 QuinnListener::new(quic_config, ("0.0.0.0", port))
                     .join(tcp_listener)
                     .bind()
                     .await
             };
-            
+
             // 输出监听信息
             let port_str = port.to_string();
             let mut args = HashMap::new();
@@ -118,29 +118,23 @@ impl Server {
             tracing::info!("HTTPS服务器启动在端口 {}", port);
             tracing::info!("{}", t_with_args("server.listening", &args));
             tracing::info!("{}", terminal_t("server.ready"));
-            
-            salvo::prelude::Server::new(acceptor)
-                .serve(service)
-                .await;
+
+            salvo::prelude::Server::new(acceptor).serve(service).await;
         } else {
             // HTTP 模式（无TLS）
             tracing::info!("HTTP模式: 仅TCP（无TLS加密）");
             tracing::info!("{}", terminal_t("server.creating_listener"));
-            
-            let acceptor = TcpListener::new(("0.0.0.0", port))
-                .bind()
-                .await;
-            
+
+            let acceptor = TcpListener::new(("0.0.0.0", port)).bind().await;
+
             let port_str = port.to_string();
             let mut args = HashMap::new();
             args.insert("port", port_str.as_str());
             tracing::info!("HTTP服务器启动在端口 {}", port);
             tracing::info!("{}", t_with_args("server.listening", &args));
             tracing::info!("{}", terminal_t("server.ready"));
-            
-            salvo::prelude::Server::new(acceptor)
-                .serve(service)
-                .await;
+
+            salvo::prelude::Server::new(acceptor).serve(service).await;
         }
 
         Ok(())
@@ -178,41 +172,46 @@ impl ServerState {
             active_connections: std::sync::atomic::AtomicU64::new(0),
         }
     }
-    
+
     /// 记录请求
     #[inline]
     pub fn record_request(&self) {
-        self.request_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.request_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-    
+
     /// 增加活跃连接
     #[inline]
     pub fn add_connection(&self) {
-        self.active_connections.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.active_connections
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
-    
+
     /// 减少活跃连接
     #[inline]
     pub fn remove_connection(&self) {
-        self.active_connections.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.active_connections
+            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
-    
+
     /// 获取运行时间（秒）
     #[inline]
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
-    
+
     /// 获取请求总数
     #[inline]
     pub fn total_requests(&self) -> u64 {
-        self.request_count.load(std::sync::atomic::Ordering::Relaxed)
+        self.request_count
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
-    
+
     /// 获取活跃连接数
     #[inline]
     pub fn current_connections(&self) -> u64 {
-        self.active_connections.load(std::sync::atomic::Ordering::Relaxed)
+        self.active_connections
+            .load(std::sync::atomic::Ordering::Relaxed)
     }
 }
 

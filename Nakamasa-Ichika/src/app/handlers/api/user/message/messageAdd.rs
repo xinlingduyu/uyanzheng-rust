@@ -1,19 +1,21 @@
 //! 新增留言
-//! 
+//!
 //! 功能说明：
 //! 用户提交新的留言工单，支持标题和内容。
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::MessageAddRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::MessageAddRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -24,7 +26,7 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -49,7 +51,7 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
         .wordnum("token", &add_req.token, 32, 32)
         .string("title", &add_req.title, 4, 128)
         .string("content", &add_req.content, 4, 255);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -72,9 +74,11 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     // 检查是否已提交过相同标题的留言
     let check_result = sqlx::query_as::<_, (i64,)>(
-        "SELECT id FROM u_message WHERE uid = ? AND title = ? AND appid = ?"
+        "SELECT id FROM u_message WHERE uid = ? AND title = ? AND appid = ?",
     )
-    .bind(uid).bind(&add_req.title).bind(appid)
+    .bind(uid)
+    .bind(&add_req.title)
+    .bind(appid)
     .fetch_optional(app_state.get_db())
     .await;
 
@@ -92,7 +96,11 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
     }
 
     // 处理文件字段
-    let file_json = add_req.file.as_ref().filter(|f| f.is_array()).map(|f| f.to_string());
+    let file_json = add_req
+        .file
+        .as_ref()
+        .filter(|f| f.is_array())
+        .map(|f| f.to_string());
 
     // 插入留言
     let insert_result = if let Some(file_str) = file_json {
@@ -116,11 +124,16 @@ pub async fn message_add(req: &mut Request, depot: &mut Depot, res: &mut Respons
             if result.rows_affected() > 0 {
                 // 记录日志
                 let _ = sqlx::query(
-                    "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
                 )
-                .bind(user_type).bind(uid).bind("messageAdd")
-                .bind(current_time).bind(ip).bind(appid)
-                .execute(app_state.get_db()).await;
+                .bind(user_type)
+                .bind(uid)
+                .bind("messageAdd")
+                .bind(current_time)
+                .bind(ip)
+                .bind(appid)
+                .execute(app_state.get_db())
+                .await;
 
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {

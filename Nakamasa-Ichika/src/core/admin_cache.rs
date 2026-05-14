@@ -1,14 +1,14 @@
 //! 管理员缓存服务
-//! 
+//!
 //! 封装管理员信息的缓存逻辑，提供简洁的 API：
 //! - 自动处理缓存命中/未命中
 //! - 自动同步数据库和缓存
 //! - 支持密码变更检测和缓存失效
 
+use Nakamasa_utils::{CacheConfig, EvictionPolicy, ShardedCacheV2};
+use sqlx::MySqlPool;
 use std::sync::Arc;
 use std::time::Duration;
-use sqlx::MySqlPool;
-use Nakamasa_utils::{ShardedCacheV2, CacheConfig, EvictionPolicy};
 
 /// 管理员缓存条目
 #[derive(Clone, Debug)]
@@ -30,7 +30,7 @@ impl AdminData {
     pub fn is_active(&self) -> bool {
         self.state == "y"
     }
-    
+
     /// 获取权限列表
     #[inline]
     pub fn auth_list(&self) -> serde_json::Value {
@@ -59,12 +59,12 @@ impl<T> CacheResult<T> {
     pub fn is_hit(&self) -> bool {
         matches!(self, CacheResult::Hit(_))
     }
-    
+
     #[inline]
     pub fn is_miss(&self) -> bool {
         matches!(self, CacheResult::Miss(_))
     }
-    
+
     #[inline]
     pub fn data(&self) -> Option<&T> {
         match self {
@@ -72,7 +72,7 @@ impl<T> CacheResult<T> {
             _ => None,
         }
     }
-    
+
     #[inline]
     pub fn into_data(self) -> Option<T> {
         match self {
@@ -145,14 +145,14 @@ impl AdminCacheService {
             db: None,
         }
     }
-    
+
     /// 通过ID获取管理员（优先缓存）
     pub async fn get_by_id(&self, id: u64) -> CacheResult<AdminData> {
         // 尝试从缓存获取
         if let Some(data) = self.cache.get(&id) {
             return CacheResult::Hit(data);
         }
-        
+
         // 缓存未命中，从数据库加载
         match self.load_from_db_by_id(id).await {
             Ok(Some(data)) => {
@@ -164,7 +164,7 @@ impl AdminCacheService {
             Err(e) => CacheResult::Error(e),
         }
     }
-    
+
     /// 通过用户名获取管理员（优先缓存）
     pub async fn get_by_name(&self, username: &str) -> CacheResult<AdminData> {
         // 尝试从用户名索引获取ID
@@ -175,7 +175,7 @@ impl AdminCacheService {
                 return CacheResult::Hit(data);
             }
         }
-        
+
         // 缓存未命中，从数据库加载
         match self.load_from_db_by_name(username).await {
             Ok(Some(data)) => {
@@ -188,20 +188,26 @@ impl AdminCacheService {
             Err(e) => CacheResult::Error(e),
         }
     }
-    
+
     /// 验证登录（用户名 + 密码）
     /// 返回 (缓存结果, 管理员数据)
-    pub async fn verify_login(&self, username: &str, password_hash: &str) -> CacheResult<AdminData> {
+    pub async fn verify_login(
+        &self,
+        username: &str,
+        password_hash: &str,
+    ) -> CacheResult<AdminData> {
         // 先尝试从缓存验证
         let username_key = username.to_string();
         if let Some(id) = self.name_index.get(&username_key)
             && let Some(data) = self.cache.get(&id)
-                && data.password == password_hash && data.is_active() {
-                    return CacheResult::Hit(data);
-                }
-                // 密码不匹配或账号已禁用，移除过期缓存
-                // 但不立即删除，让数据库验证后决定
-        
+            && data.password == password_hash
+            && data.is_active()
+        {
+            return CacheResult::Hit(data);
+        }
+        // 密码不匹配或账号已禁用，移除过期缓存
+        // 但不立即删除，让数据库验证后决定
+
         // 缓存验证失败，查询数据库
         match self.verify_from_db(username, password_hash).await {
             Ok(Some(data)) => {
@@ -214,7 +220,7 @@ impl AdminCacheService {
             Err(e) => CacheResult::Error(e),
         }
     }
-    
+
     /// 验证Token（ID + 密码MD5）
     pub async fn verify_token(&self, id: u64, password_md5: &str) -> CacheResult<AdminData> {
         // 尝试从缓存验证
@@ -229,7 +235,7 @@ impl AdminCacheService {
             // 缓存数据无效，移除
             self.cache.remove(&id);
         }
-        
+
         // 缓存验证失败，查询数据库
         match self.verify_token_from_db(id, password_md5).await {
             Ok(Some(data)) => {
@@ -241,7 +247,7 @@ impl AdminCacheService {
             Err(e) => CacheResult::Error(e),
         }
     }
-    
+
     /// 更新缓存中的管理员数据
     #[inline]
     pub fn update(&self, data: AdminData) {
@@ -250,7 +256,7 @@ impl AdminCacheService {
         self.name_index.set(user, id);
         self.cache.set(id, data);
     }
-    
+
     /// 使缓存失效
     #[inline]
     pub fn invalidate(&self, id: u64) {
@@ -259,7 +265,7 @@ impl AdminCacheService {
         }
         self.cache.remove(&id);
     }
-    
+
     /// 使指定用户名的缓存失效
     #[inline]
     pub fn invalidate_by_name(&self, username: &str) {
@@ -269,14 +275,14 @@ impl AdminCacheService {
         }
         self.name_index.remove(&username_key);
     }
-    
+
     /// 清空所有缓存
     #[inline]
     pub fn clear(&self) {
         self.cache.clear();
         self.name_index.clear();
     }
-    
+
     /// 获取缓存统计
     pub fn stats(&self) -> AdminCacheStats {
         AdminCacheStats {
@@ -284,13 +290,13 @@ impl AdminCacheService {
             name_index_entries: self.name_index.len(),
         }
     }
-    
+
     // ==================== 内部数据库操作 ====================
-    
+
     /// 从数据库加载管理员（通过ID）
     async fn load_from_db_by_id(&self, id: u64) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
-        
+
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
@@ -299,7 +305,7 @@ impl AdminCacheService {
         .bind(id)
         .fetch_optional(db)
         .await;
-        
+
         match result {
             Ok(Some(row)) => Ok(Some(AdminData {
                 id: row.0,
@@ -316,11 +322,11 @@ impl AdminCacheService {
             Err(e) => Err(e.to_string()),
         }
     }
-    
+
     /// 从数据库加载管理员（通过用户名）
     async fn load_from_db_by_name(&self, username: &str) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
-        
+
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
@@ -329,7 +335,7 @@ impl AdminCacheService {
         .bind(username)
         .fetch_optional(db)
         .await;
-        
+
         match result {
             Ok(Some(row)) => Ok(Some(AdminData {
                 id: row.0,
@@ -346,11 +352,15 @@ impl AdminCacheService {
             Err(e) => Err(e.to_string()),
         }
     }
-    
+
     /// 从数据库验证登录
-    async fn verify_from_db(&self, username: &str, password_hash: &str) -> Result<Option<AdminData>, String> {
+    async fn verify_from_db(
+        &self,
+        username: &str,
+        password_hash: &str,
+    ) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
-        
+
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
@@ -360,7 +370,7 @@ impl AdminCacheService {
         .bind(password_hash)
         .fetch_optional(db)
         .await;
-        
+
         match result {
             Ok(Some(row)) => Ok(Some(AdminData {
                 id: row.0,
@@ -377,11 +387,15 @@ impl AdminCacheService {
             Err(e) => Err(e.to_string()),
         }
     }
-    
+
     /// 从数据库验证Token
-    async fn verify_token_from_db(&self, id: u64, password_md5: &str) -> Result<Option<AdminData>, String> {
+    async fn verify_token_from_db(
+        &self,
+        id: u64,
+        password_md5: &str,
+    ) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
-        
+
         let result = sqlx::query_as::<_, (
             u64, String, String, Option<String>, String, Option<String>, Option<String>, bool, Option<u64>
         )>(
@@ -390,7 +404,7 @@ impl AdminCacheService {
         .bind(id)
         .fetch_optional(db)
         .await;
-        
+
         match result {
             Ok(Some(row)) => {
                 // 验证密码MD5
@@ -415,7 +429,7 @@ impl AdminCacheService {
             Err(e) => Err(e.to_string()),
         }
     }
-    
+
     /// 计算密码的MD5
     #[inline]
     fn password_md5(password: &str) -> String {
@@ -435,13 +449,13 @@ pub struct AdminCacheStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cache_result() {
         let hit: CacheResult<i32> = CacheResult::Hit(42);
         assert!(hit.is_hit());
         assert_eq!(hit.data(), Some(&42));
-        
+
         let miss: CacheResult<i32> = CacheResult::Miss(100);
         assert!(miss.is_miss());
         assert_eq!(miss.into_data(), Some(100));

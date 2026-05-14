@@ -1,5 +1,5 @@
 //! 订单查询
-//! 
+//!
 //! 功能说明：
 //! 根据订单号查询单个订单的详细信息。
 //!
@@ -10,15 +10,17 @@
 //! 4. 返回订单详情
 
 use salvo::prelude::*;
-use std::sync::Arc;
 use serde::Serialize;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::OrderQueryRequest;
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::OrderQueryRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
 
 /// 订单查询响应 - 匹配API文档JSON格式
 #[derive(Debug, Serialize)]
@@ -42,7 +44,7 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -52,7 +54,7 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
         }
     };
     let app_key = &app_info.app_key;
-    
+
     let query_req = match req.parse_json::<OrderQueryRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -66,7 +68,7 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let mut validator = Validator::new();
     validator.wordnum("token", &query_req.token, 32, 32);
     validator.wordnum("order", &query_req.order, 13, 32);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -108,12 +110,12 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
                 "2" => 2,
                 _ => 0,
             };
-            
+
             let response = OrderQueryResponse {
                 order_no: row.0,
                 trade_no: row.1.unwrap_or_default(),
                 name: row.2,
-                payment: row.4,  // ptype -> payment
+                payment: row.4, // ptype -> payment
                 money: row.3,
                 add_time: row.5,
                 end_time: row.6.unwrap_or(0),

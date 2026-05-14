@@ -67,5 +67,5 @@ pub mod index;
 // ============================================================================
 
 pub use admin::admin_routes;
-pub use user::routes as user_routes;
 pub use index::{index_routes, install_routes};
+pub use user::routes as user_routes;

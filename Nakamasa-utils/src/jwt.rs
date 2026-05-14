@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -47,12 +47,15 @@ struct Header {
 
 // 预编译的 Header JSON - 避免每次都序列化
 static HEADER_JSON: LazyLock<String> = LazyLock::new(|| {
-    serde_json::to_string(&Header { alg: "HS256".to_string(), typ: "JWT".to_string() }).unwrap()
+    serde_json::to_string(&Header {
+        alg: "HS256".to_string(),
+        typ: "JWT".to_string(),
+    })
+    .unwrap()
 });
 
-static HEADER_BASE64: LazyLock<String> = LazyLock::new(|| {
-    URL_SAFE_NO_PAD.encode(HEADER_JSON.as_bytes())
-});
+static HEADER_BASE64: LazyLock<String> =
+    LazyLock::new(|| URL_SAFE_NO_PAD.encode(HEADER_JSON.as_bytes()));
 
 // 预编译的十六进制字符表
 const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
@@ -171,19 +174,19 @@ impl JwtBuilder {
 
         // 使用预编译的 header base64
         let header_base64 = HEADER_BASE64.as_str();
-        
+
         // 序列化 payload
         let payload_json = serde_json::to_string(&self.claims).map_err(|_| JwtError::JsonError)?;
         let payload_base64 = URL_SAFE_NO_PAD.encode(payload_json.as_bytes());
-        
+
         // 预计算总长度避免多次分配
         let total_len = header_base64.len() + 1 + payload_base64.len() + 1 + 44; // 44 = signature base64 max length
         let mut signing_input = String::with_capacity(total_len);
         use std::fmt::Write;
         let _ = write!(&mut signing_input, "{}.{}", header_base64, payload_base64);
-        
+
         let signature = generate_signature(&signing_input, &self.key)?;
-        
+
         // 复用 signing_input 作为最终输出
         signing_input.push('.');
         signing_input.push_str(&signature);
@@ -199,7 +202,8 @@ impl JwtBuilder {
         // 快速验证 header（直接比较预编译的值）
         if header_b64 != HEADER_BASE64.as_str() {
             let decoded_header = base64_url_decode(header_b64)?;
-            let header: Header = serde_json::from_slice(&decoded_header).map_err(|_| JwtError::JsonError)?;
+            let header: Header =
+                serde_json::from_slice(&decoded_header).map_err(|_| JwtError::JsonError)?;
             if header.alg != "HS256" {
                 return Err(JwtError::AlgorithmMismatch);
             }
@@ -210,7 +214,7 @@ impl JwtBuilder {
         let mut signing_input = String::with_capacity(signing_input_len);
         use std::fmt::Write;
         let _ = write!(&mut signing_input, "{}.{}", header_b64, claims_b64);
-        
+
         let expected_sig = generate_signature(&signing_input, &self.key)?;
         if signature != expected_sig {
             return Err(JwtError::InvalidSignature);
@@ -218,7 +222,8 @@ impl JwtBuilder {
 
         // 解析声明
         let decoded_claims = base64_url_decode(claims_b64)?;
-        let claims: JwtClaims = serde_json::from_slice(&decoded_claims).map_err(|_| JwtError::JsonError)?;
+        let claims: JwtClaims =
+            serde_json::from_slice(&decoded_claims).map_err(|_| JwtError::JsonError)?;
 
         // 验证时间
         let now = current_timestamp();
@@ -262,14 +267,14 @@ fn generate_jti() -> String {
     let mut rng = rand::rngs::ThreadRng::default();
     let mut buf = [0u8; 16];
     rng.fill(&mut buf);
-    
+
     // 栈上构建十六进制字符串
     let mut hex = [0u8; 32];
     for (i, byte) in buf.iter().enumerate() {
         hex[i * 2] = HEX_CHARS[(byte >> 4) as usize];
         hex[i * 2 + 1] = HEX_CHARS[(byte & 0x0f) as usize];
     }
-    
+
     // SAFETY: hex只包含0-9a-f字符，都是有效的UTF-8
     unsafe { String::from_utf8_unchecked(hex.to_vec()) }
 }

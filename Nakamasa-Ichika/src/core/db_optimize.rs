@@ -2,12 +2,12 @@
 //!
 //! 提供数据库操作的优化工具，包括智能连接池、批量插入等。
 
-use sqlx::{Row, Column};
-use std::sync::Arc;
-use tokio::sync::Semaphore;
-use std::collections::HashMap;
-use std::time::Duration;
 use serde::Serialize;
+use sqlx::{Column, Row};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Semaphore;
 
 /// 智能连接池
 ///
@@ -34,14 +34,14 @@ impl SmartPool {
             .acquire_timeout(Duration::from_secs(10))
             .connect(database_url)
             .await?;
-            
+
         Ok(Self {
             pool,
             semaphore: Arc::new(Semaphore::new(max_connections)),
             statement_cache: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
-    
+
     /// 批量插入
     ///
     /// # Arguments
@@ -61,15 +61,15 @@ impl SmartPool {
         if items.is_empty() {
             return Ok(0);
         }
-        
+
         let chunks = items.chunks(batch_size);
         let mut total_affected = 0;
-        
+
         for _chunk in chunks {
             // TODO: 实现批量插入逻辑
             let _sql = format!("INSERT INTO {}", table);
         }
-        
+
         Ok(total_affected)
     }
 }
@@ -89,24 +89,27 @@ impl<'a> FastRow<'a> {
         for (idx, column) in row.columns().iter().enumerate() {
             column_indices.insert(column.name().to_string(), idx);
         }
-        
-        Self { row, column_indices }
+
+        Self {
+            row,
+            column_indices,
+        }
     }
-    
+
     /// 获取字符串字段
     #[inline]
     pub fn get_str(&self, column: &str) -> Option<String> {
         let idx = *self.column_indices.get(column)?;
         self.row.try_get::<String, _>(idx).ok()
     }
-    
+
     /// 获取整数字段
     #[inline]
     pub fn get_i64(&self, column: &str) -> Option<i64> {
         let idx = *self.column_indices.get(column)?;
         self.row.try_get::<i64, _>(idx).ok()
     }
-    
+
     /// 获取布尔字段
     #[inline]
     pub fn get_bool(&self, column: &str) -> Option<bool> {

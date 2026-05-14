@@ -221,19 +221,19 @@ pub mod migration;
 // ============================================================================
 
 // 数据库
-pub use mysql::{init_sqlx_pool, health_check, pool_status, BatchInserter, PoolStatus};
+pub use mysql::{BatchInserter, PoolStatus, health_check, init_sqlx_pool, pool_status};
 
 // Redis
 pub use redis::RedisUtil;
 
 // 缓存
+pub use admin_cache::{AdminCacheService, AdminData, CacheResult};
 pub use cache::*;
 pub use lru_cache::ShardedLruCache;
-pub use admin_cache::{AdminCacheService, AdminData, CacheResult};
 
 // 国际化
 pub use i18n::*;
-pub use terminal_i18n::{t as terminal_t, t_with_args, current_lang, init_terminal_language};
+pub use terminal_i18n::{current_lang, init_terminal_language, t as terminal_t, t_with_args};
 
 // 应用状态
 pub use app_state::AppState;
@@ -242,13 +242,12 @@ pub use app_state::AppState;
 pub use handler_ext::*;
 
 // JavaScript 运行时导出
-pub use quickjs_runtime::{QuickJsRuntime, CloudFunctionContext, execute_cloud_function};
+pub use quickjs_runtime::{CloudFunctionContext, QuickJsRuntime, execute_cloud_function};
 
 // 火焰图性能分析导出
 pub use flamegraph::{
-    start_profiler, stop_profiler, get_status,
-    generate_flamegraph_svg, generate_pprof_data, profile_for_duration,
-    ProfilerStatus,
+    ProfilerStatus, generate_flamegraph_svg, generate_pprof_data, get_status, profile_for_duration,
+    start_profiler, stop_profiler,
 };
 
 // 兼容性别名（保持 API 兼容性）
@@ -259,11 +258,11 @@ pub use quickjs_runtime::QuickJsRuntime as V8Runtime;
 // 核心函数
 // ============================================================================
 
-use crate::config;
 use crate::cli::CliArgs;
+use crate::config;
 use salvo::Router;
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 /// 检查系统是否已安装
 ///
@@ -309,7 +308,7 @@ pub fn is_installed() -> bool {
 pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     // 初始化终端语言（启动时只执行一次）
     init_terminal_language();
-    
+
     // 配置日志输出级别和格式
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
@@ -320,10 +319,14 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
 
     tracing::info!("{}", terminal_t("app.starting"));
     tracing::debug!("Terminal language: {}", current_lang());
-    
+
     // 初始化 GeoIP 数据库
     // 尝试多个可能的路径
-    let geoip_paths = ["GeoLite2-City.mmdb", "data/GeoLite2-City.mmdb", "/data/data/com.termux/files/home/rust/web/GeoLite2-City.mmdb"];
+    let geoip_paths = [
+        "GeoLite2-City.mmdb",
+        "data/GeoLite2-City.mmdb",
+        "/data/data/com.termux/files/home/rust/web/GeoLite2-City.mmdb",
+    ];
     let mut geoip_initialized = false;
     for path in geoip_paths {
         if Path::new(path).exists() {
@@ -341,7 +344,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     if !geoip_initialized {
         tracing::info!("GeoIP 数据库未找到，IP 地域功能将不可用");
     }
-    
+
     // 检查是否已安装（config.yaml 是否存在）
     if !is_installed() {
         tracing::warn!("========================================");
@@ -362,7 +365,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
         Ok(pool) => {
             tracing::info!("{}", terminal_t("mysql.connected"));
             pool
-        },
+        }
         Err(e) => {
             tracing::error!("{}: {}", terminal_t("mysql.failed"), e);
             return Ok(());
@@ -381,7 +384,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
         Ok(pool) => {
             tracing::info!("{}", terminal_t("redis.connected"));
             pool
-        },
+        }
         Err(e) => {
             tracing::error!("{}: {}", terminal_t("redis.failed"), e);
             return Ok(());
@@ -408,25 +411,31 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
 fn build_server_config_from_cli(cli_args: &CliArgs) -> config::ServerConfig {
     // 如果提供了配置文件，读取基础配置
     let base_config = config::get().server();
-    
+
     // 使用命令行参数（如果未提供则使用配置文件中的值）
     let port = Some(cli_args.port);
     let tls_enabled = cli_args.tls_enabled();
-    
+
     // 证书路径：命令行参数 > 配置文件 > None（使用内置证书）
-    let cert_path = cli_args.cert_path
+    let cert_path = cli_args
+        .cert_path
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .or_else(|| base_config.cert_path().map(String::from));
-    
+
     // 私钥路径：命令行参数 > 配置文件 > None（使用内置私钥）
-    let key_path = cli_args.key_path
+    let key_path = cli_args
+        .key_path
         .as_ref()
         .map(|p| p.to_string_lossy().to_string())
         .or_else(|| base_config.key_path().map(String::from));
 
     // 输出使用的配置
-    tracing::info!("服务器配置: 协议={}, 端口={}", cli_args.protocol, cli_args.port);
+    tracing::info!(
+        "服务器配置: 协议={}, 端口={}",
+        cli_args.protocol,
+        cli_args.port
+    );
     if cli_args.tls_enabled() {
         if let Some(ref cert) = cert_path {
             tracing::info!("证书路径: {}", cert);
@@ -436,10 +445,5 @@ fn build_server_config_from_cli(cli_args: &CliArgs) -> config::ServerConfig {
     }
 
     // 构建配置
-    config::ServerConfig::from_cli(
-        port,
-        tls_enabled,
-        cert_path,
-        key_path,
-    )
+    config::ServerConfig::from_cli(port, tls_enabled, cert_path, key_path)
 }

@@ -1,6 +1,6 @@
-use sqlx::FromRow;
+use super::super::common::enums::{AgentStatus, CashWay};
 use serde_json::Value;
-use super::super::common::enums::{CashWay, AgentStatus};
+use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
 pub struct Agent {
@@ -25,7 +25,7 @@ impl Agent {
     pub fn is_active(&self) -> bool {
         self.state == AgentStatus::On
     }
-    
+
     pub fn has_withdrawal_info(&self) -> bool {
         self.cash_name.is_some() && self.cash_account.is_some() && self.cash_way.is_some()
     }

@@ -37,7 +37,12 @@ use std::path::PathBuf;
 #[command(about = "高性能用户认证和应用管理后端服务", long_about = None)]
 pub struct CliArgs {
     /// 服务器监听端口
-    #[arg(short = 'p', long = "port", default_value_t = 8080, value_name = "PORT")]
+    #[arg(
+        short = 'p',
+        long = "port",
+        default_value_t = 8080,
+        value_name = "PORT"
+    )]
     pub port: u16,
 
     /// 协议类型 (http/https)

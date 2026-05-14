@@ -1,5 +1,5 @@
 //! 修改头像
-//! 
+//!
 //! 功能说明：
 //! 已登录用户修改自己的头像。
 //! 接收已上传文件的URL路径，更新数据库中的avatars字段。
@@ -10,17 +10,19 @@
 //! 3. 更新用户avatars字段
 //! 4. 返回成功
 
+use chrono::Utc;
 use salvo::prelude::*;
 use std::sync::Arc;
-use chrono::Utc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::models::requests::ModifyPicRequest;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::middleware::get_client_ip;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::ModifyPicRequest;
-use crate::app::middleware::user_auth::UserInfo;
-use crate::app::middleware::app_context::AppInfo;
 
 #[handler]
 pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -31,7 +33,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -42,7 +44,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     };
     let app_key = &app_info.app_key;
     let app_type = app_info.app_type.as_str();
-    
+
     // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 检查应用类型
     if app_type != "user" {
@@ -64,7 +66,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     validator.wordnum("token", &modify_req.token, 32, 32);
     // file 是URL路径，验证长度范围
     validator.string("file", &modify_req.file, 1, 255);
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -94,14 +96,12 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     };
 
     // PHP: $res = $this->db->where('id = ? and appid = ?',[$this->user['id'],$this->app['id']])->update(['avatars'=>'/'.$uploadedFile]);
-    let result = sqlx::query(
-        "UPDATE u_user SET avatars = ? WHERE id = ? AND appid = ?"
-    )
-    .bind(avatars)
-    .bind(uid as i64)
-    .bind(appid as i64)
-    .execute(app_state.get_db())
-    .await;
+    let result = sqlx::query("UPDATE u_user SET avatars = ? WHERE id = ? AND appid = ?")
+        .bind(avatars)
+        .bind(uid as i64)
+        .bind(appid as i64)
+        .execute(app_state.get_db())
+        .await;
 
     match result {
         Ok(r) if r.rows_affected() > 0 => {

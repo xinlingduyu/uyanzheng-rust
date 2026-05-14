@@ -22,7 +22,7 @@ impl JieSmsPlugin {
     /// PHP: ksort($data); $arr = urldecode(http_build_query($data)); return md5($arr.$this->AccessKey);
     fn sign(&self, data: &serde_json::Value) -> String {
         use std::collections::BTreeMap;
-        
+
         // ksort - BTreeMap自动排序
         let mut map = BTreeMap::new();
         if let Some(obj) = data.as_object() {
@@ -36,16 +36,17 @@ impl JieSmsPlugin {
                 map.insert(k.clone(), value);
             }
         }
-        
+
         // http_build_query 然后 urldecode
-        let query = map.iter()
+        let query = map
+            .iter()
             .map(|(k, v)| format!("{}={}", k, v))
             .collect::<Vec<_>>()
             .join("&");
-        
+
         // urldecode
         let decoded = urlencoding::decode(&query).unwrap_or_default();
-        
+
         // md5($arr.$AccessKey)
         let access_key = self.access_key.as_deref().unwrap_or("");
         format!("{:x}", md5::compute(format!("{}{}", decoded, access_key)))
@@ -140,7 +141,6 @@ impl SmsPlugin for JieSmsPlugin {
         let url = "http://www.jienet.com/sms/api/send";
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -162,17 +162,21 @@ impl SmsPlugin for JieSmsPlugin {
                         match resp.text().await {
                             Ok(text) => {
                                 // PHP: $result = json_decode($res,true);
-                                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text)
+                                {
                                     // PHP: if(is_array($result)) return $result;
                                     return Ok(SmsResult {
-                                        success: result.get("success")
+                                        success: result
+                                            .get("success")
                                             .and_then(|v| v.as_bool())
                                             .unwrap_or(false),
-                                        message: result.get("message")
+                                        message: result
+                                            .get("message")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("发送失败")
                                             .to_string(),
-                                        request_id: result.get("request_id")
+                                        request_id: result
+                                            .get("request_id")
                                             .and_then(|v| v.as_str())
                                             .map(|s| s.to_string()),
                                     });

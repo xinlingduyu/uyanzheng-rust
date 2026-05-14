@@ -50,7 +50,7 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = unsafe { self.get_unchecked_mut() };
         let future = unsafe { Pin::new_unchecked(&mut this.future) };
-        
+
         match future.poll(cx) {
             Poll::Ready(output) => {
                 let f = unsafe { std::ptr::read(&this.f) };

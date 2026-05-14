@@ -2,9 +2,9 @@
 //! 一比一还原PHP: Ue/tools/sms/ali/aliSms.php
 
 use super::trait_def::{SmsPlugin, SmsResult};
+use hmac::{Hmac, Mac};
 use serde_json::json;
 use sha1::Sha1;
-use hmac::{Hmac, Mac};
 
 /// 阿里云短信插件
 pub struct AliSmsPlugin {
@@ -35,14 +35,18 @@ impl AliSmsPlugin {
     }
 
     /// computeSignature - 一比一还原PHP
-    /// PHP: ksort($parameters); 拼接 canonicalizedQueryString; 
+    /// PHP: ksort($parameters); 拼接 canonicalizedQueryString;
     ///      stringToSign = 'GET&%2F&' . percentEncode(substr($canonicalizedQueryString,1));
     ///      signature = base64_encode(hash_hmac('sha1', $stringToSign, $accessKeySecret . '&', true));
     fn compute_signature(&self, parameters: &std::collections::BTreeMap<&str, String>) -> String {
         // ksort - BTreeMap自动排序
         let mut canonicalized_query_string = String::new();
         for (key, value) in parameters {
-            canonicalized_query_string.push_str(&format!("&{}={}", Self::percent_encode(key), Self::percent_encode(value)));
+            canonicalized_query_string.push_str(&format!(
+                "&{}={}",
+                Self::percent_encode(key),
+                Self::percent_encode(value)
+            ));
         }
 
         // stringToSign = 'GET&%2F&' . percentEncode(substr($canonicalizedQueryString, 1))
@@ -53,13 +57,16 @@ impl AliSmsPlugin {
 
         // signature = base64_encode(hash_hmac('sha1', $stringToSign, $accessKeySecret . '&', true))
         let secret = format!("{}&", self.access_key_secret.as_deref().unwrap_or(""));
-        
+
         type HmacSha1 = Hmac<Sha1>;
-        let mut mac = HmacSha1::new_from_slice(secret.as_bytes())
-            .expect("HMAC initialization failed");
+        let mut mac =
+            HmacSha1::new_from_slice(secret.as_bytes()).expect("HMAC initialization failed");
         mac.update(string_to_sign.as_bytes());
         let result = mac.finalize();
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, result.into_bytes())
+        base64::Engine::encode(
+            &base64::engine::general_purpose::STANDARD,
+            result.into_bytes(),
+        )
     }
 }
 
@@ -118,7 +125,10 @@ impl SmsPlugin for AliSmsPlugin {
             if let Some(v) = obj.get("accessKeyId").or_else(|| obj.get("AccessKeyId")) {
                 self.access_key_id = Some(v.as_str().unwrap_or("").to_string());
             }
-            if let Some(v) = obj.get("accessKeySecret").or_else(|| obj.get("AccessKeySecret")) {
+            if let Some(v) = obj
+                .get("accessKeySecret")
+                .or_else(|| obj.get("AccessKeySecret"))
+            {
                 self.access_key_secret = Some(v.as_str().unwrap_or("").to_string());
             }
             if let Some(v) = obj.get("signName").or_else(|| obj.get("SignName")) {
@@ -151,33 +161,43 @@ impl SmsPlugin for AliSmsPlugin {
         let template_code = self.template_code.as_ref().unwrap();
 
         // PHP: 构建参数
-        let mut params: std::collections::BTreeMap<&str, String> = std::collections::BTreeMap::new();
+        let mut params: std::collections::BTreeMap<&str, String> =
+            std::collections::BTreeMap::new();
         params.insert("SignName", sign_name.clone());
         params.insert("Format", "JSON".to_string());
         params.insert("Version", "2017-05-25".to_string());
         params.insert("AccessKeyId", access_key_id.clone());
         params.insert("SignatureVersion", "1.0".to_string());
         params.insert("SignatureMethod", "HMAC-SHA1".to_string());
-        params.insert("SignatureNonce", format!("{}", chrono::Utc::now().timestamp_millis()));
-        params.insert("Timestamp", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string());
+        params.insert(
+            "SignatureNonce",
+            format!("{}", chrono::Utc::now().timestamp_millis()),
+        );
+        params.insert(
+            "Timestamp",
+            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        );
         params.insert("Action", "SendSms".to_string());
         params.insert("TemplateCode", template_code.clone());
         params.insert("PhoneNumbers", mobile.to_string());
-        params.insert("TemplateParam", json!({"code": code, "time": time}).to_string());
+        params.insert(
+            "TemplateParam",
+            json!({"code": code, "time": time}).to_string(),
+        );
 
         // 计算签名
         let signature = self.compute_signature(&params);
         params.insert("Signature", signature);
 
         // PHP: $url = 'http://dysmsapi.aliyuncs.com/?' . http_build_query($params);
-        let query: String = params.iter()
+        let query: String = params
+            .iter()
             .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
             .collect::<Vec<_>>()
             .join("&");
         let url = format!("http://dysmsapi.aliyuncs.com/?{}", query);
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -190,26 +210,31 @@ impl SmsPlugin for AliSmsPlugin {
                     Ok(resp) => {
                         match resp.text().await {
                             Ok(text) => {
-                                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text)
+                                {
                                     // PHP: if (isset($result['Code']) && $result['Code'] != 'OK')
                                     if let Some(code) = result.get("Code").and_then(|v| v.as_str())
-                                        && code != "OK" {
-                                            return Ok(SmsResult {
-                                                success: false,
-                                                message: result.get("Message")
-                                                    .and_then(|v| v.as_str())
-                                                    .unwrap_or("发送失败")
-                                                    .to_string(),
-                                                request_id: result.get("RequestId")
-                                                    .and_then(|v| v.as_str())
-                                                    .map(|s| s.to_string()),
-                                            });
-                                        }
+                                        && code != "OK"
+                                    {
+                                        return Ok(SmsResult {
+                                            success: false,
+                                            message: result
+                                                .get("Message")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("发送失败")
+                                                .to_string(),
+                                            request_id: result
+                                                .get("RequestId")
+                                                .and_then(|v| v.as_str())
+                                                .map(|s| s.to_string()),
+                                        });
+                                    }
                                     // PHP: return ['code'=>200,'msg'=>'发送成功'];
                                     return Ok(SmsResult {
                                         success: true,
                                         message: "发送成功".to_string(),
-                                        request_id: result.get("RequestId")
+                                        request_id: result
+                                            .get("RequestId")
                                             .and_then(|v| v.as_str())
                                             .map(|s| s.to_string()),
                                     });

@@ -1,10 +1,10 @@
 //! Admin statistics controller
 //! 管理员统计控制器
 
+use chrono::{Duration, Utc};
+use deadpool_redis::redis::{self, AsyncCommands};
 use salvo::prelude::*;
 use serde::Serialize;
-use chrono::{Utc, Duration};
-use deadpool_redis::redis::{self, AsyncCommands};
 use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
@@ -49,12 +49,16 @@ struct StatisticsData {
 }
 
 // 获取用户统计数据
-async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Option<deadpool_redis::Pool>) -> Result<UserStatistics, sqlx::Error> {
+async fn get_user_statistics(
+    appid: u64,
+    db: &sqlx::MySqlPool,
+    redis_pool: &Option<deadpool_redis::Pool>,
+) -> Result<UserStatistics, sqlx::Error> {
     // 性能优化：在函数开头计算所有时间值，避免重复调用
     let now_ts = Utc::now().timestamp();
     let today_start = now_ts - (now_ts % 86400);
     let seven_days_ago_start = today_start - (6 * 86400);
-    
+
     // 获取用户总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_user WHERE appid = ?")
         .bind(appid)
@@ -69,13 +73,13 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
         WHERE appid = ? AND reg_time >= ? 
         GROUP BY FROM_UNIXTIME(reg_time, '%Y-%m-%d')
         ORDER BY day ASC
-        "#
+        "#,
     )
     .bind(appid)
     .bind(seven_days_ago_start)
     .fetch_all(db)
     .await?;
-    
+
     // 构建日期到数量的映射
     let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     for row in census_rows {
@@ -83,11 +87,13 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
         let cnt: i64 = row.try_get("cnt")?;
         day_counts.insert(day, cnt);
     }
-    
+
     // 生成近7天的统计（填充缺失的日期）
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
-        let day_date = (Utc::now() - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let day_date = (Utc::now() - Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
         let day_count = day_counts.get(&day_date).copied().unwrap_or(0);
         census.push(day_count);
     }
@@ -159,12 +165,15 @@ async fn get_user_statistics(appid: u64, db: &sqlx::MySqlPool, redis_pool: &Opti
 }
 
 // 获取用户版卡密统计数据
-async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<KamiStatistics, sqlx::Error> {
+async fn get_cdk_user_statistics(
+    appid: u64,
+    db: &sqlx::MySqlPool,
+) -> Result<KamiStatistics, sqlx::Error> {
     // 性能优化：在函数开头计算时间值
     let now_ts = Utc::now().timestamp();
     let today_start = now_ts - (now_ts % 86400);
     let seven_days_ago_start = today_start - (6 * 86400);
-    
+
     // 获取卡密总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_cdk_user WHERE appid = ?")
         .bind(appid)
@@ -173,7 +182,7 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
 
     // 获取使用的卡密数
     let use_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM u_cdk_user WHERE appid = ? AND use_time IS NOT NULL"
+        "SELECT COUNT(*) FROM u_cdk_user WHERE appid = ? AND use_time IS NOT NULL",
     )
     .bind(appid)
     .fetch_one(db)
@@ -187,20 +196,20 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
         WHERE appid = ? AND use_time >= ? 
         GROUP BY FROM_UNIXTIME(use_time, '%Y-%m-%d')
         ORDER BY day ASC
-        "#
+        "#,
     )
     .bind(appid)
     .bind(seven_days_ago_start)
     .fetch_all(db)
     .await?;
-    
+
     let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     for row in census_rows {
         let day: String = row.try_get("day")?;
         let cnt: i64 = row.try_get("cnt")?;
         day_counts.insert(day, cnt);
     }
-    
+
     let now = Utc::now();
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
@@ -217,12 +226,15 @@ async fn get_cdk_user_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
 }
 
 // 获取卡密版卡密统计数据
-async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<KamiStatistics, sqlx::Error> {
+async fn get_cdk_kami_statistics(
+    appid: u64,
+    db: &sqlx::MySqlPool,
+) -> Result<KamiStatistics, sqlx::Error> {
     // 性能优化：在函数开头计算时间值
     let now_ts = Utc::now().timestamp();
     let today_start = now_ts - (now_ts % 86400);
     let seven_days_ago_start = today_start - (6 * 86400);
-    
+
     // 获取卡密总数
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_cdk_kami WHERE appid = ?")
         .bind(appid)
@@ -231,11 +243,11 @@ async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
 
     // 获取使用的卡密数
     let use_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM u_cdk_kami WHERE appid = ? AND use_time IS NOT NULL"
+        "SELECT COUNT(*) FROM u_cdk_kami WHERE appid = ? AND use_time IS NOT NULL",
     )
     .bind(appid)
-        .fetch_one(db)
-        .await?;
+    .fetch_one(db)
+    .await?;
 
     // 优化：单次查询获取近7天卡密使用数量
     let census_rows = sqlx::query(
@@ -245,20 +257,20 @@ async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
         WHERE appid = ? AND use_time >= ? 
         GROUP BY FROM_UNIXTIME(use_time, '%Y-%m-%d')
         ORDER BY day ASC
-        "#
+        "#,
     )
     .bind(appid)
     .bind(seven_days_ago_start)
     .fetch_all(db)
     .await?;
-    
+
     let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     for row in census_rows {
         let day: String = row.try_get("day")?;
         let cnt: i64 = row.try_get("cnt")?;
         day_counts.insert(day, cnt);
     }
-    
+
     let now = Utc::now();
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
@@ -275,14 +287,17 @@ async fn get_cdk_kami_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<Kam
 }
 
 // 获取订单统计数据
-async fn get_order_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<OrderStatistics, sqlx::Error> {
+async fn get_order_statistics(
+    appid: u64,
+    db: &sqlx::MySqlPool,
+) -> Result<OrderStatistics, sqlx::Error> {
     // 获取今日开始和结束时间戳
     let now_ts = Utc::now().timestamp();
     let today_start = now_ts - (now_ts % 86400);
     let today_end = today_start + 86400;
     let yesterday_start = today_start - 86400;
     let yesterday_end = today_start;
-    
+
     // 优化：合并多个查询为一个，使用 CASE WHEN 进行条件聚合，CAST 确保类型匹配
     let stats_row = sqlx::query(
         r#"
@@ -313,7 +328,7 @@ async fn get_order_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<OrderS
     .bind(appid)
     .fetch_one(db)
     .await?;
-    
+
     let count: i64 = stats_row.try_get("count")?;
     let money_sum: f64 = stats_row.try_get("money_sum")?;
     let today_money: f64 = stats_row.try_get("today_money")?;
@@ -340,7 +355,7 @@ async fn get_order_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<OrderS
     // 优化：单次查询获取近7天订单数量
     let seven_days_ago = (Utc::now() - Duration::days(6)).timestamp();
     let seven_days_ago_start = seven_days_ago - (seven_days_ago % 86400);
-    
+
     let census_rows = sqlx::query(
         r#"
         SELECT FROM_UNIXTIME(add_time, '%Y-%m-%d') as day, COUNT(*) as cnt 
@@ -348,23 +363,25 @@ async fn get_order_statistics(appid: u64, db: &sqlx::MySqlPool) -> Result<OrderS
         WHERE appid = ? AND add_time >= ? 
         GROUP BY FROM_UNIXTIME(add_time, '%Y-%m-%d')
         ORDER BY day ASC
-        "#
+        "#,
     )
     .bind(appid)
     .bind(seven_days_ago_start)
     .fetch_all(db)
     .await?;
-    
+
     let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     for row in census_rows {
         let day: String = row.try_get("day")?;
         let cnt: i64 = row.try_get("cnt")?;
         day_counts.insert(day, cnt);
     }
-    
+
     let mut census = Vec::with_capacity(7);
     for i in (0..7).rev() {
-        let day_date = (Utc::now() - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let day_date = (Utc::now() - Duration::days(i))
+            .format("%Y-%m-%d")
+            .to_string();
         let day_count = day_counts.get(&day_date).copied().unwrap_or(0);
         census.push(day_count);
     }
@@ -434,7 +451,7 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 优化：并行执行订单统计和用户统计查询
     let db = app_state.get_db();
     let redis_pool = &app_state.redis_pool;
-    
+
     let (order_result, user_result) = tokio::join!(
         get_order_statistics(appid, db),
         get_user_statistics(appid, db, redis_pool)
@@ -481,11 +498,7 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    let data = StatisticsData {
-        user,
-        order,
-        kami,
-    };
+    let data = StatisticsData { user, order, kami };
 
     res.render(Json(ApiResponse::success("成功", Some(data))));
 }

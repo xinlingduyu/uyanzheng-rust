@@ -6,14 +6,14 @@ use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
-use std::sync::Arc;
 use crate::core::app_state::AppState;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize)]
 struct UInfoData {
     exp_time: String,
     phone: String,
-    r#type: String,  // 使用 r# 前缀来使用保留字作为字段名
+    r#type: String, // 使用 r# 前缀来使用保留字作为字段名
     version: String,
 }
 
@@ -81,9 +81,9 @@ pub async fn get_set(_req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let query = "SELECT `key`, `value` FROM u_settings";
-    
+
     let result = sqlx::query_as::<_, (String, String)>(query)
         .fetch_all(app_state.get_db())
         .await;
@@ -115,7 +115,7 @@ pub async fn edit_set(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditSetRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -166,7 +166,7 @@ pub async fn get_user_api_router(req: &mut Request, depot: &mut Depot, res: &mut
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -225,7 +225,7 @@ pub async fn edit_user_api_router(req: &mut Request, depot: &mut Depot, res: &mu
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditUserApiRouterRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -284,7 +284,7 @@ pub async fn switch_user_api_router(req: &mut Request, depot: &mut Depot, res: &
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -335,7 +335,7 @@ pub async fn get_user_api_code(req: &mut Request, depot: &mut Depot, res: &mut R
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -394,7 +394,7 @@ pub async fn edit_user_api_code(req: &mut Request, depot: &mut Depot, res: &mut 
             return;
         }
     };
-    
+
     let edit_req = match req.parse_json::<EditUserApiCodeRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -453,7 +453,7 @@ pub async fn switch_user_api_code(req: &mut Request, depot: &mut Depot, res: &mu
             return;
         }
     };
-    
+
     let appid = match req.headers().get("appid") {
         Some(h) => match h.to_str() {
             Ok(s) => match s.parse::<u64>() {
@@ -561,24 +561,27 @@ pub async fn get_notice_list(req: &mut Request, depot: &mut Depot, res: &mut Res
 
     match result {
         Ok(rows) => {
-            let list: Vec<NoticeItem> = rows.iter().map(|row| {
-                let id: u64 = row.try_get("id").unwrap_or(0);
-                let content: String = row.try_get("content").unwrap_or_default();
-                let time: i64 = row.try_get("time").unwrap_or(0);
-                
-                let create_time = chrono::DateTime::from_timestamp(time, 0)
-                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_default();
+            let list: Vec<NoticeItem> = rows
+                .iter()
+                .map(|row| {
+                    let id: u64 = row.try_get("id").unwrap_or(0);
+                    let content: String = row.try_get("content").unwrap_or_default();
+                    let time: i64 = row.try_get("time").unwrap_or(0);
 
-                NoticeItem {
-                    id,
-                    title: content.chars().take(50).collect(),
-                    content,
-                    notice_type: 1,
-                    status: 1,
-                    create_time,
-                }
-            }).collect();
+                    let create_time = chrono::DateTime::from_timestamp(time, 0)
+                        .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_default();
+
+                    NoticeItem {
+                        id,
+                        title: content.chars().take(50).collect(),
+                        content,
+                        notice_type: 1,
+                        status: 1,
+                        create_time,
+                    }
+                })
+                .collect();
 
             res.render(Json(ApiResponse::success("成功", Some(list))));
         }
@@ -641,18 +644,21 @@ pub async fn get_statistics(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let attach: i64 = 0;
 
     // 登录日志数量
-    let login: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'login' AND appid = ?")
-        .bind(appid)
-        .fetch_one(app_state.get_db())
-        .await
-        .unwrap_or(0);
+    let login: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'login' AND appid = ?",
+    )
+    .bind(appid)
+    .fetch_one(app_state.get_db())
+    .await
+    .unwrap_or(0);
 
     // 操作日志数量
-    let operate: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'admin' AND appid = ?")
-        .bind(appid)
-        .fetch_one(app_state.get_db())
-        .await
-        .unwrap_or(0);
+    let operate: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'admin' AND appid = ?")
+            .bind(appid)
+            .fetch_one(app_state.get_db())
+            .await
+            .unwrap_or(0);
 
     let data = StatisticsResponse {
         user,
@@ -726,7 +732,10 @@ pub async fn get_login_chart(req: &mut Request, depot: &mut Depot, res: &mut Res
     let mut day_counts: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     if let Ok(rows) = result {
         for row in rows {
-            if let (Ok(day), Ok(cnt)) = (row.try_get::<String, _>("day"), row.try_get::<i64, _>("cnt")) {
+            if let (Ok(day), Ok(cnt)) = (
+                row.try_get::<String, _>("day"),
+                row.try_get::<i64, _>("cnt"),
+            ) {
                 day_counts.insert(day, cnt);
             }
         }
@@ -735,9 +744,11 @@ pub async fn get_login_chart(req: &mut Request, depot: &mut Depot, res: &mut Res
     // 生成近7天的统计（填充缺失的日期）
     let mut login_date = Vec::with_capacity(7);
     let mut login_count = Vec::with_capacity(7);
-    
+
     for i in (0..7).rev() {
-        let day_date = (now - chrono::Duration::days(i)).format("%m-%d").to_string();
+        let day_date = (now - chrono::Duration::days(i))
+            .format("%m-%d")
+            .to_string();
         login_date.push(day_date.clone());
         login_count.push(day_counts.get(&day_date).copied().unwrap_or(0));
     }
@@ -810,24 +821,29 @@ pub async fn get_login_log_list(req: &mut Request, depot: &mut Depot, res: &mut 
 
     match result {
         Ok(rows) => {
-            let list: Vec<LoginLogItem> = rows.iter().map(|row| {
-                let time: i64 = row.try_get("time").unwrap_or(0);
-                let login_time = chrono::DateTime::from_timestamp(time, 0)
-                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_default();
+            let list: Vec<LoginLogItem> = rows
+                .iter()
+                .map(|row| {
+                    let time: i64 = row.try_get("time").unwrap_or(0);
+                    let login_time = chrono::DateTime::from_timestamp(time, 0)
+                        .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_default();
 
-                let ip_address: Option<String> = row.try_get("ip_address").ok();
-                let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
+                    let ip_address: Option<String> = row.try_get("ip_address").ok();
+                    let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
 
-                LoginLogItem {
-                    id: row.try_get("id").unwrap_or(0),
-                    login_time,
-                    ip: row.try_get("ip").unwrap_or_else(|_| "127.0.0.1".to_string()),
-                    ip_location,
-                    os: "Unknown".to_string(),
-                    message: "登录成功".to_string(),
-                }
-            }).collect();
+                    LoginLogItem {
+                        id: row.try_get("id").unwrap_or(0),
+                        login_time,
+                        ip: row
+                            .try_get("ip")
+                            .unwrap_or_else(|_| "127.0.0.1".to_string()),
+                        ip_location,
+                        os: "Unknown".to_string(),
+                        message: "登录成功".to_string(),
+                    }
+                })
+                .collect();
 
             let data = LogListResponse { data: list };
             res.render(Json(ApiResponse::success("成功", Some(data))));
@@ -882,27 +898,34 @@ pub async fn get_operation_log_list(req: &mut Request, depot: &mut Depot, res: &
 
     match result {
         Ok(rows) => {
-            let list: Vec<LoginLogItem> = rows.iter().map(|row| {
-                let time: i64 = row.try_get("time").unwrap_or(0);
-                let create_time = chrono::DateTime::from_timestamp(time, 0)
-                    .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_default();
+            let list: Vec<LoginLogItem> = rows
+                .iter()
+                .map(|row| {
+                    let time: i64 = row.try_get("time").unwrap_or(0);
+                    let create_time = chrono::DateTime::from_timestamp(time, 0)
+                        .map(|t| t.format("%Y-%m-%d %H:%M:%S").to_string())
+                        .unwrap_or_default();
 
-                let ip_address: Option<String> = row.try_get("ip_address").ok();
-                let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
+                    let ip_address: Option<String> = row.try_get("ip_address").ok();
+                    let ip_location = ip_address.unwrap_or_else(|| "未知".to_string());
 
-                let log_type: String = row.try_get("type").unwrap_or_else(|_| "unknown".to_string());
-                let service_name = format!("{}操作", log_type);
+                    let log_type: String = row
+                        .try_get("type")
+                        .unwrap_or_else(|_| "unknown".to_string());
+                    let service_name = format!("{}操作", log_type);
 
-                LoginLogItem {
-                    id: row.try_get("id").unwrap_or(0),
-                    login_time: create_time,
-                    ip: row.try_get("ip").unwrap_or_else(|_| "127.0.0.1".to_string()),
-                    ip_location,
-                    os: "POST".to_string(),
-                    message: service_name,
-                }
-            }).collect();
+                    LoginLogItem {
+                        id: row.try_get("id").unwrap_or(0),
+                        login_time: create_time,
+                        ip: row
+                            .try_get("ip")
+                            .unwrap_or_else(|_| "127.0.0.1".to_string()),
+                        ip_location,
+                        os: "POST".to_string(),
+                        message: service_name,
+                    }
+                })
+                .collect();
 
             let data = LogListResponse { data: list };
             res.render(Json(ApiResponse::success("成功", Some(data))));

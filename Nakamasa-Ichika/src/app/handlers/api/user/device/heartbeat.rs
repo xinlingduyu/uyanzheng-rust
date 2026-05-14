@@ -1,5 +1,5 @@
 //! 心跳接口
-//! 
+//!
 //! 功能说明：
 //! 客户端定期调用的保活接口，用于维持登录状态。
 //! 成功调用会延长token有效期。
@@ -12,15 +12,17 @@
 //! 5. 返回成功状态
 
 use salvo::prelude::*;
-use std::sync::Arc;
-use std::fmt::Write;
 use serde::Deserialize;
+use std::fmt::Write;
+use std::sync::Arc;
 
+use crate::app::middleware::app_context::AppInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::middleware::app_context::AppInfo;
 
 /// 心跳请求参数
 #[derive(Deserialize)]
@@ -29,7 +31,7 @@ struct HeartbeatRequest {
 }
 
 /// 心跳接口处理器
-/// 
+///
 /// PHP原始逻辑:
 /// 1. 验证token参数（32位字母数字）
 /// 2. 检查logon_state是否为off
@@ -45,7 +47,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     // 获取应用信息（避免 clone，直接使用引用）
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -83,7 +85,10 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // PHP: if($this->app['logon_state'] == 'off')$this->out->e(103,$this->app['logon_off_msg']);
     // 检查登录状态
     if app_info.logon_state == "off" {
-        let msg = app_info.logon_off_msg.clone().unwrap_or_else(|| "登录功能已关闭".to_string());
+        let msg = app_info
+            .logon_off_msg
+            .clone()
+            .unwrap_or_else(|| "登录功能已关闭".to_string());
         render_error(res, msg, 103, app_key);
         return;
     }
@@ -101,7 +106,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // token前缀格式: {app_type}_{appid}_（预分配容量）
     let mut token_pre = String::with_capacity(16);
     let _ = write!(&mut token_pre, "{}_{}_", app_type, appid);
-    
+
     // token_key（预分配容量）
     let mut token_key = String::with_capacity(48);
     let _ = write!(&mut token_key, "{}{}", token_pre, token);
@@ -135,13 +140,9 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     // 延长token过期时间
     let token_exp = app_info.logon_token_exp as u64;
     let set_result = set_token(
-        redis_util, 
-        redis_pool, 
-        &token_pre, 
-        &token, 
-        &token_str, 
-        token_exp
-    ).await;
+        redis_util, redis_pool, &token_pre, &token, &token_str, token_exp,
+    )
+    .await;
 
     if !set_result {
         // PHP: if(!$res)$this->out->e(201,'心跳失败，token记录失败');
@@ -155,7 +156,7 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
 }
 
 /// 保存token - 一比一还原PHP的__setToken方法
-/// 
+///
 /// PHP原始代码:
 /// ```php
 /// protected function __setToken($token,$data){
@@ -192,8 +193,12 @@ async fn set_token(
     // PHP: $res = $this->redis->setex($this->tokenPre.$token,$this->app['logon_token_exp'],json_encode($data));
     let mut token_key = String::with_capacity(48);
     let _ = write!(&mut token_key, "{}{}", token_pre, token);
-    
-    if redis_util.set(redis_pool, &token_key, token_data_str, Some(token_exp)).await.is_err() {
+
+    if redis_util
+        .set(redis_pool, &token_key, token_data_str, Some(token_exp))
+        .await
+        .is_err()
+    {
         return false;
     }
 
@@ -201,11 +206,15 @@ async fn set_token(
     // 使用优化的MD5计算
     let udid_hash_bytes = md5_hex(udid.as_bytes());
     let udid_hash = md5_to_str(&udid_hash_bytes);
-    
+
     let mut online_key = String::with_capacity(64);
     let _ = write!(&mut online_key, "{}online_{}_{}", token_pre, uid, udid_hash);
-    
-    if redis_util.set(redis_pool, &online_key, token, Some(token_exp)).await.is_err() {
+
+    if redis_util
+        .set(redis_pool, &online_key, token, Some(token_exp))
+        .await
+        .is_err()
+    {
         return false;
     }
 

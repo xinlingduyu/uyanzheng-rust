@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize, Default)]
 pub struct MysqlConfig {
@@ -31,17 +31,17 @@ impl MysqlConfig {
     pub fn schema(&self) -> &str {
         self.schema.as_deref().unwrap_or("public")
     }
-    
+
     /// 检查密码是否已加密
     pub fn is_password_encrypted(&self) -> bool {
         self.password.as_deref().map(is_encrypted).unwrap_or(false)
     }
-    
+
     /// 获取解密后的密码
-    /// 
+    ///
     /// # 参数
     /// - `secret`: 解密密钥（app.code）
-    /// 
+    ///
     /// # 返回
     /// 解密后的密码，如果未加密则返回原值
     pub fn decrypted_password(&self, secret: &str) -> String {

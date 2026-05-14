@@ -1,5 +1,5 @@
 //! Skills 功能模块
-//! 
+//!
 //! Skills 是给 AI 使用的工具，类似于 Hermes Agent 的 skills 系统。
 //! 每个 skill 定义了 AI 可以调用的工具及其参数。
 
@@ -117,11 +117,7 @@ pub mod common_skills {
 
     /// 创建搜索 skill
     pub fn search_skill() -> Skill {
-        Skill::new(
-            "search",
-            "搜索网络获取最新信息"
-        )
-        .with_parameters(serde_json::json!({
+        Skill::new("search", "搜索网络获取最新信息").with_parameters(serde_json::json!({
             "type": "object",
             "properties": {
                 "query": {
@@ -135,11 +131,7 @@ pub mod common_skills {
 
     /// 创建计算器 skill
     pub fn calculator_skill() -> Skill {
-        Skill::new(
-            "calculator",
-            "执行数学计算"
-        )
-        .with_parameters(serde_json::json!({
+        Skill::new("calculator", "执行数学计算").with_parameters(serde_json::json!({
             "type": "object",
             "properties": {
                 "expression": {
@@ -153,11 +145,7 @@ pub mod common_skills {
 
     /// 创建天气查询 skill
     pub fn weather_skill() -> Skill {
-        Skill::new(
-            "weather",
-            "查询指定城市的天气"
-        )
-        .with_parameters(serde_json::json!({
+        Skill::new("weather", "查询指定城市的天气").with_parameters(serde_json::json!({
             "type": "object",
             "properties": {
                 "city": {

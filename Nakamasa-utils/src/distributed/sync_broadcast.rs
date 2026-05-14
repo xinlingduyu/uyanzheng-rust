@@ -1,13 +1,13 @@
 //! 缓存同步广播模块
-//! 
+//!
 //! 提供分布式缓存同步能力:
 //! - 缓存失效广播
 //! - 缓存更新通知
 //! - 发布订阅模式
 
-use std::sync::Arc;
-use std::collections::HashMap;
 use parking_lot::RwLock;
+use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 
 use super::redis_backend::{RedisBackend, RedisError};
@@ -20,10 +20,10 @@ use super::redis_backend::{RedisBackend, RedisError};
 pub enum SyncError {
     #[error("Redis error: {0}")]
     Redis(#[from] RedisError),
-    
+
     #[error("Channel error: {0}")]
     Channel(String),
-    
+
     #[error("Subscribe error: {0}")]
     Subscribe(String),
 }
@@ -57,7 +57,7 @@ impl CacheEventType {
             Self::Custom(s) => s,
         }
     }
-    
+
     pub fn from_str(s: &str) -> Self {
         match s {
             "invalidate" => Self::Invalidate,
@@ -99,7 +99,7 @@ impl CacheEvent {
             value: None,
         }
     }
-    
+
     /// 创建更新事件
     pub fn update(key: &str, value: &str, node_id: &str) -> Self {
         Self {
@@ -110,7 +110,7 @@ impl CacheEvent {
             value: Some(value.to_string()),
         }
     }
-    
+
     /// 创建删除事件
     pub fn delete(key: &str, node_id: &str) -> Self {
         Self {
@@ -121,7 +121,7 @@ impl CacheEvent {
             value: None,
         }
     }
-    
+
     /// 创建清除事件
     pub fn clear(node_id: &str) -> Self {
         Self {
@@ -132,7 +132,7 @@ impl CacheEvent {
             value: None,
         }
     }
-    
+
     /// 序列化为字符串
     pub fn to_string(&self) -> String {
         format!(
@@ -144,14 +144,14 @@ impl CacheEvent {
             self.value.as_deref().unwrap_or("")
         )
     }
-    
+
     /// 从字符串解析
     pub fn from_string(s: &str) -> Option<Self> {
         let parts: Vec<&str> = s.splitn(5, '|').collect();
         if parts.len() < 4 {
             return None;
         }
-        
+
         Some(Self {
             event_type: CacheEventType::from_str(parts[0]),
             key: parts[1].to_string(),
@@ -214,11 +214,11 @@ impl<B: RedisBackend + 'static> CacheSyncBroadcaster<B> {
             fn_handlers: RwLock::new(HashMap::new()),
         }
     }
-    
+
     fn channel_name(&self, namespace: &str) -> String {
         format!("{}:{}", self.channel_prefix, namespace)
     }
-    
+
     /// 发布事件
     pub async fn publish(&self, namespace: &str, event: CacheEvent) -> Result<(), SyncError> {
         let channel = self.channel_name(namespace);
@@ -226,31 +226,36 @@ impl<B: RedisBackend + 'static> CacheSyncBroadcaster<B> {
         self.backend.publish(&channel, &message).await?;
         Ok(())
     }
-    
+
     /// 广播缓存失效
     pub async fn broadcast_invalidate(&self, namespace: &str, key: &str) -> Result<(), SyncError> {
         let event = CacheEvent::invalidate(key, &self.node_id);
         self.publish(namespace, event).await
     }
-    
+
     /// 广播缓存更新
-    pub async fn broadcast_update(&self, namespace: &str, key: &str, value: &str) -> Result<(), SyncError> {
+    pub async fn broadcast_update(
+        &self,
+        namespace: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), SyncError> {
         let event = CacheEvent::update(key, value, &self.node_id);
         self.publish(namespace, event).await
     }
-    
+
     /// 广播缓存删除
     pub async fn broadcast_delete(&self, namespace: &str, key: &str) -> Result<(), SyncError> {
         let event = CacheEvent::delete(key, &self.node_id);
         self.publish(namespace, event).await
     }
-    
+
     /// 广播缓存清除
     pub async fn broadcast_clear(&self, namespace: &str) -> Result<(), SyncError> {
         let event = CacheEvent::clear(&self.node_id);
         self.publish(namespace, event).await
     }
-    
+
     /// 注册事件处理器
     pub fn register_handler<H: EventHandler + 'static>(&self, namespace: &str, handler: Arc<H>) {
         self.handlers
@@ -259,16 +264,20 @@ impl<B: RedisBackend + 'static> CacheSyncBroadcaster<B> {
             .or_default()
             .push(handler);
     }
-    
+
     /// 注册事件处理函数
-    pub fn register_fn<F: Fn(&CacheEvent) + Send + Sync + 'static>(&self, namespace: &str, handler: F) {
+    pub fn register_fn<F: Fn(&CacheEvent) + Send + Sync + 'static>(
+        &self,
+        namespace: &str,
+        handler: F,
+    ) {
         self.fn_handlers
             .write()
             .entry(namespace.to_string())
             .or_default()
             .push(Box::new(handler));
     }
-    
+
     /// 处理接收到的消息
     pub fn handle_message(&self, namespace: &str, message: &str) {
         if let Some(event) = CacheEvent::from_string(message) {
@@ -276,14 +285,14 @@ impl<B: RedisBackend + 'static> CacheSyncBroadcaster<B> {
             if event.node_id == self.node_id {
                 return;
             }
-            
+
             // 调用 trait 处理器
             if let Some(handlers) = self.handlers.read().get(namespace) {
                 for handler in handlers {
                     handler.handle(&event);
                 }
             }
-            
+
             // 调用函数处理器
             if let Some(fn_handlers) = self.fn_handlers.read().get(namespace) {
                 for handler in fn_handlers {
@@ -292,7 +301,7 @@ impl<B: RedisBackend + 'static> CacheSyncBroadcaster<B> {
             }
         }
     }
-    
+
     /// 获取节点 ID
     pub fn node_id(&self) -> &str {
         &self.node_id
@@ -321,24 +330,26 @@ impl<B: RedisBackend + 'static> CacheSyncSubscriber<B> {
             running: std::sync::atomic::AtomicBool::new(false),
         }
     }
-    
+
     /// 添加命名空间
     pub fn subscribe(&mut self, namespace: &str) {
         self.namespaces.push(namespace.to_string());
     }
-    
+
     /// 启动订阅（模拟）
     pub async fn start(&self) {
-        self.running.store(true, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(true, std::sync::atomic::Ordering::Release);
         // 实际实现中应该启动 Redis 订阅循环
         // 这里是简化版本
     }
-    
+
     /// 停止订阅
     pub fn stop(&self) {
-        self.running.store(false, std::sync::atomic::Ordering::Release);
+        self.running
+            .store(false, std::sync::atomic::Ordering::Release);
     }
-    
+
     /// 是否正在运行
     pub fn is_running(&self) -> bool {
         self.running.load(std::sync::atomic::Ordering::Acquire)
@@ -350,7 +361,7 @@ impl<B: RedisBackend + 'static> CacheSyncSubscriber<B> {
 // ============================================================================
 
 /// 同步缓存包装器
-/// 
+///
 /// 在缓存操作后自动广播事件，实现多节点同步
 pub struct SyncCacheWrapper<K, V, B>
 where
@@ -387,60 +398,69 @@ where
             sync_enabled: true,
         }
     }
-    
+
     /// 设置是否启用同步
     pub fn set_sync_enabled(&mut self, enabled: bool) {
         self.sync_enabled = enabled;
     }
-    
+
     /// 获取缓存值
     pub async fn get(&self, key: &K) -> Result<Option<V>, RedisError> {
         self.inner.get(key).await
     }
-    
+
     /// 设置缓存值（并广播）
     pub async fn set(&self, key: K, value: V) -> Result<(), RedisError> {
         self.inner.set(key.clone(), value.clone()).await?;
-        
+
         if self.sync_enabled {
             let value_str = serde_json::to_string(&value).unwrap_or_default();
-            let _ = self.broadcaster.broadcast_update(&self.namespace, &key.to_string(), &value_str).await;
+            let _ = self
+                .broadcaster
+                .broadcast_update(&self.namespace, &key.to_string(), &value_str)
+                .await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 删除缓存值（并广播）
     pub async fn delete(&self, key: &K) -> Result<(), RedisError> {
         self.inner.delete(key).await?;
-        
+
         if self.sync_enabled {
-            let _ = self.broadcaster.broadcast_delete(&self.namespace, &key.to_string()).await;
+            let _ = self
+                .broadcaster
+                .broadcast_delete(&self.namespace, &key.to_string())
+                .await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 使缓存失效（本地删除 + 广播）
     pub async fn invalidate(&self, key: &K) -> Result<(), RedisError> {
         self.inner.delete(key).await?;
-        
+
         if self.sync_enabled {
-            let _ = self.broadcaster.broadcast_invalidate(&self.namespace, &key.to_string()).await;
+            let _ = self
+                .broadcaster
+                .broadcast_invalidate(&self.namespace, &key.to_string())
+                .await;
         }
-        
+
         Ok(())
     }
-    
+
     /// 清除所有缓存（并广播）
     pub async fn clear(&self) {
         self.inner.clear_l1();
-        
+
         if self.sync_enabled {
             let _ = self.broadcaster.broadcast_clear(&self.namespace).await;
         }
     }
-    
+
     /// 处理远程事件
     pub fn handle_remote_event(&self, event: &CacheEvent) {
         match event.event_type {
@@ -464,39 +484,39 @@ where
 mod tests {
     use super::*;
     use crate::distributed::MockRedisBackend;
-    
+
     #[test]
     fn test_cache_event() {
         let event = CacheEvent::invalidate("user:123", "node1");
         let serialized = event.to_string();
         let parsed = CacheEvent::from_string(&serialized).unwrap();
-        
+
         assert_eq!(event.event_type, parsed.event_type);
         assert_eq!(event.key, parsed.key);
         assert_eq!(event.node_id, parsed.node_id);
     }
-    
+
     #[test]
     fn test_event_types() {
         let invalidate = CacheEvent::invalidate("key1", "node1");
         assert_eq!(invalidate.event_type, CacheEventType::Invalidate);
-        
+
         let update = CacheEvent::update("key2", "value2", "node1");
         assert_eq!(update.event_type, CacheEventType::Update);
         assert_eq!(update.value, Some("value2".to_string()));
-        
+
         let delete = CacheEvent::delete("key3", "node1");
         assert_eq!(delete.event_type, CacheEventType::Delete);
-        
+
         let clear = CacheEvent::clear("node1");
         assert_eq!(clear.event_type, CacheEventType::Clear);
     }
-    
+
     #[tokio::test]
     async fn test_broadcaster() {
         let backend = Arc::new(MockRedisBackend::new("test:"));
         let broadcaster = CacheSyncBroadcaster::new(backend, "node1", "cache:sync");
-        
+
         // 发布事件
         let result = broadcaster.broadcast_invalidate("users", "user:123").await;
         assert!(result.is_ok());

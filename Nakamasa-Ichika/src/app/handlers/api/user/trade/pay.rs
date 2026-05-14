@@ -1,5 +1,5 @@
 //! 在线充值
-//! 
+//!
 //! 功能说明：
 //! 创建在线支付订单，支持多种支付方式（支付宝、微信、捷支付等）。
 //!
@@ -10,26 +10,29 @@
 //! 4. 调用对应支付插件生成支付参数
 //! 5. 返回支付参数供客户端调起支付
 
-use salvo::prelude::*;
-use std::sync::Arc;
 use chrono::Utc;
 use rand::Rng;
+use salvo::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::core::json_optimize::FastJson;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::utils::validator::Validator;
-use crate::app::models::requests::PayRequest;
-use crate::app::models::responses::PayInfo;
 use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
-use crate::app::plugins::pay::{PayPlugin, PayOrder, JiePayPlugin, AliPayPlugin, WxPayPlugin};
+use crate::app::models::requests::PayRequest;
+use crate::app::models::responses::PayInfo;
+use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayOrder, PayPlugin, WxPayPlugin};
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::app::utils::validator::Validator;
+use crate::core::AppState;
+use crate::core::json_optimize::FastJson;
 
 /// 获取服务器URL（从请求中提取）
 fn get_server_url(req: &Request) -> String {
     let scheme = req.uri().scheme().map(|s| s.as_str()).unwrap_or("http");
-    let host = req.headers()
+    let host = req
+        .headers()
         .get("host")
         .and_then(|h| h.to_str().ok())
         .unwrap_or("localhost");
@@ -37,7 +40,10 @@ fn get_server_url(req: &Request) -> String {
 }
 
 /// 创建支付插件实例
-fn create_pay_plugin(pay_type: &str, config: &serde_json::Value) -> Result<Box<dyn PayPlugin>, String> {
+fn create_pay_plugin(
+    pay_type: &str,
+    config: &serde_json::Value,
+) -> Result<Box<dyn PayPlugin>, String> {
     let mut plugin: Box<dyn PayPlugin> = match pay_type {
         "jie" => Box::new(JiePayPlugin::new()),
         "ali" => Box::new(AliPayPlugin::new()),
@@ -57,7 +63,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    
+
     // 获取应用信息
     let app_info = match depot.get::<AppInfo>("app_info") {
         Ok(info) => info,
@@ -67,7 +73,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
     let app_key = app_info.app_key.as_str();
-    
+
     let pay_req = match req.parse_json::<PayRequest>().await {
         Ok(data) => data,
         Err(_) => {
@@ -96,9 +102,12 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }
             };
             // 优先使用 acctno，其次 email，最后 phone
-            account_owned = user_info.acctno.as_ref()
+            account_owned = user_info
+                .acctno
+                .as_ref()
                 .or(user_info.email.as_ref())
-                .or(user_info.phone.as_ref()).cloned()
+                .or(user_info.phone.as_ref())
+                .cloned()
                 .unwrap_or_else(|| user_info.uid.to_string());
             &account_owned
         }
@@ -116,11 +125,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let mut validator = Validator::new();
     validator.wordnum("account", account, 5, 32);
     validator.int("gid", pay_req.gid, 1, 10);
-    
+
     if let Some(ref pay_type) = pay_req.pay_type {
         validator.sameone("type", pay_type, vec!["ali", "wx"]);
     }
-    
+
     if let Err(msg) = validator.validate() {
         render_error(res, msg, 201, app_key);
         return;
@@ -155,7 +164,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 查询商品 - 一比一还原PHP
     let g_res = sqlx::query_as::<_, (i64, String, String, i64, String, i64, String)>(
-        "SELECT id, name, type, money, blurb, val, state FROM u_goods WHERE id = ? AND appid = ?"
+        "SELECT id, name, type, money, blurb, val, state FROM u_goods WHERE id = ? AND appid = ?",
     )
     .bind(pay_req.gid)
     .bind(appid)
@@ -184,7 +193,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 生成订单号 - 一比一还原PHP: $order_no = date("YmdHis",time()).rand(10000,99999);
     use rand::SeedableRng;
     let mut rng = rand::rngs::StdRng::from_entropy();
-    let order_no = format!("{}{:05}", Utc::now().format("%Y%m%d%H%M%S"), rng.gen_range(10000..99999));
+    let order_no = format!(
+        "{}{:05}",
+        Utc::now().format("%Y%m%d%H%M%S"),
+        rng.gen_range(10000..99999)
+    );
 
     // 构建订单数据
     let mut order_data: HashMap<&str, serde_json::Value> = HashMap::new();
@@ -215,21 +228,24 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
         if let Ok(Some((_agent_id, pay_divide))) = a_res
             && let Some(divide) = pay_divide
-                && divide > 0.0 {
-                    order_data.insert("inviter_id", serde_json::json!(inv_uid));
-                    order_data.insert("divide_money", serde_json::json!((money as f64 * divide / 100.0).round()));
-                }
+            && divide > 0.0
+        {
+            order_data.insert("inviter_id", serde_json::json!(inv_uid));
+            order_data.insert(
+                "divide_money",
+                serde_json::json!((money as f64 * divide / 100.0).round()),
+            );
+        }
     }
 
     // 一比一还原PHP: 代理商品检查
     if goods_type == "agent" {
-        let ag_res = sqlx::query_as::<_, (i64,)>(
-            "SELECT id FROM u_agent_group WHERE id = ? AND appid = ?"
-        )
-        .bind(val)
-        .bind(appid)
-        .fetch_optional(app_state.get_db())
-        .await;
+        let ag_res =
+            sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE id = ? AND appid = ?")
+                .bind(val)
+                .bind(appid)
+                .fetch_optional(app_state.get_db())
+                .await;
 
         match ag_res {
             Ok(Some(_)) => {}
@@ -289,7 +305,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     render_error(res, "支付宝配置解析失败", 150, app_key);
                     return;
                 }
-            }
+            },
             Err(_) => {
                 render_error(res, "支付宝配置解析失败", 150, app_key);
                 return;
@@ -342,7 +358,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     render_error(res, "微信配置解析失败", 150, app_key);
                     return;
                 }
-            }
+            },
             Err(_) => {
                 render_error(res, "微信配置解析失败", 150, app_key);
                 return;

@@ -1,19 +1,19 @@
 //! Trade handlers
 //! Grouped: pay, order, orderQuery, goods, vip, kamiTopup, fen
 
-pub mod pay;
+pub mod fen;
+pub mod goods;
+pub mod kamiTopup;
 pub mod order;
 pub mod orderQuery;
-pub mod goods;
+pub mod pay;
 pub mod vip;
-pub mod kamiTopup;
-pub mod fen;
 
 // Re-export for backward compatibility
-pub use pay::*;
+pub use fen::*;
+pub use goods::*;
+pub use kamiTopup::*;
 pub use order::*;
 pub use orderQuery::*;
-pub use goods::*;
+pub use pay::*;
 pub use vip::*;
-pub use kamiTopup::*;
-pub use fen::*;

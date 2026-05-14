@@ -3,10 +3,12 @@
 use salvo::prelude::*;
 use std::sync::Arc;
 
-use crate::core::AppState;
-use crate::app::utils::response::{SignedApiResponse, render_success, render_success_msg, render_success_with_msg, render_error};
-use crate::app::middleware::user_auth::UserInfo;
 use crate::app::middleware::app_context::AppInfo;
+use crate::app::middleware::user_auth::UserInfo;
+use crate::app::utils::response::{
+    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+};
+use crate::core::AppState;
 
 #[handler]
 pub async fn get_info(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -17,7 +19,7 @@ pub async fn get_info(_req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     };
-    
+
     // 获取应用信息
     // PHP: $this->user
     let user_info = match depot.get::<UserInfo>("user_info") {
@@ -67,19 +69,22 @@ pub async fn get_info(_req: &mut Request, depot: &mut Depot, res: &mut Response)
 #[inline]
 fn build_user_info(user: &UserInfo, app: &AppInfo, app_url: &str) -> serde_json::Value {
     // PHP: 'pic'=>empty($this->user['avatars'])?'':getUrl().$this->user['avatars']
-    let pic = user.avatars.as_deref()
+    let pic = user
+        .avatars
+        .as_deref()
         .filter(|a| !a.is_empty())
         .map(|a| format!("{}{}", app_url, a))
         .unwrap_or_default();
 
     // PHP: 'vipExpDate'=>date("Y-m-d H:i:s",$this->user['vip'])
     let vip_exp_date = user.vip.and_then(|v| {
-        chrono::DateTime::from_timestamp(v, 0)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        chrono::DateTime::from_timestamp(v, 0).map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
     });
 
     // PHP: 'extend'=>empty($this->user['extend'])?null:json_decode($this->user['extend'],true)
-    let extend: Option<serde_json::Value> = user.extend.as_deref()
+    let extend: Option<serde_json::Value> = user
+        .extend
+        .as_deref()
         .filter(|e| !e.is_empty())
         .and_then(|e| serde_json::from_str(e).ok());
 
@@ -123,9 +128,10 @@ fn build_kami_info(user: &UserInfo, app: &AppInfo) -> serde_json::Value {
     if user.kami_type.as_deref() == Some("vip") {
         // PHP: $info['vipExpTime'] = $this->user['vip_exp'];
         info["vipExpTime"] = serde_json::Value::Number(user.vip_exp.unwrap_or(0).into());
-        
+
         // PHP: $info['vipExpDate'] = date("Y-m-d H:i:s",$this->user['vip_exp']);
-        let vip_exp_date = user.vip_exp
+        let vip_exp_date = user
+            .vip_exp
             .and_then(|v| chrono::DateTime::from_timestamp(v, 0))
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
             .unwrap_or_default();

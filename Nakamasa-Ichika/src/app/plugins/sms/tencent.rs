@@ -3,14 +3,14 @@
 
 use super::trait_def::{SmsPlugin, SmsResult};
 use serde_json::json;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 /// 腾讯云短信插件
 pub struct TencentSmsPlugin {
     appid: Option<String>,
     appkey: Option<String>,
-    sname: Option<String>,  // 签名名称
-    mid: Option<String>,     // 模板ID
+    sname: Option<String>, // 签名名称
+    mid: Option<String>,   // 模板ID
 }
 
 impl TencentSmsPlugin {
@@ -96,16 +96,32 @@ impl SmsPlugin for TencentSmsPlugin {
     fn init(&mut self, config: serde_json::Value) -> Result<(), String> {
         if let Some(obj) = config.as_object() {
             // 支持多种key名
-            if let Some(v) = obj.get("appid").or_else(|| obj.get("SDKAppID")).or_else(|| obj.get("AppId")) {
+            if let Some(v) = obj
+                .get("appid")
+                .or_else(|| obj.get("SDKAppID"))
+                .or_else(|| obj.get("AppId"))
+            {
                 self.appid = Some(v.as_str().unwrap_or("").to_string());
             }
-            if let Some(v) = obj.get("appkey").or_else(|| obj.get("AppKey")).or_else(|| obj.get("SecretKey")) {
+            if let Some(v) = obj
+                .get("appkey")
+                .or_else(|| obj.get("AppKey"))
+                .or_else(|| obj.get("SecretKey"))
+            {
                 self.appkey = Some(v.as_str().unwrap_or("").to_string());
             }
-            if let Some(v) = obj.get("sname").or_else(|| obj.get("SignName")).or_else(|| obj.get("sign")) {
+            if let Some(v) = obj
+                .get("sname")
+                .or_else(|| obj.get("SignName"))
+                .or_else(|| obj.get("sign"))
+            {
                 self.sname = Some(v.as_str().unwrap_or("").to_string());
             }
-            if let Some(v) = obj.get("mid").or_else(|| obj.get("TemplateId")).or_else(|| obj.get("templateId")) {
+            if let Some(v) = obj
+                .get("mid")
+                .or_else(|| obj.get("TemplateId"))
+                .or_else(|| obj.get("templateId"))
+            {
                 self.mid = Some(v.as_str().unwrap_or("").to_string());
             }
         }
@@ -161,13 +177,12 @@ impl SmsPlugin for TencentSmsPlugin {
         });
 
         // 异步发送HTTP请求 - 一比一还原PHP curl
-        
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
                 let client = reqwest::Client::builder()
                     .timeout(std::time::Duration::from_secs(60))
-                    .danger_accept_invalid_certs(true)  // PHP: CURLOPT_SSL_VERIFYPEER, false
+                    .danger_accept_invalid_certs(true) // PHP: CURLOPT_SSL_VERIFYPEER, false
                     .build()
                     .map_err(|e| format!("HTTP客户端创建失败: {}", e))?;
 
@@ -181,16 +196,19 @@ impl SmsPlugin for TencentSmsPlugin {
                     Ok(resp) => {
                         match resp.text().await {
                             Ok(text) => {
-                                if let Ok(status) = serde_json::from_str::<serde_json::Value>(&text) {
+                                if let Ok(status) = serde_json::from_str::<serde_json::Value>(&text)
+                                {
                                     // PHP: if (!$status) { result = ['code'=>201,'msg'=>'TencentSms Error']; }
-                                    // PHP: elseif(!isset($status['result']) || $status['result'] != 0) { 
-                                    //          result = ['code'=>201,'msg'=>isset($status['ErrorInfo'])?$status['ErrorInfo']:$status['errmsg']]; 
+                                    // PHP: elseif(!isset($status['result']) || $status['result'] != 0) {
+                                    //          result = ['code'=>201,'msg'=>isset($status['ErrorInfo'])?$status['ErrorInfo']:$status['errmsg']];
                                     //      }
                                     // PHP: else { result = ['code'=>200,'msg'=>$status['errmsg']]; }
-                                    let result_val = status.get("result").and_then(|v| v.as_i64()).unwrap_or(-1);
-                                    
+                                    let result_val =
+                                        status.get("result").and_then(|v| v.as_i64()).unwrap_or(-1);
+
                                     if result_val != 0 {
-                                        let error_msg = status.get("ErrorInfo")
+                                        let error_msg = status
+                                            .get("ErrorInfo")
                                             .or_else(|| status.get("errmsg"))
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("发送失败");
@@ -200,10 +218,11 @@ impl SmsPlugin for TencentSmsPlugin {
                                             request_id: None,
                                         });
                                     }
-                                    
+
                                     return Ok(SmsResult {
                                         success: true,
-                                        message: status.get("errmsg")
+                                        message: status
+                                            .get("errmsg")
                                             .and_then(|v| v.as_str())
                                             .unwrap_or("发送成功")
                                             .to_string(),
