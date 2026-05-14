@@ -15,9 +15,9 @@ pub fn index_routes() -> Router {
         .push(Router::with_path("/authentication").post(authentication::authentication))
         // 首页
         .push(Router::with_path("/index").get(index::index))
-        // 支付异步通知
-        .push(Router::with_path("/notify/ali/<order_no>").post(notify::ali_notify))
-        .push(Router::with_path("/notify/wx/<order_no>").post(notify::wx_notify))
+        // 支付异步通知：兼容 POST/GET；处理函数内部同时支持 query、JSON、form、XML 入参
+        .push(Router::with_path("/notify/ali/<order_no>").post(notify::ali_notify).get(notify::ali_notify))
+        .push(Router::with_path("/notify/wx/<order_no>").post(notify::wx_notify).get(notify::wx_notify))
         // 支付返回地址
         .push(Router::with_path("/return/ali/<order_no>").get(return_::ali_return))
         .push(Router::with_path("/return/wx/<order_no>").get(return_::wx_return))
