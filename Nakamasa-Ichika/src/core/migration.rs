@@ -70,15 +70,22 @@ fn get_migrations() -> Vec<Migration> {
             description: "添加 AI 配置字段到 app 表，支持 IPv6 修改 IP 字段长度，并新增安全/CORS YAML 配置",
             migration_type: MigrationType::Both,
             sql: Some(SqlSource::Statements(&[
-                // app 添加 AI 相关字段
+                // app 添加 AI 相关字段（与新安装建表结构保持一致）
                 r#"ALTER TABLE `{app}`
-                    ADD COLUMN IF NOT EXISTS ai_state VARCHAR(10) DEFAULT 'off' COMMENT 'AI功能状态 on/off',
-                    ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT NULL COMMENT 'AI提供商',
-                    ADD COLUMN IF NOT EXISTS ai_api_base TEXT DEFAULT NULL COMMENT 'AI API地址',
+                    ADD COLUMN IF NOT EXISTS ai_state ENUM('on','off') DEFAULT 'off' COMMENT 'AI功能状态 on/off',
+                    ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(32) DEFAULT NULL COMMENT 'AI提供商',
+                    ADD COLUMN IF NOT EXISTS ai_api_base VARCHAR(255) DEFAULT NULL COMMENT 'AI API地址',
                     ADD COLUMN IF NOT EXISTS ai_api_key TEXT DEFAULT NULL COMMENT 'AI API密钥',
-                    ADD COLUMN IF NOT EXISTS ai_model VARCHAR(100) DEFAULT NULL COMMENT 'AI模型名称',
-                    ADD COLUMN IF NOT EXISTS ai_temperature DECIMAL(3,2) DEFAULT NULL COMMENT 'AI温度参数',
-                    ADD COLUMN IF NOT EXISTS ai_max_tokens INT(10) UNSIGNED DEFAULT NULL COMMENT 'AI最大token数'"#,
+                    ADD COLUMN IF NOT EXISTS ai_model VARCHAR(128) DEFAULT NULL COMMENT 'AI模型名称',
+                    ADD COLUMN IF NOT EXISTS ai_temperature FLOAT(3,1) DEFAULT NULL COMMENT 'AI温度参数',
+                    ADD COLUMN IF NOT EXISTS ai_max_tokens INT(10) DEFAULT NULL COMMENT 'AI最大token数'"#,
+                // 兼容已经执行过旧迁移但字段类型与新安装结构不一致的环境
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_state ENUM('on','off') DEFAULT 'off' COMMENT 'AI功能状态 on/off'",
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_provider VARCHAR(32) DEFAULT NULL COMMENT 'AI提供商'",
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_api_base VARCHAR(255) DEFAULT NULL COMMENT 'AI API地址'",
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_model VARCHAR(128) DEFAULT NULL COMMENT 'AI模型名称'",
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_temperature FLOAT(3,1) DEFAULT NULL COMMENT 'AI温度参数'",
+                "ALTER TABLE `{app}` MODIFY COLUMN ai_max_tokens INT(10) DEFAULT NULL COMMENT 'AI最大token数'",
                 // 修改 IP 字段支持 IPv6
                 "ALTER TABLE `{user}` MODIFY COLUMN reg_ip VARCHAR(45) NOT NULL",
                 "ALTER TABLE `{login}` MODIFY COLUMN ip VARCHAR(45) DEFAULT NULL",

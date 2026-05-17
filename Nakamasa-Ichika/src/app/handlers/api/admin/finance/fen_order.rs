@@ -531,7 +531,7 @@ pub async fn delall(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if delall_req.ids.is_empty() {
+    if delall_req.ids.is_empty() || delall_req.ids.len() > 1000 || delall_req.ids.iter().any(|id| *id <= 0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }

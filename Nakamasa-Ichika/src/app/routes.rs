@@ -141,6 +141,7 @@ fn build_production_routes() -> Router {
 fn install_check_routes() -> Router {
     Router::with_path("/api/install")
         .push(Router::with_path("/check").get(api::index::install::check))
+        .push(Router::with_path("/checkapi").get(api::index::install::check))
 }
 
 /// OAuth2.0 回调路由

@@ -128,6 +128,17 @@ pub struct AppState {
     /// 容量：1,000，TTL：5分钟，策略：LRU
     pub fen_event_cache: Arc<ShardedCacheV2<u64, FenEventCache>>,
 
+    /// 应用上下文缓存 (appid/ver_key/ver_val -> AppInfo)
+    ///
+    /// 缓存 AppContext 中间件查询出的应用、版本、加密配置。
+    /// 短 TTL 避免配置变更长期不生效，同时减少每个用户 API 请求的 JOIN 查询。
+    pub app_info_cache: Arc<ShardedCacheV2<String, crate::app::middleware::app_context::AppInfo>>,
+
+    /// /ini 响应缓存 (appid/current_version -> serde_json::Value)
+    ///
+    /// 缓存版本、公告、扩展配置聚合结果，降低 /ini 高频请求的数据库压力。
+    pub ini_response_cache: Arc<ShardedCacheV2<String, serde_json::Value>>,
+
     /// Token 验证缓存 (token_hash -> CachedTokenData)
     ///
     /// 缓存已验证的 Token 数据，减少 Redis 查询。
@@ -351,6 +362,24 @@ impl AppState {
             ..Default::default()
         };
 
+        // 应用上下文缓存 - 所有用户 API 的热路径，短 TTL 兼顾性能和配置实时性
+        let app_info_cache_config = V2CacheConfig {
+            max_entries: 2_000,
+            shard_count: 16,
+            default_ttl: Duration::from_secs(60),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+
+        // /ini 聚合响应缓存 - 版本/公告/扩展配置，短 TTL 降低高频读取压力
+        let ini_response_cache_config = V2CacheConfig {
+            max_entries: 2_000,
+            shard_count: 16,
+            default_ttl: Duration::from_secs(60),
+            eviction_policy: EvictionPolicy::LRU,
+            ..Default::default()
+        };
+
         AppState {
             db,
             redis_pool,
@@ -360,6 +389,8 @@ impl AppState {
             user_info_cache: Arc::new(ShardedCacheV2::new(user_cache_config)),
             app_config_cache: Arc::new(ShardedCacheV2::new(app_config)),
             fen_event_cache: Arc::new(ShardedCacheV2::new(fen_config)),
+            app_info_cache: Arc::new(ShardedCacheV2::new(app_info_cache_config)),
+            ini_response_cache: Arc::new(ShardedCacheV2::new(ini_response_cache_config)),
             token_cache: Arc::new(ShardedCacheV2::new(token_cache_config)),
         }
     }
@@ -446,7 +477,19 @@ impl AppState {
     #[inline]
     pub fn invalidate_app_cache(&self, appid: u64) {
         self.app_config_cache.remove(&appid);
+        self.invalidate_app_runtime_cache(appid);
         tracing::debug!("应用配置缓存已失效: appid={}", appid);
+    }
+
+    /// 失效应用运行时缓存
+    ///
+    /// AppContext 与 /ini 使用组合 key 缓存，无法按 appid 精确枚举删除；
+    /// 应用配置变更频率低，直接清空短 TTL 运行时缓存，避免返回旧配置。
+    #[inline]
+    pub fn invalidate_app_runtime_cache(&self, appid: u64) {
+        self.app_info_cache.clear();
+        self.ini_response_cache.clear();
+        tracing::debug!("应用运行时缓存已清空: appid={}", appid);
     }
 
     /// 失效积分事件缓存

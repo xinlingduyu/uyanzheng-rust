@@ -201,12 +201,12 @@ impl SmsPlugin for AliSmsPlugin {
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let client = reqwest::Client::builder()
+                match super::http_client::client()?
+                    .get(&url)
                     .timeout(std::time::Duration::from_secs(10))
-                    .build()
-                    .map_err(|e| format!("HTTP客户端创建失败: {}", e))?;
-
-                match client.get(&url).send().await {
+                    .send()
+                    .await
+                {
                     Ok(resp) => {
                         match resp.text().await {
                             Ok(text) => {

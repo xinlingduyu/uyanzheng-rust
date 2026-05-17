@@ -178,11 +178,15 @@ async fn delete_all_user_tokens(
                 if let Ok(Some(token)) = redis_util.get(redis_pool, key).await {
                     // 删除token键
                     let token_key = format!("{}_{}__{}", user_type, appid, token);
-                    let _ = redis_util.del(redis_pool, &token_key).await;
+                    if let Err(e) = redis_util.del(redis_pool, &token_key).await {
+                        tracing::warn!("redis del failed: {}", e);
+                    }
                 }
 
                 // 删除online key
-                let _ = redis_util.del(redis_pool, key).await;
+                if let Err(e) = redis_util.del(redis_pool, key).await {
+                    tracing::warn!("redis del failed: {}", e);
+                }
             }
             tracing::debug!("成功清除用户 {} 的 {} 个token", uid, key_count);
         }

@@ -144,15 +144,11 @@ impl SmsPlugin for JieSmsPlugin {
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .map_err(|e| format!("HTTP客户端创建失败: {}", e))?;
-
                 // PHP: curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $this->method);
                 // PHP: curl_setopt($curl, CURLOPT_POSTFIELDS, $param);
-                match client
+                match super::http_client::client()?
                     .post(url)
+                    .timeout(std::time::Duration::from_secs(30))
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .body(param)
                     .send()

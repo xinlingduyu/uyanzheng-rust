@@ -518,7 +518,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 {
+    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 || del_all_req.ids.iter().any(|id| *id <= 0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }

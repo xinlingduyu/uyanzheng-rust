@@ -63,7 +63,6 @@ fn admin_data_to_info(data: &AdminData) -> AdminInfo {
     AdminInfo {
         id: data.id,
         user: data.user.clone(),
-        password: data.password.clone(),
         notes: data.notes.clone(),
         avatars: data.avatars.clone(),
         lockin: data.lockin,

@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::middleware::get_client_ip;
 use crate::core::AppState;
 
 /// 获取短信插件列表和配置信息
@@ -345,9 +346,17 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 准备更新数据
-    let sms_config_json = edit_req
-        .sms_config
-        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
+    let sms_config_json = match edit_req.sms_config {
+        Some(ref v) => match serde_json::to_string(v) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::error!("短信配置序列化失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("配置序列化失败", 201)));
+                return;
+            }
+        },
+        None => None,
+    };
 
     // 更新数据库
     let result = sqlx::query(
@@ -375,8 +384,12 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 记录日志
-                let admin_id = 1i64; // TODO: 从token获取
+                let admin_id = match depot.get::<u64>("admin_id") {
+                    Ok(id) => *id as i64,
+                    Err(_) => 0i64,
+                };
                 let now = Utc::now().timestamp();
+                let ip = get_client_ip(req).to_string();
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
                 )
@@ -385,7 +398,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind("send_edit")
                 .bind(true)
                 .bind(now)
-                .bind("127.0.0.1") // TODO: 获取真实IP
+                .bind(&ip)
                 .bind(Option::<i64>::None)
                 .execute(app_state.get_db())
                 .await;

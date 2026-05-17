@@ -187,26 +187,36 @@ impl Handler for AppContext {
             return;
         }
 
-        // 查询应用信息
-        let app_info = match fetch_app_info_with_version(
-            &app_state,
+        // 查询应用信息（先查 Nakamasa-utils ShardedCacheV2，未命中再查数据库）
+        let app_cache_key = format!(
+            "{}:{}:{}",
             appid,
-            ver_key.as_deref(),
-            ver_val.as_deref(),
-        )
-        .await
-        {
-            Ok(Some(info)) => info,
-            Ok(None) => {
-                res.render(Json(ApiResponse::<()>::error_static("appid error", 201)));
-                ctrl.skip_rest();
-                return;
-            }
-            Err(e) => {
-                tracing::error!("数据库查询失败: {}", e);
-                res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
-                ctrl.skip_rest();
-                return;
+            ver_key.as_deref().unwrap_or(""),
+            ver_val.as_deref().unwrap_or("")
+        );
+        let app_info = if let Some(info) = app_state.app_info_cache.get(&app_cache_key) {
+            info
+        } else {
+            match fetch_app_info_with_version(
+                &app_state,
+                appid,
+                ver_key.as_deref(),
+                ver_val.as_deref(),
+            )
+            .await
+            {
+                Ok(Some(info)) => app_state.app_info_cache.set_and_get(app_cache_key, info),
+                Ok(None) => {
+                    res.render(Json(ApiResponse::<()>::error_static("appid error", 201)));
+                    ctrl.skip_rest();
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!("数据库查询失败: {}", e);
+                    res.render(Json(ApiResponse::<()>::error_static("数据库错误", 201)));
+                    ctrl.skip_rest();
+                    return;
+                }
             }
         };
 

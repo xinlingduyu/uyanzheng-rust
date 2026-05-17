@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPlugin, WxPayPlugin};
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
+use crate::core::middleware::get_client_ip;
 use crate::core::AppState;
 
 /// 获取支付插件列表和配置信息
@@ -247,17 +248,29 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    // 准备更新数据
-    let ali_config_json = edit_req
-        .pay_ali_config
-        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
-    let wx_config_json = edit_req
-        .pay_wx_config
-        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| String::new()));
-
-    // 转换为Vec<u8>以适配BLOB类型
-    let ali_config_bytes = ali_config_json.as_ref().map(|s| s.as_bytes().to_vec());
-    let wx_config_bytes = wx_config_json.as_ref().map(|s| s.as_bytes().to_vec());
+    // 准备更新数据 — 序列化失败则返回错误
+    let ali_config_bytes = match &edit_req.pay_ali_config {
+        Some(v) => match serde_json::to_string(v) {
+            Ok(s) => Some(s.as_bytes().to_vec()),
+            Err(e) => {
+                tracing::error!("支付宝配置序列化失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("支付宝配置序列化失败", 201)));
+                return;
+            }
+        },
+        None => None,
+    };
+    let wx_config_bytes = match &edit_req.pay_wx_config {
+        Some(v) => match serde_json::to_string(v) {
+            Ok(s) => Some(s.as_bytes().to_vec()),
+            Err(e) => {
+                tracing::error!("微信配置序列化失败: {}", e);
+                res.render(Json(ApiResponse::<()>::error("微信配置序列化失败", 201)));
+                return;
+            }
+        },
+        None => None,
+    };
 
     // 更新数据库
     let result = sqlx::query(
@@ -279,8 +292,13 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // 记录日志
-                let admin_id = 1u64; // TODO: 从token获取
+                // 从 depot 获取 admin_id（由 AdminAuth 中间件注入）
+                let admin_id = depot
+                    .get::<u64>("admin_id")
+                    .copied()
+                    .unwrap_or(0);
+                // 获取真实客户端 IP
+                let ip = get_client_ip(req).to_string();
                 let now = Utc::now().timestamp();
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -290,7 +308,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind("pay_edit")
                 .bind(true)
                 .bind(now)
-                .bind("127.0.0.1") // TODO: 获取真实IP
+                .bind(&ip)
                 .bind(Option::<i64>::None)
                 .execute(app_state.get_db())
                 .await;

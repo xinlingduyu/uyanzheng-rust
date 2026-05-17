@@ -10,6 +10,7 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, AtomicU64, AtomicUsize, Ordering};
+use tracing;
 
 // ============================================================================
 // 配置常量
@@ -269,7 +270,10 @@ impl FixedSizePoolV2 {
 
             // 记录已分配
             let ptr = NonNull::new_unchecked((*header).data_ptr());
-            self.allocated.write().unwrap().push(ptr);
+            match self.allocated.write() {
+                Ok(mut guard) => guard.push(ptr),
+                Err(e) => tracing::error!("RwLock 'allocated' poisoned in alloc: {}", e),
+            }
 
             self.stats.total_allocs.fetch_add(1, Ordering::Relaxed);
             ptr
@@ -487,7 +491,10 @@ impl MemoryPoolV2 {
             (*header).magic.store(BlockHeader::MAGIC, Ordering::Relaxed);
 
             let ptr = NonNull::new_unchecked((*header).data_ptr());
-            self.large_allocs.write().unwrap().push((ptr, layout));
+            match self.large_allocs.write() {
+                Ok(mut guard) => guard.push((ptr, layout)),
+                Err(e) => tracing::error!("RwLock 'large_allocs' poisoned in alloc_large: {}", e),
+            }
             ptr
         }
     }
@@ -536,7 +543,13 @@ impl MemoryPoolV2 {
 
     /// 释放大块内存
     fn free_large(&self, ptr: NonNull<u8>) {
-        let mut large = self.large_allocs.write().unwrap();
+        let mut large = match self.large_allocs.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                tracing::error!("RwLock 'large_allocs' poisoned in free_large: {}", e);
+                return;
+            }
+        };
         if let Some(pos) = large.iter().position(|(p, _)| *p == ptr) {
             let (_, layout) = large.remove(pos);
             unsafe {
@@ -564,7 +577,13 @@ impl MemoryPoolV2 {
             stats.total_frees += frees;
         }
 
-        stats.large_allocs = self.large_allocs.read().unwrap().len() as u64;
+        stats.large_allocs = match self.large_allocs.read() {
+            Ok(guard) => guard.len() as u64,
+            Err(e) => {
+                tracing::error!("RwLock 'large_allocs' poisoned in stats: {}", e);
+                0
+            }
+        };
         stats
     }
 
@@ -585,10 +604,17 @@ impl Default for MemoryPoolV2 {
 impl Drop for MemoryPoolV2 {
     fn drop(&mut self) {
         // 释放所有大块内存
-        for (ptr, layout) in self.large_allocs.write().unwrap().drain(..) {
-            unsafe {
-                let header = BlockHeader::from_data_ptr(ptr.as_ptr());
-                dealloc(header as *mut u8, layout);
+        match self.large_allocs.write() {
+            Ok(mut guard) => {
+                for (ptr, layout) in guard.drain(..) {
+                    unsafe {
+                        let header = BlockHeader::from_data_ptr(ptr.as_ptr());
+                        dealloc(header as *mut u8, layout);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("RwLock 'large_allocs' poisoned in MemoryPoolV2::drop: {}", e);
             }
         }
     }
@@ -779,10 +805,10 @@ impl<T> ObjectPoolV2<T> {
 
         // 创建新对象
         let obj = Box::into_raw(Box::new((self.create_fn)()));
-        self.allocated
-            .write()
-            .unwrap()
-            .push(unsafe { NonNull::new_unchecked(obj) });
+        match self.allocated.write() {
+            Ok(mut guard) => guard.push(unsafe { NonNull::new_unchecked(obj) }),
+            Err(e) => tracing::error!("RwLock 'allocated' poisoned in ObjectPoolV2::get: {}", e),
+        }
 
         PooledObjectV2 {
             ptr: unsafe { NonNull::new_unchecked(obj) },
@@ -832,9 +858,16 @@ impl<T> Drop for ObjectPoolV2<T> {
         while self.free_list.pop().is_some() {}
 
         // 释放所有已分配的对象
-        for ptr in self.allocated.write().unwrap().drain(..) {
-            unsafe {
-                let _ = Box::from_raw(ptr.as_ptr());
+        match self.allocated.write() {
+            Ok(mut guard) => {
+                for ptr in guard.drain(..) {
+                    unsafe {
+                        let _ = Box::from_raw(ptr.as_ptr());
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::error!("RwLock 'allocated' poisoned in ObjectPoolV2::drop: {}", e);
             }
         }
     }

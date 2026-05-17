@@ -2,6 +2,7 @@
 //! Grouped: wxlogon, wxlogonCallback, wxlogonQuery, wxBindSDK, wxloginSDK, qqBindSDK, qqlogonCallback, qqloginWeb, qqloginQuery, qqloginSDK
 
 pub mod qqBindSDK;
+mod http_client;
 pub mod qqloginQuery;
 pub mod qqloginSDK;
 pub mod qqloginWeb;

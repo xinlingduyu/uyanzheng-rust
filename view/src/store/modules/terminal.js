@@ -5,7 +5,6 @@ import { Message } from '@arco-design/web-vue'
 const buildTerminalUrl = (commandKey, uuid, extend) => {
   const env = import.meta.env
   const baseURL = env.VITE_APP_BASE_URL
-  const token = tool.local.get(env.VITE_APP_TOKEN_PREFIX)
   const terminalUrl = '/app/saipackage/index/terminal'
   return (
     baseURL +
@@ -15,10 +14,13 @@ const buildTerminalUrl = (commandKey, uuid, extend) => {
     '&uuid=' +
     uuid +
     '&extend=' +
-    extend +
-    '&token=' +
-    token
+    extend
   )
+}
+
+const getToken = () => {
+  const env = import.meta.env
+  return tool.local.get(env.VITE_APP_TOKEN_PREFIX)
 }
 
 const useTerminalStore = defineStore('terminal', {
@@ -84,52 +86,85 @@ const useTerminalStore = defineStore('terminal', {
         return idx
       }
     },
-    startEventSource(taskKey) {
+    async startEventSource(taskKey) {
       const that = this
-      window.eventSource = new EventSource(
-        buildTerminalUrl(
-          that.taskList[taskKey].command,
-          that.taskList[taskKey].uuid,
-          that.taskList[taskKey].extend
-        )
+      const url = buildTerminalUrl(
+        that.taskList[taskKey].command,
+        that.taskList[taskKey].uuid,
+        that.taskList[taskKey].extend
       )
-      window.eventSource.onmessage = function (e) {
-        const data = JSON.parse(e.data)
-        if (!data || !data.data) {
-          return
-        }
-
-        const taskIdx = that.findTaskIdxFromUuid(data.uuid)
-        if (taskIdx === false) {
-          return
-        }
-
-        if (data.data == 'exec-error') {
-          that.setTaskStatus(taskIdx, 5)
-          window.eventSource.close()
-          that.taskCompleted(taskIdx)
-          that.startTask()
-        } else if (data.data == 'exec-completed') {
-          window.eventSource.close()
-          if (that.taskList[taskIdx].status != 4) {
-            that.setTaskStatus(taskIdx, 5)
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Token: getToken()
           }
-          that.taskCompleted(taskIdx)
-          that.startTask()
-        } else if (data.data == 'connection-success') {
-          that.setTaskStatus(taskIdx, 3)
-        } else if (data.data == 'exec-success') {
-          that.setTaskStatus(taskIdx, 4)
-        } else {
-          that.addTaskMessage(taskIdx, data.data)
+        })
+        if (!response.ok) {
+          that.setTaskStatus(taskKey, 5)
+          that.taskCompleted(taskKey)
+          return
         }
-      }
-      window.eventSource.onerror = function () {
-        window.eventSource.close()
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        const readStream = async () => {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = lines.pop() || ''
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue
+              const dataStr = line.slice(6)
+              let data
+              try {
+                data = JSON.parse(dataStr)
+              } catch {
+                continue
+              }
+              if (!data || !data.data) continue
+
+              const taskIdx = that.findTaskIdxFromUuid(data.uuid)
+              if (taskIdx === false) continue
+
+              if (data.data == 'exec-error') {
+                that.setTaskStatus(taskIdx, 5)
+                reader.cancel()
+                that.taskCompleted(taskIdx)
+                that.startTask()
+              } else if (data.data == 'exec-completed') {
+                reader.cancel()
+                if (that.taskList[taskIdx].status != 4) {
+                  that.setTaskStatus(taskIdx, 5)
+                }
+                that.taskCompleted(taskIdx)
+                that.startTask()
+              } else if (data.data == 'connection-success') {
+                that.setTaskStatus(taskIdx, 3)
+              } else if (data.data == 'exec-success') {
+                that.setTaskStatus(taskIdx, 4)
+              } else {
+                that.addTaskMessage(taskIdx, data.data)
+              }
+            }
+          }
+        }
+        readStream().catch(() => {
+          reader.cancel()
+          const taskIdx = that.findTaskIdxFromGuess(taskKey)
+          if (taskIdx !== false) {
+            that.setTaskStatus(taskIdx, 5)
+            that.taskCompleted(taskIdx)
+          }
+        })
+      } catch {
         const taskIdx = that.findTaskIdxFromGuess(taskKey)
-        if (taskIdx === false) return
-        that.setTaskStatus(taskIdx, 5)
-        that.taskCompleted(taskIdx)
+        if (taskIdx !== false) {
+          that.setTaskStatus(taskIdx, 5)
+          that.taskCompleted(taskIdx)
+        }
       }
     },
 

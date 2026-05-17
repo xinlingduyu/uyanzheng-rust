@@ -99,6 +99,7 @@
 import { ref } from 'vue'
 import { useTerminalStore } from '@/store'
 import { Modal, Message } from '@arco-design/web-vue'
+import DOMPurify from 'dompurify'
 
 const emit = defineEmits(['success'])
 
@@ -212,8 +213,17 @@ const getTagText = (status) => {
   }
 }
 
+const escapeHtml = (value) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 const ansiToHtml = (text) => {
-  return text.replace(/\x1b\[([0-9;]+)m/g, function (match, codes) {
+  const html = escapeHtml(text).replace(/\x1b\[([0-9;]+)m/g, function (match, codes) {
     const styles = []
     codes.split(';').forEach((code) => {
       code = parseInt(code, 10)

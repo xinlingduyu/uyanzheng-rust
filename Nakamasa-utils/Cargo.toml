@@ -24,6 +24,9 @@ chrono.workspace = true
 lazy_static.workspace = true
 once_cell.workspace = true
 
+# Tracing
+tracing.workspace = true
+
 # 高性能缓存额外依赖
 parking_lot = { version = "0.12", optional = true }
 crossbeam = { version = "0.8", optional = true }

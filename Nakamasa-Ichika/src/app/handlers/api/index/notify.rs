@@ -105,16 +105,22 @@ async fn update_order(
         return false;
     }
 
-    // 代理分账
+    // 代理分账 — 失败则回滚，资金安全
     if let Some(inv_uid) = inviter_id
         && divide_money > 0
     {
-        let _ = sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
+        if sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
             .bind(divide_money)
             .bind(inv_uid)
             .bind(appid)
             .execute(&mut *tx)
-            .await;
+            .await
+            .is_err()
+        {
+            tracing::error!("代理分账失败: order_no={}, inviter_uid={}, amount={}", order_no, inv_uid, divide_money);
+            let _ = tx.rollback().await;
+            return false;
+        }
     }
 
     // 根据订单类型处理
@@ -122,7 +128,7 @@ async fn update_order(
         "vip" => {
             // 查询用户当前VIP状态
             let vip_result: Result<Option<(i64,)>, _> =
-                sqlx::query_as("SELECT vip FROM u_user WHERE id = ?")
+                sqlx::query_as("SELECT vip FROM u_user WHERE id = ? FOR UPDATE")
                     .bind(uid)
                     .fetch_optional(&mut *tx)
                     .await;
@@ -259,6 +265,8 @@ async fn get_notify_data(req: &mut Request) -> serde_json::Value {
     }
 
     let body = String::from_utf8_lossy(bytes).trim().to_string();
+    // 移除可能的 UTF-8 BOM（某些支付网关会在 XML/JSON 前加 BOM）
+    let body = body.trim_start_matches('\u{FEFF}').to_string();
     if body.is_empty() {
         return serde_json::Value::Object(data);
     }
@@ -305,9 +313,19 @@ async fn get_notify_data(req: &mut Request) -> serde_json::Value {
     serde_json::Value::Object(data)
 }
 
-/// 支付宝异步通知
-#[handler]
-pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+/// 共享支付通知处理逻辑
+///
+/// `payment`: 支付方式筛选值（"ali" 或 "wx"）
+/// `config_sql`: 查询应用支付配置的 SQL（含列名占位）
+/// `default_plugin`: 默认插件类型
+async fn handle_notify_inner(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+    payment: &str,
+    config_sql: &str,
+    default_plugin: &str,
+) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
         Ok(s) => s,
         Err(_) => {
@@ -328,7 +346,7 @@ pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response
     // 查询订单
     let order = match sqlx::query("SELECT * FROM u_order WHERE order_no = ? AND payment = ?")
         .bind(&order_no)
-        .bind("ali")
+        .bind(payment)
         .fetch_optional(app_state.get_db())
         .await
     {
@@ -348,25 +366,34 @@ pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // 获取应用支付配置
     let appid: i64 = order.get("appid");
-    let app =
-        match sqlx::query("SELECT app_type, pay_ali_type, pay_ali_config FROM u_app WHERE id = ?")
-            .bind(appid)
-            .fetch_optional(app_state.get_db())
-            .await
-        {
-            Ok(Some(a)) => a,
-            _ => {
-                res.render(Text::Plain("fail"));
-                return;
-            }
-        };
+    let app = match sqlx::query(config_sql)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await
+    {
+        Ok(Some(a)) => a,
+        _ => {
+            res.render(Text::Plain("fail"));
+            return;
+        }
+    };
 
     let app_type: String = app.get("app_type");
-    let pay_type: Option<String> = app.try_get("pay_ali_type").ok();
-    let pay_config: Option<String> = app.try_get("pay_ali_config").ok();
+
+    // 根据 payment 类型确定实际列名取值
+    let pay_type_val: Option<String> = if payment == "ali" {
+        app.try_get("pay_ali_type").ok()
+    } else {
+        app.try_get("pay_wx_type").ok()
+    };
+    let pay_config_val: Option<String> = if payment == "ali" {
+        app.try_get("pay_ali_config").ok()
+    } else {
+        app.try_get("pay_wx_config").ok()
+    };
 
     // 解析配置
-    let config: serde_json::Value = match pay_config {
+    let config: serde_json::Value = match pay_config_val {
         Some(c) => serde_json::from_str(&c).unwrap_or(serde_json::Value::Null),
         _ => {
             res.render(Text::Plain("fail"));
@@ -375,7 +402,7 @@ pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response
     };
 
     // 创建插件并验证
-    let plugin = match create_plugin(&pay_type.unwrap_or_else(|| "ali".to_string()), &config) {
+    let plugin = match create_plugin(&pay_type_val.unwrap_or_else(|| default_plugin.to_string()), &config) {
         Ok(p) => p,
         _ => {
             res.render(Text::Plain("fail"));
@@ -400,99 +427,32 @@ pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
 }
 
+/// 支付宝异步通知
+#[handler]
+pub async fn ali_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    handle_notify_inner(
+        req,
+        depot,
+        res,
+        "ali",
+        "SELECT app_type, pay_ali_type, pay_ali_config FROM u_app WHERE id = ?",
+        "ali",
+    )
+    .await;
+}
+
 /// 微信异步通知
 #[handler]
 pub async fn wx_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = match depot.obtain::<Arc<AppState>>() {
-        Ok(s) => s,
-        Err(_) => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    // 获取订单号
-    let order_no = match req.param::<String>("order_no") {
-        Some(no) => no,
-        None => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    // 查询订单
-    let order = match sqlx::query("SELECT * FROM u_order WHERE order_no = ? AND payment = ?")
-        .bind(&order_no)
-        .bind("wx")
-        .fetch_optional(app_state.get_db())
-        .await
-    {
-        Ok(Some(o)) => o,
-        _ => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    // 已处理订单直接返回成功
-    let state: i32 = order.get("state");
-    if state != 0 {
-        res.render(Text::Plain("success"));
-        return;
-    }
-
-    // 获取应用支付配置
-    let appid: i64 = order.get("appid");
-    let app =
-        match sqlx::query("SELECT app_type, pay_wx_type, pay_wx_config FROM u_app WHERE id = ?")
-            .bind(appid)
-            .fetch_optional(app_state.get_db())
-            .await
-        {
-            Ok(Some(a)) => a,
-            _ => {
-                res.render(Text::Plain("fail"));
-                return;
-            }
-        };
-
-    let app_type: String = app.get("app_type");
-    let pay_type: Option<String> = app.try_get("pay_wx_type").ok();
-    let pay_config: Option<String> = app.try_get("pay_wx_config").ok();
-
-    // 解析配置
-    let config: serde_json::Value = match pay_config {
-        Some(c) => serde_json::from_str(&c).unwrap_or(serde_json::Value::Null),
-        _ => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    // 创建插件并验证
-    let plugin = match create_plugin(&pay_type.unwrap_or_else(|| "wx".to_string()), &config) {
-        Ok(p) => p,
-        _ => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    let notify_data = get_notify_data(req).await;
-    let notify_result = match plugin.verify_notify(notify_data) {
-        Ok(t) => t,
-        _ => {
-            res.render(Text::Plain("fail"));
-            return;
-        }
-    };
-
-    // 更新订单
-    if update_order(app_state.get_db(), &order, &notify_result, &app_type).await {
-        res.render(Text::Plain("success"));
-    } else {
-        res.render(Text::Plain("fail"));
-    }
+    handle_notify_inner(
+        req,
+        depot,
+        res,
+        "wx",
+        "SELECT app_type, pay_wx_type, pay_wx_config FROM u_app WHERE id = ?",
+        "wx",
+    )
+    .await;
 }
 
 /// 解析XML为JSON - 使用预编译正则

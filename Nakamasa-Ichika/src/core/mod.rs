@@ -168,10 +168,7 @@ pub mod error;
 /// 为 Salvo Handler 提供便捷的扩展方法。
 pub mod handler_ext;
 
-/// 宏定义
-///
-/// 提供常用的声明式宏和过程宏辅助。
-pub mod macors;
+/// 数据库优化工具
 
 /// 数据库优化工具
 ///

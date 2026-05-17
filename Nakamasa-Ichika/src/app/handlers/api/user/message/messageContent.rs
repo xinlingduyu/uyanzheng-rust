@@ -102,6 +102,7 @@ pub async fn message_content(req: &mut Request, depot: &mut Depot, res: &mut Res
         LEFT JOIN u_user U ON (M.uid = U.id AND M.appid = U.appid)
         WHERE (M.id = ? OR (M.reply_id = ? AND M.appid = ?)) AND M.appid = ?
         ORDER BY M.id ASC
+        LIMIT 200
         "#,
     )
     .bind(content_req.mid)

@@ -29,4 +29,5 @@ pub fn install_routes() -> Router {
         .push(Router::new().post(install::install))
         .push(Router::with_path("/env").get(install::env))
         .push(Router::with_path("/check").get(install::check))
+        .push(Router::with_path("/checkapi").get(install::check))
 }

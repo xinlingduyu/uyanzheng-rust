@@ -139,10 +139,11 @@ async fn increment_fail_count(
             .unwrap_or(0);
 
         let new_num = num + 1;
-        let _ = redis_util
+        if let Err(e) = redis_util
             .set(pool, &fail_ip_num_key, &new_num.to_string(), Some(600))
-            .await;
-
+            .await {
+                tracing::warn!("redis op failed: {}", e);
+            }
         let (lock_time, ttl) = if new_num >= 10 {
             (current_time + 1800, 1800)
         } else if new_num >= 5 {
@@ -150,10 +151,11 @@ async fn increment_fail_count(
         } else {
             return;
         };
-        let _ = redis_util
+        if let Err(e) = redis_util
             .set(pool, &fail_ip_key, &lock_time.to_string(), Some(ttl))
-            .await;
-    }
+            .await {
+                tracing::warn!("redis op failed: {}", e);
+            }    }
 }
 
 /// 清除IP失败次数
@@ -164,7 +166,9 @@ async fn clear_fail_count(
 ) {
     if let Some(pool) = redis_pool {
         let fail_ip_num_key = format!("fail_ip_{}_num", ip_hash);
-        let _ = redis_util.del(pool, &fail_ip_num_key).await;
+        if let Err(e) = redis_util.del(pool, &fail_ip_num_key).await {
+            tracing::warn!("redis del failed: {}", e);
+        }
     }
 }
 
@@ -360,8 +364,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let sn_max_val = sn_max.unwrap_or(0);
 
             // 清除IP失败次数
-            clear_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash).await;
-
+            let _ = clear_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash).await;
             // 处理设备绑定 - 优化：直接传入 sn_list，避免重复查询
             let token_state = handle_user_device_binding(
                 app_state.get_db(),
@@ -424,29 +427,31 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     "uid": id, "udid": &login_req.udid, "p": password_hash, "appid": appid
                 });
 
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &token_key,
                         &token_data.to_string(),
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }
                 // 设置设备在线状态
                 let udid_hash_bytes = md5_hex(login_req.udid.as_bytes());
                 let udid_hash = md5_to_str(&udid_hash_bytes);
                 let mut online_key = String::with_capacity(64);
                 let _ = write!(&mut online_key, "{}online_{}_{}", token_pre, id, udid_hash);
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &online_key,
                         &token,
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-            }
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }            }
 
             // 记录日志
             let _ = sqlx::query(
@@ -805,29 +810,31 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                     "appid": appid, "type": "kami"
                 });
 
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &token_key,
                         &token_data.to_string(),
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }
                 // 设置设备在线状态
                 let udid_hash_bytes = md5_hex(kami_req.udid.as_bytes());
                 let udid_hash = md5_to_str(&udid_hash_bytes);
                 let mut online_key = String::with_capacity(64);
                 let _ = write!(&mut online_key, "{}online_{}_{}", token_pre, id, udid_hash);
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &online_key,
                         &token,
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-            }
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }            }
 
             // 记录日志
             let _ = sqlx::query(

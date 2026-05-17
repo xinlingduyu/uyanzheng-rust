@@ -180,14 +180,9 @@ impl SmsPlugin for TencentSmsPlugin {
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(60))
-                    .danger_accept_invalid_certs(true) // PHP: CURLOPT_SSL_VERIFYPEER, false
-                    .build()
-                    .map_err(|e| format!("HTTP客户端创建失败: {}", e))?;
-
-                match client
+                match super::http_client::insecure_client()?
                     .post(&url)
+                    .timeout(std::time::Duration::from_secs(60))
                     .header("Content-Type", "application/json")
                     .json(&body)
                     .send()

@@ -49,7 +49,7 @@
             size="medium"
             :pagination="false">
             <template #app="{ record }">
-              <a-link :href="record.website" target="_blank">{{ record.app }}</a-link>
+              <a-link :href="record.website" target="_blank" rel="noopener noreferrer">{{ record.app }}</a-link>
             </template>
             <template #state="{ record }">
               <a-tag v-if="record.state == 0" color="red">已卸载</a-tag>
@@ -308,6 +308,7 @@ import { request } from '@/utils/request'
 import saipackage from '@/api/tool/saipackage'
 import InstallForm from './install-box.vue'
 import TerminalBox from './terminal.vue'
+import DOMPurify from 'dompurify'
 
 // ========== 基础状态 ==========
 const activeTab = ref('local')
@@ -413,7 +414,7 @@ const handleLogin = () => {
 
 // 商店注册
 const handleRegister = () => {
-  window.open('https://saas.saithink.top/register', '_blank')
+  window.open('https://saas.saithink.top/register', '_blank', 'noopener,noreferrer')
 }
 
 // 退出登录
@@ -518,7 +519,7 @@ const showPurchasedApps = async () => {
 
 // 查看文档
 const viewDocs = (app) => {
-  window.open(`https://saas.saithink.top/store/docs-${app.app_id}`, '_blank')
+  window.open(`https://saas.saithink.top/store/docs-${app.app_id}`, '_blank', 'noopener,noreferrer')
 }
 
 // 显示版本列表
@@ -615,9 +616,31 @@ const showDetail = (item) => {
 }
 
 // 简单的 Markdown 渲染
+const escapeHtml = (value) => {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+const isSafeLink = (url) => {
+  const trimmed = String(url || '').trim()
+  return /^(https?:\/\/|\/)/i.test(trimmed) && !/^javascript:/i.test(trimmed)
+}
+
 const renderMarkdown = (content) => {
   if (!content) return ''
-  return content
+
+  const escaped = escapeHtml(content)
+  const html = escaped
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, url) => {
+      if (!isSafeLink(url)) {
+        return text
+      }
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`
+    })
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -627,12 +650,16 @@ const renderMarkdown = (content) => {
     .replace(/^- (.+)$/gm, '<li>$1</li>')
     .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
     .replace(/\n/g, '<br/>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'strong', 'em', 'code', 'ul', 'li', 'br', 'a'],
+    ALLOWED_ATTR: ['href', 'target', 'rel'],
+  })
 }
 
 // 跳转到商店购买
 const handleBuy = () => {
-  window.open('https://saas.saithink.top/store', '_blank')
+  window.open('https://saas.saithink.top/store', '_blank', 'noopener,noreferrer')
 }
 
 // 监听 tab 切换，切换到在线商店时刷新数据

@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Serialize, de::DeserializeOwned};
 use tokio::sync::{RwLock, broadcast};
+use tracing;
 
 use super::{CacheConfig, CacheMetrics, CacheStats, ShardedCache, stats::CacheMonitor};
 
@@ -124,7 +125,13 @@ where
     pub async fn start_background(&self, bg_config: BackgroundConfig) {
         let cache = self.cache.clone();
         let monitor = self.monitor.clone();
-        let stop_rx = self.stop_tx.as_ref().unwrap().subscribe();
+        let stop_rx = match self.stop_tx.as_ref() {
+            Some(tx) => tx.subscribe(),
+            None => {
+                tracing::error!("CacheManager: stop_tx is None in start_background");
+                return;
+            }
+        };
 
         // 启动清理任务
         tokio::spawn(async move {
@@ -258,7 +265,14 @@ where
 
     /// 订阅事件
     pub fn subscribe(&self) -> broadcast::Receiver<CacheEvent<K, V>> {
-        self.event_tx.as_ref().unwrap().subscribe()
+        match self.event_tx.as_ref() {
+            Some(tx) => tx.subscribe(),
+            None => {
+                tracing::error!("CacheManager: event_tx is None in subscribe");
+                let (dummy_tx, _) = broadcast::channel(1);
+                dummy_tx.subscribe()
+            }
+        }
     }
 
     /// 获取统计信息

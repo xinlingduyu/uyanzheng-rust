@@ -6,7 +6,6 @@ use serde::Serialize;
 pub struct AdminInfo {
     pub id: u64,
     pub user: String,
-    pub password: String,
     pub notes: Option<String>,
     pub avatars: Option<String>,
     pub lockin: bool,

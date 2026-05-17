@@ -2,6 +2,7 @@
 //! 支持热插拔的短信插件系统
 
 pub mod ali;
+mod http_client;
 pub mod jie;
 pub mod manager;
 pub mod tencent;

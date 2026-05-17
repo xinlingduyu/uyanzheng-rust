@@ -8,6 +8,7 @@ use std::ptr::NonNull;
 use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 
 use super::{CACHE_LINE_SIZE, cpu_pause};
+use tracing;
 
 // ============================================================================
 // 内存块
@@ -129,7 +130,10 @@ impl FixedSizePool {
             (*header).next = AtomicPtr::new(std::ptr::null_mut());
         }
 
-        self.blocks.write().unwrap().push(block);
+        match self.blocks.write() {
+            Ok(mut blocks) => blocks.push(block),
+            Err(e) => tracing::error!("RwLock 'blocks' poisoned in allocate_block: {}", e),
+        }
         self.total_allocated.fetch_add(1, Ordering::Relaxed);
 
         Some(ptr)

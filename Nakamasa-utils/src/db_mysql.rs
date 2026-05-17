@@ -236,10 +236,13 @@ impl Operator {
             JsonValue::Null => query.bind(None::<String>),
             JsonValue::Bool(b) => query.bind(*b),
             JsonValue::Number(n) => {
-                if n.is_i64() {
-                    query.bind(n.as_i64().unwrap())
+                if let Some(i) = n.as_i64() {
+                    query.bind(i)
+                } else if let Some(f) = n.as_f64() {
+                    query.bind(f)
                 } else {
-                    query.bind(n.as_f64().unwrap())
+                    // u64 超大整数，f64 精度不够，转字符串绑定
+                    query.bind(n.to_string())
                 }
             }
             JsonValue::String(s) => query.bind(s.clone()),

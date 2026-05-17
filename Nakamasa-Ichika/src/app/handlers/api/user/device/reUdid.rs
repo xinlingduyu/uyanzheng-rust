@@ -201,9 +201,14 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 构建动态SQL
-    let update_fields: Vec<String> = update_data
-        .as_object()
-        .unwrap()
+    let update_obj = match update_data.as_object() {
+        Some(obj) => obj,
+        None => {
+            render_error(res, "数据格式错误", 201, app_key);
+            return;
+        }
+    };
+    let update_fields: Vec<String> = update_obj
         .iter()
         .map(|(k, _)| format!("{} = ?", k))
         .collect();
@@ -215,7 +220,7 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 构建参数
     let mut query = sqlx::query(&update_sql);
-    for (_k, v) in update_data.as_object().unwrap() {
+    for (_k, v) in update_obj {
         if let Some(s) = v.as_str() {
             query = query.bind(s);
         } else if let Some(n) = v.as_i64() {

@@ -234,7 +234,6 @@ const useUserStore = defineStore('user', {
         .then((r) => {
           console.log('[UserStore Debug] login API response:', r)
           if (r.code === 200) {
-            console.log('[UserStore Debug] login success, token:', r.data.token)
             this.setToken(r.data.token)
             return true
           } else {

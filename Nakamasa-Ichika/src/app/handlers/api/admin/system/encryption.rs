@@ -463,6 +463,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match insert_result {
         Ok(result) => {
             if result.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(appid);
                 res.render(Json(ApiResponse::success_msg("添加成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("添加失败", 201)));
@@ -549,6 +550,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(appid);
                 res.render(Json(ApiResponse::success_msg("编辑成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
@@ -592,6 +594,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(0);
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
@@ -637,6 +640,7 @@ pub async fn edit_sign(req: &mut Request, depot: &mut Depot, res: &mut Response)
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(0);
                 res.render(Json(ApiResponse::success_msg("更新成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("更新失败", 201)));
@@ -727,6 +731,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         match result {
             Ok(r) => {
                 if r.rows_affected() > 0 {
+                    app_state.invalidate_app_runtime_cache(appid.unwrap_or(0) as u64);
                     res.render(Json(ApiResponse::success_msg("编辑成功")));
                 } else {
                     res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
@@ -753,6 +758,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
         match result {
             Ok(_) => {
+                app_state.invalidate_app_runtime_cache(appid.unwrap_or(0) as u64);
                 res.render(Json(ApiResponse::success_msg("添加成功")));
             }
             Err(e) => {

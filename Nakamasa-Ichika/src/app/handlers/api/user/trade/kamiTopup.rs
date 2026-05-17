@@ -185,7 +185,11 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             // 清除IP失败次数
             if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                 let fail_ip_num_key = format!("fail_ip_{}_num", ip_hash);
-                let _ = redis_util.del(redis_pool, &fail_ip_num_key).await;
+                if let Err(e) = redis_util.del(redis_pool, &fail_ip_num_key).await {
+                    tracing::error!("清除IP失败: {}", e);
+                    render_error(res, "清除IP失败", 201, app_key);
+                    return;
+}
             }
 
             // 开始事务
@@ -227,13 +231,14 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                             }
 
                             // 记录日志
-                            let _ = sqlx::query(
+                            if let Err(e) = sqlx::query(
                                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)"
                             )
                             .bind(user_type).bind(uid).bind("kamiTopup")
                             .bind(current_time).bind(ip).bind(appid)
-                            .execute(app_state.get_db()).await;
-
+                            .execute(app_state.get_db()).await {
+                                tracing::warn!("redis op failed: {}", e);
+                            }
                             render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                         }
                         Err(e) => {
@@ -477,10 +482,11 @@ async fn increment_fail_count(
             .unwrap_or(0);
 
         let new_num = num + 1;
-        let _ = redis_util
+        if let Err(e) = redis_util
             .set(pool, &fail_ip_num_key, &new_num.to_string(), Some(600))
-            .await;
-
+            .await {
+                tracing::warn!("redis op failed: {}", e);
+            }
         let (lock_time, ttl) = if new_num >= 10 {
             (current_time + 1800, 1800)
         } else if new_num >= 5 {
@@ -488,8 +494,9 @@ async fn increment_fail_count(
         } else {
             return;
         };
-        let _ = redis_util
+        if let Err(e) = redis_util
             .set(pool, &fail_ip_key, &lock_time.to_string(), Some(ttl))
-            .await;
-    }
+            .await {
+                tracing::warn!("redis op failed: {}", e);
+            }    }
 }

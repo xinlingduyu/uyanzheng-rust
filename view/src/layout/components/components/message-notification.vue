@@ -53,7 +53,7 @@
         </a-space>
       </a-typography-paragraph>
       <a-typography-paragraph>
-        <div v-html="row?.content"></div>
+        <div v-html="DOMPurify.sanitize(row?.content)"></div>
       </a-typography-paragraph>
     </a-typography>
   </a-modal>
@@ -63,6 +63,7 @@
 import { ref } from 'vue'
 import { useMessageStore } from '@/store'
 import avatar from '@/assets/avatar.jpg'
+import DOMPurify from 'dompurify'
 
 const messageStore = useMessageStore()
 

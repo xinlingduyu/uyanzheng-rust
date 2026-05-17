@@ -38,7 +38,7 @@
                         <span class="update-time">{{ formatTime(item.time) }}</span>
                         <a-tag v-if="item.type === 'official'" color="arcoblue" size="small">正式版</a-tag>
                       </div>
-                      <div class="update-content" v-html="item.content"></div>
+                      <div class="update-content" v-html="DOMPurify.sanitize(item.content)"></div>
                     </div>
                   </a-timeline-item>
                 </a-timeline>
@@ -80,6 +80,7 @@ import commonApi from '@/api/common'
 import systemApi from '@/api/system/system'
 
 import ModifyPassword from './components/modifyPassword.vue'
+import DOMPurify from 'dompurify'
 import UserInfomation from './components/userInfomation.vue'
 
 const userStore = useUserStore()

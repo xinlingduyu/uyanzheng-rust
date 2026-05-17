@@ -390,6 +390,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(_) => {
+            app_state.invalidate_app_runtime_cache(appid);
             res.render(Json(ApiResponse::success_msg("添加成功")));
         }
         Err(e) => {
@@ -519,6 +520,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(_) => {
+            app_state.invalidate_app_runtime_cache(appid);
             res.render(Json(ApiResponse::success_msg("编辑成功")));
         }
         Err(e) => {
@@ -559,6 +561,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(0);
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
@@ -594,7 +597,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_req.ids.is_empty() {
+    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.iter().any(|id| *id == 0) {
         res.render(Json(ApiResponse::<()>::error("请选择要删除的数据", 201)));
         return;
     }
@@ -616,6 +619,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(0);
                 res.render(Json(ApiResponse::success_msg("删除成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("删除失败", 201)));
@@ -661,6 +665,7 @@ pub async fn discard(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
+                app_state.invalidate_app_runtime_cache(0);
                 res.render(Json(ApiResponse::success_msg("操作成功")));
             } else {
                 res.render(Json(ApiResponse::<()>::error("操作失败", 201)));

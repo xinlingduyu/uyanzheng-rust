@@ -9,6 +9,7 @@
 
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
+use tracing;
 
 // ============================================================================
 // 淘汰策略 Trait

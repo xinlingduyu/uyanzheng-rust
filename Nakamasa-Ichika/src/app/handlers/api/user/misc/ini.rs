@@ -4,6 +4,7 @@
 
 use salvo::prelude::*;
 use serde::Serialize;
+use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -80,6 +81,16 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let appid = app_info.id;
     let app_key = &app_info.app_key;
+    let current_version = depot
+        .get::<String>("app_version")
+        .map(|s| s.as_str())
+        .unwrap_or("1.0.0");
+    let cache_key = format!("{}:{}", appid, current_version);
+
+    if let Some(cached) = app_state.ini_response_cache.get(&cache_key) {
+        render_success(res, app_key, Some(cached), app_info.mi.as_ref());
+        return;
+    }
 
     // 获取最新版本信息（从数据库查询最新发布的版本）
     let latest_version_result = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
@@ -90,10 +101,7 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .await;
 
     // 获取当前客户端版本（从请求参数或默认）
-    let current_version = depot
-        .get::<String>("app_version")
-        .map(|s| s.as_str())
-        .unwrap_or("1.0.0");
+    // 已在缓存 key 构建时解析 current_version
 
     // 解析最新版本信息
     let (latest, latest_content, latest_url) = match latest_version_result {
@@ -120,14 +128,16 @@ pub async fn ini(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 获取扩展配置
     let extend_data = fetch_extend(app_state.get_db(), appid).await;
 
-    // 构建响应数据
-    let data = IniData {
-        extend: extend_data,
-        notice: notice_data,
-        version: version_data,
-    };
+    let cached_data = json!({
+        "extend": extend_data,
+        "notice": notice_data,
+        "version": version_data,
+    });
+    app_state
+        .ini_response_cache
+        .set(cache_key, cached_data.clone());
 
-    render_success(res, app_key, Some(data), app_info.mi.as_ref());
+    render_success(res, app_key, Some(cached_data), app_info.mi.as_ref());
 }
 
 /// 获取公告信息

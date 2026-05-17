@@ -51,7 +51,6 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 pub struct AdminInfo {
     pub id: u64,
     pub user: String,
-    pub password: String,
     pub notes: Option<String>,
     pub avatars: String,
     pub lockin: bool,
@@ -237,7 +236,6 @@ impl Handler for AdminAuth {
         let admin_info = AdminInfo {
             id: admin.0,
             user: admin.1,
-            password: admin.2,
             notes: admin.3,
             avatars: admin.5.unwrap_or_default(),
             lockin: admin.7,

@@ -133,14 +133,8 @@ pub mod app_context;
 /// - `Access-Control-Allow-Credentials`: 允许凭证
 pub mod cors;
 
-/// 请求体读取中间件
-///
-/// 确保请求体被完整读取，解决 HTTP/2 multipart 解析问题。
-///
-/// # 使用场景
-///
-/// 用于处理 HTTP/2 协议下的 multipart 表单数据。
-pub mod body_reader;
+/// 请求体读取中间件（当前未使用，保留以供参考）
+// pub mod body_reader;
 
 pub mod connect;
 
@@ -150,7 +144,7 @@ pub mod connect;
 
 pub use admin_auth::*;
 pub use app_context::*;
-pub use body_reader::*;
+// pub use body_reader::*;
 pub use connect::*;
 pub use cors::*;
 pub use user_auth::*;

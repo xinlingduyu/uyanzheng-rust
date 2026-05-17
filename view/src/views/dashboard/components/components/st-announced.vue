@@ -22,7 +22,7 @@
           </a-space>
         </a-typography-paragraph>
         <a-typography-paragraph>
-          <div v-html="row?.content"></div>
+          <div v-html="DOMPurify.sanitize(row?.content)"></div>
         </a-typography-paragraph>
       </a-typography>
     </a-modal>
@@ -32,6 +32,7 @@
 <script setup>
 import { ref, reactive } from 'vue'
 import commonApi from '@/api/common'
+import DOMPurify from 'dompurify'
 
 const data = ref([])
 const columns = reactive([

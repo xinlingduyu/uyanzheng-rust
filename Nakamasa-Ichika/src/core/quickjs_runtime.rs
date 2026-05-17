@@ -8,7 +8,7 @@ use rquickjs::{Context, Ctx, Function, Object, Runtime, Type, Value};
 use sqlx::{Column, MySqlPool, Row};
 use std::cell::RefCell;
 use std::net::{IpAddr, ToSocketAddrs};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 /// 云函数执行上下文
@@ -64,6 +64,59 @@ const QUICKJS_MEMORY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 const QUICKJS_STACK_LIMIT_BYTES: usize = 1024 * 1024;
 const QUICKJS_EXEC_TIMEOUT_MS: u64 = 3000;
 const QUICKJS_HTTP_TIMEOUT_MAX_SECS: u64 = 10;
+const QUICKJS_DB_SELECT_DEFAULT_LIMIT: u64 = 500;
+const QUICKJS_DB_SELECT_MAX_LIMIT: u64 = 1000;
+
+static QUICKJS_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .pool_idle_timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|e| format!("创建HTTP客户端失败: {}", e))
+});
+
+/// 专用同步转桥运行时 — QuickJS 回调是同步的，不能用 Handle::current().block_on()
+static QUICKJS_DB_RUNTIME: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("创建 QuickJS 同步桥运行时失败")
+});
+
+fn quickjs_http_client() -> Result<&'static reqwest::Client, String> {
+    QUICKJS_HTTP_CLIENT.as_ref().map_err(|e| e.clone())
+}
+
+fn normalize_select_limit(sql: &str) -> Result<String, String> {
+    let trimmed = sql.trim();
+    if !trimmed.to_uppercase().starts_with("SELECT") {
+        return Ok(sql.to_string());
+    }
+
+    let upper = trimmed.to_uppercase();
+    if let Some(limit_pos) = upper.rfind("LIMIT") {
+        let after_limit = trimmed[limit_pos + "LIMIT".len()..].trim_start();
+        let limit_digits: String = after_limit
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if limit_digits.is_empty() {
+            return Ok(sql.to_string());
+        }
+
+        let limit = limit_digits
+            .parse::<u64>()
+            .map_err(|_| "LIMIT 参数无效".to_string())?;
+        if limit > QUICKJS_DB_SELECT_MAX_LIMIT {
+            return Err(format!(
+                "SELECT LIMIT 不能超过 {}",
+                QUICKJS_DB_SELECT_MAX_LIMIT
+            ));
+        }
+        return Ok(sql.to_string());
+    }
+
+    Ok(format!("{} LIMIT {}", sql, QUICKJS_DB_SELECT_DEFAULT_LIMIT))
+}
 
 fn is_private_or_loopback_ip(ip: IpAddr) -> bool {
     match ip {
@@ -290,13 +343,14 @@ fn execute_db_query(sql: &str) -> Result<serde_json::Value, String> {
         let cf_ctx = ctx_ref.as_ref().ok_or("上下文未初始化")?;
         let db = cf_ctx.db.clone();
 
-        let rt = tokio::runtime::Handle::current();
+        let rt = &*QUICKJS_DB_RUNTIME;
 
         let is_select = sql.trim().to_uppercase().starts_with("SELECT");
 
         if is_select {
+            let sql = normalize_select_limit(sql)?;
             rt.block_on(async {
-                sqlx::query(sql)
+                sqlx::query(&sql)
                     .fetch_all(&db)
                     .await
                     .map(|rows| {
@@ -346,7 +400,7 @@ fn execute_redis_op(
         let redis_pool = cf_ctx.redis_pool.as_ref().ok_or("Redis未配置")?;
         let redis_util = &cf_ctx.redis_util;
 
-        let rt = tokio::runtime::Handle::current();
+        let rt = &*QUICKJS_DB_RUNTIME;
 
         match op {
             "get" => rt.block_on(async {
@@ -393,14 +447,10 @@ fn execute_http(
 ) -> Result<serde_json::Value, String> {
     validate_http_url(url)?;
     let timeout_secs = timeout_secs.clamp(1, QUICKJS_HTTP_TIMEOUT_MAX_SECS);
-    let rt = tokio::runtime::Handle::current();
+    let rt = &*QUICKJS_DB_RUNTIME;
 
     rt.block_on(async {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .map_err(|e| e.to_string())?;
-
+        let client = quickjs_http_client()?;
         let mut req = match method {
             "GET" => client.get(url),
             "POST" => {
@@ -416,11 +466,13 @@ fn execute_http(
             _ => return Err(format!("不支持的HTTP方法: {}", method)),
         };
 
+        req = req.timeout(Duration::from_secs(timeout_secs));
+
         req.send().await
             .map_err(|e| e.to_string())
             .and_then(|resp| {
                 let status = resp.status().as_u16();
-                let rt = tokio::runtime::Handle::current();
+                let rt = &*QUICKJS_DB_RUNTIME;
                 rt.block_on(async {
                     resp.text().await
                         .map(|body| serde_json::json!({ "Ok": true, "Status": status, "Body": body }))
@@ -675,10 +727,14 @@ impl QuickJsRuntime {
                     let cf_ctx = ctx_ref.as_ref()?;
                     let db = cf_ctx.db.clone();
 
-                    let rt = tokio::runtime::Handle::current();
+                    let rt = &*QUICKJS_DB_RUNTIME;
                     let is_select = sql.trim().to_uppercase().starts_with("SELECT");
 
                     Some(if is_select {
+                        let sql = match normalize_select_limit(&sql) {
+                            Ok(sql) => sql,
+                            Err(e) => return Some(Err(e)),
+                        };
                         rt.block_on(async {
                             let mut query = sqlx::query(&sql);
                             for p in &params {
@@ -882,7 +938,14 @@ impl QuickJsRuntime {
                     sql += ' ORDER BY ' + this._order;
                 }
                 if (this._limit > 0) {
-                    sql += ' LIMIT ' + this._limit;
+                    var safeLimit = Math.min(parseInt(this._limit, 10) || 0, 1000);
+                    if (safeLimit > 0) {
+                        sql += ' LIMIT ' + safeLimit;
+                    } else {
+                        sql += ' LIMIT 500';
+                    }
+                } else {
+                    sql += ' LIMIT 500';
                 }
                 if (this._offset > 0) {
                     sql += ' OFFSET ' + this._offset;

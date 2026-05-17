@@ -786,7 +786,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_req.ids.is_empty() {
+    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.iter().any(|id| *id <= 0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }
@@ -846,7 +846,7 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if out_req.ids.is_empty() {
+    if out_req.ids.is_empty() || out_req.ids.len() > 1000 || out_req.ids.iter().any(|id| *id <= 0) {
         res.render(Json(ApiResponse::<()>::error("导出选中ID有误", 201)));
         return;
     }

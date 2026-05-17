@@ -750,7 +750,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_all_req.ids.is_empty() {
+    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 || del_all_req.ids.iter().any(|id| *id <= 0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }
@@ -801,10 +801,8 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 // ==================== 日志记录辅助函数 ====================
 
 // PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id);
-// 注意: 由于 Salvo depot API 限制，暂时使用默认值记录日志
-// TODO: 实现正确的 admin_id 获取方式
 async fn add_log(
-    _depot: &Depot,
+    depot: &Depot,
     app_state: &Arc<AppState>,
     record_id: u64,
 ) -> Result<(), sqlx::Error> {
@@ -816,8 +814,11 @@ async fn add_log(
         "fen_event_id": record_id
     });
 
-    // 临时使用默认 admin_id = 0，实际应该从 depot 获取
-    let admin_id: u64 = 0;
+    // 从 depot 获取当前管理员 ID
+    let admin_id = match depot.get::<u64>("admin_id") {
+        Ok(id) => *id,
+        Err(_) => 0,
+    };
 
     sqlx::query(
         "INSERT INTO u_logs (ug, uid, type, asset_changes, time, state) VALUES (?, ?, ?, ?, ?, 1)",

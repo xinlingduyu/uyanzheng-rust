@@ -15,6 +15,7 @@ use chrono::Utc;
 use rand::Rng;
 use salvo::prelude::*;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::super::auth::logon::lookup_ip_location;
 use crate::app::middleware::app_context::AppInfo;
@@ -187,8 +188,16 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     );
 
     // 请求微信API获取用户信息
-    let user_response = match reqwest::get(&user_info_url).await {
-        Ok(resp) => resp,
+    let user_response = match super::http_client::client()
+        .map(|client| client.get(&user_info_url).timeout(Duration::from_secs(10)))
+    {
+        Ok(request) => match request.send().await {
+            Ok(resp) => resp,
+            Err(_) => {
+                render_error(res, "获取微信用户信息失败", 201, app_key);
+                return;
+            }
+        },
         Err(_) => {
             render_error(res, "获取微信用户信息失败", 201, app_key);
             return;
@@ -427,28 +436,30 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     "appid": appid
                 });
 
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &token_key,
                         &token_data.to_string(),
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }
                 // 设置设备在线状态
                 let udid_hash_bytes = md5_hex(wx_req.udid.as_bytes());
                 let udid_hash = md5_to_str(&udid_hash_bytes);
                 let online_key = format!("{}online_{}_{}", token_pre, id, udid_hash);
-                let _ = redis_util
+                if let Err(e) = redis_util
                     .set(
                         redis_pool,
                         &online_key,
                         &token,
                         Some(logon_config.logon_token_exp as u64),
                     )
-                    .await;
-            }
+                    .await {
+                        tracing::warn!("redis op failed: {}", e);
+                    }            }
 
             // 记录日志
             let _ = sqlx::query(
@@ -633,28 +644,30 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             "appid": appid
                         });
 
-                        let _ = redis_util
+                        if let Err(e) = redis_util
                             .set(
                                 redis_pool,
                                 &token_key,
                                 &token_data.to_string(),
                                 Some(logon_config.logon_token_exp as u64),
                             )
-                            .await;
-
+                            .await {
+                                tracing::warn!("redis op failed: {}", e);
+                            }
                         // 设置设备在线状态
                         let udid_hash_bytes = md5_hex(wx_req.udid.as_bytes());
                         let udid_hash = md5_to_str(&udid_hash_bytes);
                         let online_key = format!("{}online_{}_{}", token_pre, reg_id, udid_hash);
-                        let _ = redis_util
+                        if let Err(e) = redis_util
                             .set(
                                 redis_pool,
                                 &online_key,
                                 &token,
                                 Some(logon_config.logon_token_exp as u64),
                             )
-                            .await;
-                    }
+                            .await {
+                                tracing::warn!("redis op failed: {}", e);
+                            }                    }
 
                     // 记录日志
                     let _ = sqlx::query(
