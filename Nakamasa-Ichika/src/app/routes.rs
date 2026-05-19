@@ -129,6 +129,8 @@ fn build_production_routes() -> Router {
         .push(oauth2_routes())
         // 索引 API 路由
         .push(index_routes())
+        // MCP 协议路由
+        .push(mcp_routes())
         // 欢迎页
         .get(handlers::hello::hello)
         .hoop(connect_handler)
@@ -170,6 +172,19 @@ fn oauth2_routes() -> Router {
 // 模块导入
 // ============================================================================
 
+/// 构建 MCP 协议路由
+///
+/// 提供嵌入式 MCP Server端点：
+/// - GET /mcp/sse — SSE 连接
+/// - POST /mcp/messages — JSON-RPC 消息
+fn mcp_routes() -> Router {
+    Router::with_path("/mcp")
+        .push(Router::with_path("/sse").get(handlers::mcp::sse_handler))
+        .push(
+            Router::with_path("/messages")
+                .post(handlers::mcp::messages_handler),
+        )
+}
 use handlers::api;
 use handlers::health;
 use handlers::static_files;
