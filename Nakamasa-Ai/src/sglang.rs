@@ -61,6 +61,8 @@ struct SglangChoice {
 struct SglangMessageResponse {
     role: String,
     content: String,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -152,6 +154,23 @@ impl SglangProvider {
             })
             .collect()
     }
+
+    /// OpenAI 格式的 tools 转换
+    fn convert_tools(tools: Option<Vec<crate::skills::Skill>>) -> Option<Vec<serde_json::Value>> {
+        tools.map(|skills| {
+            skills
+                .into_iter()
+                .map(|skill| {
+                    serde_json::json!({
+                        "type": "function",
+                        "name": skill.name,
+                        "description": skill.description,
+                        "parameters": skill.parameters,
+                    })
+                })
+                .collect()
+        })
+    }
 }
 
 #[async_trait]
@@ -164,12 +183,7 @@ impl AiProvider for SglangProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(false),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
             top_k: None,
             repetition_penalty: None,
         };
@@ -200,7 +214,7 @@ impl AiProvider for SglangProvider {
                         _ => MessageRole::Assistant,
                     },
                     content: c.message.content,
-                    name: None,
+                    name: c.message.name,
                 },
                 finish_reason: c.finish_reason,
             })
@@ -229,12 +243,7 @@ impl AiProvider for SglangProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(true),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
             top_k: None,
             repetition_penalty: None,
         };

@@ -1,4 +1,5 @@
 //! Claude (Anthropic) 提供商实现
+//! 支持 Messages API 最新协议：extended thinking、tools、streaming
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
@@ -10,11 +11,13 @@ use crate::error::Result;
 use crate::provider::AiProvider;
 use crate::types::*;
 
-/// Claude API 请求体
+/// Claude API 请求体（最新 Messages API）
 #[derive(Debug, Serialize)]
 struct ClaudeRequest {
     model: String,
     messages: Vec<ClaudeMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     max_tokens: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -22,9 +25,24 @@ struct ClaudeRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<ClaudeThinkingConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    stop_sequences: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<serde_json::Value>,
+}
+
+/// Claude extended thinking 配置
+#[derive(Debug, Serialize)]
+struct ClaudeThinkingConfig {
+    #[serde(rename = "type")]
+    thinking_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    budget_tokens: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -41,41 +59,69 @@ struct ClaudeResponse {
     content: Vec<ClaudeContent>,
     usage: Option<ClaudeUsage>,
     stop_reason: Option<String>,
+    stop_sequence: Option<String>,
 }
 
+/// Claude content block（支持 text/thinking/tool_use 等多种类型）
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct ClaudeContent {
     #[serde(rename = "type")]
     content_type: String,
     text: Option<String>,
+    thinking: Option<String>,
+    signature: Option<String>,
+    name: Option<String>,
+    input: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ClaudeUsage {
     input_tokens: u32,
     output_tokens: u32,
+    #[serde(default)]
+    cache_creation_input_tokens: Option<u32>,
+    #[serde(default)]
+    cache_read_input_tokens: Option<u32>,
 }
 
-/// Claude 流式响应数据块
+/// Claude 流式响应数据块（支持所有事件类型）
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct ClaudeStreamChunk {
     #[serde(rename = "type")]
     chunk_type: String,
     delta: Option<ClaudeDelta>,
+    content_block: Option<ClaudeContentBlock>,
     message: Option<ClaudeMessageResponse>,
+    usage: Option<ClaudeUsage>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ClaudeDelta {
     text: Option<String>,
+    thinking: Option<String>,
+    signature: Option<String>,
+    stop_reason: Option<String>,
+    stop_sequence: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct ClaudeContentBlock {
+    #[serde(rename = "type")]
+    block_type: String,
+    text: Option<String>,
+    thinking: Option<String>,
+    signature: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct ClaudeMessageResponse {
+    id: Option<String>,
     content: Vec<ClaudeContent>,
+    usage: Option<ClaudeUsage>,
 }
 
 pub struct ClaudeProvider {
@@ -101,8 +147,14 @@ impl ClaudeProvider {
                 .map_err(|e| crate::error::AiError::ConfigError(e.to_string()))?,
         );
 
-        // Claude 需要 anthropic-version 头部
+        // Claude Messages API 版本头部
         headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+
+        // 启用 beta 功能：extended thinking
+        headers.insert(
+            "anthropic-beta",
+            HeaderValue::from_static("thinking-mode-2025-01-02"),
+        );
 
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
@@ -140,7 +192,7 @@ impl ClaudeProvider {
                         role: match m.role {
                             MessageRole::User => "user".to_string(),
                             MessageRole::Assistant => "assistant".to_string(),
-                            MessageRole::Function => "user".to_string(), // 转换为 user
+                            MessageRole::Function => "user".to_string(),
                             MessageRole::System => unreachable!(),
                         },
                         content: m.content.clone(),
@@ -151,56 +203,100 @@ impl ClaudeProvider {
     }
 
     fn extract_system_message(messages: &[Message]) -> Option<String> {
-        messages
+        let system_texts: Vec<&str> = messages
             .iter()
-            .find(|m| matches!(m.role, MessageRole::System))
-            .map(|m| m.content.clone())
+            .filter(|m| matches!(m.role, MessageRole::System))
+            .map(|m| m.content.as_str())
+            .collect();
+
+        if system_texts.is_empty() {
+            None
+        } else {
+            Some(system_texts.join("\n"))
+        }
+    }
+
+    /// 构建 thinking 配置
+    fn build_thinking_config(request: &CompletionRequest) -> Option<ClaudeThinkingConfig> {
+        request.thinking_budget_tokens.map(|budget| ClaudeThinkingConfig {
+            thinking_type: "enabled".to_string(),
+            budget_tokens: Some(budget),
+        })
+    }
+
+    /// Claude 的 tools 格式：使用 input_schema 而非 parameters
+    fn convert_tools(tools: Option<Vec<crate::skills::Skill>>) -> Option<Vec<serde_json::Value>> {
+        tools.map(|skills| {
+            skills
+                .into_iter()
+                .map(|skill| {
+                    serde_json::json!({
+                        "name": skill.name,
+                        "description": skill.description,
+                        "input_schema": skill.parameters,
+                    })
+                })
+                .collect()
+        })
+    }
+
+    /// 从 response content blocks 提取文本（跳过 thinking 等非文本块）
+    fn extract_response_text(content: &[ClaudeContent]) -> String {
+        content
+            .iter()
+            .filter_map(|c| {
+                if c.content_type == "text" {
+                    c.text.clone()
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    fn build_request(
+        &self,
+        request: CompletionRequest,
+        stream: bool,
+    ) -> ClaudeRequest {
+        let system_message = Self::extract_system_message(&request.messages);
+        let thinking = Self::build_thinking_config(&request);
+        let messages = Self::convert_messages(&request.messages);
+        let tools = Self::convert_tools(request.tools);
+        ClaudeRequest {
+            model: request.model,
+            messages,
+            system: system_message,
+            max_tokens: request.max_tokens.or(Some(8192)),
+            temperature: request.temperature,
+            top_p: request.top_p,
+            thinking,
+            stream: Some(stream),
+            stop_sequences: None,
+            tools,
+            tool_choice: None,
+        }
     }
 }
 
 #[async_trait]
 impl AiProvider for ClaudeProvider {
     async fn completion(&self, request: CompletionRequest) -> Result<CompletionResponse> {
-        let claude_req = ClaudeRequest {
-            model: request.model,
-            messages: Self::convert_messages(&request.messages),
-            max_tokens: request.max_tokens.or(Some(4096)), // Claude 需要 max_tokens
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stream: Some(false),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
-        };
-
-        // 处理 system 消息
-        let system_message = Self::extract_system_message(&request.messages);
-
+        let claude_req = self.build_request(request, false);
         let url = format!("{}/v1/messages", self.api_base);
 
-        let mut req_builder = self.client.post(&url).json(&claude_req);
-
-        if let Some(system) = system_message {
-            req_builder = req_builder.header("x-system-prompt", system);
-        }
-
-        let response = req_builder
+        let response = self
+            .client
+            .post(&url)
+            .json(&claude_req)
             .send()
             .await?
             .error_for_status()?
             .json::<ClaudeResponse>()
             .await?;
 
-        // 提取文本内容
-        let text = response
-            .content
-            .iter()
-            .filter_map(|c| c.text.clone())
-            .collect::<Vec<_>>()
-            .join("");
+        let text = Self::extract_response_text(&response.content);
 
         let choices = vec![Choice {
             index: 0,
@@ -228,31 +324,16 @@ impl AiProvider for ClaudeProvider {
         &self,
         request: CompletionRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
-        let claude_req = ClaudeRequest {
-            model: request.model,
-            messages: Self::convert_messages(&request.messages),
-            max_tokens: request.max_tokens.or(Some(4096)),
-            temperature: request.temperature,
-            top_p: request.top_p,
-            stream: Some(true),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
-        };
-
-        let system_message = Self::extract_system_message(&request.messages);
+        let claude_req = self.build_request(request, true);
         let url = format!("{}/v1/messages", self.api_base);
 
-        let mut req_builder = self.client.post(&url).json(&claude_req);
-
-        if let Some(system) = system_message {
-            req_builder = req_builder.header("x-system-prompt", system);
-        }
-
-        let response = req_builder.send().await?.error_for_status()?;
+        let response = self
+            .client
+            .post(&url)
+            .json(&claude_req)
+            .send()
+            .await?
+            .error_for_status()?;
 
         let stream = response.bytes_stream().map(|chunk| {
             let chunk = chunk.map_err(crate::error::AiError::from)?;
@@ -272,40 +353,159 @@ impl AiProvider for ClaudeProvider {
     }
 
     async fn list_models(&self) -> Result<Vec<String>> {
-        // Claude 没有公开的列出模型 API，返回常用模型列表
+        // Claude 没有公开的列出模型 API，返回可用模型列表
         Ok(vec![
+            "claude-opus-4-20250514".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+            "claude-sonnet-4-20250514-thinking".to_string(),
+            "claude-haiku-4-20250514".to_string(),
+            "claude-3-5-sonnet-20241022".to_string(),
+            "claude-3-5-sonnet-20241022-thinking".to_string(),
+            "claude-3-5-haiku-20241022".to_string(),
             "claude-3-opus-20240229".to_string(),
             "claude-3-sonnet-20240229".to_string(),
             "claude-3-haiku-20240307".to_string(),
-            "claude-2.1".to_string(),
-            "claude-2.0".to_string(),
-            "claude-instant-1.2".to_string(),
         ])
     }
 }
 
+/// 解析 Claude 流式响应
+/// 支持的事件类型：
+/// - message_start: 消息开始
+/// - content_block_start: 内容块开始
+/// - content_block_delta: 内容块增量（text / thinking）
+/// - content_block_stop: 内容块结束
+/// - message_delta: 消息增量（stop_reason、usage）
+/// - message_stop: 消息结束
+/// - ping: 心跳
 fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
-    for line in text.lines() {
+    // Claude 流式响应每个块可能包含多行 SSE 格式：event:xxx\ndata:{json}\n\n
+    // 也支持直接 JSON 行格式
+    let data = text
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.starts_with("data:") {
+                Some(line[5..].trim())
+            } else if line.starts_with("event:") || line.is_empty() {
+                None // 跳过事件名和空行
+            } else {
+                Some(line) // 直接 JSON
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if data.is_empty() {
+        return Ok(StreamChunk::text(""));
+    }
+
+    let lines: Vec<&str> = if data.contains('\n') {
+        data.lines().collect()
+    } else {
+        vec![data.as_str()]
+    };
+
+    for line in &lines {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
 
-        // Claude 流式响应是 JSON 对象
         match serde_json::from_str::<ClaudeStreamChunk>(line) {
             Ok(chunk) => {
-                if chunk.chunk_type == "content_block_delta" {
-                    if let Some(delta) = chunk.delta {
-                        if let Some(text) = delta.text {
-                            return Ok(StreamChunk::text(&text));
+                match chunk.chunk_type.as_str() {
+                    "content_block_delta" => {
+                        if let Some(delta) = chunk.delta {
+                            // text delta -> 普通文本
+                            if let Some(text) = delta.text {
+                                if !text.is_empty() {
+                                    return Ok(StreamChunk::text(&text));
+                                }
+                            }
+                            // thinking delta -> extended thinking 文本
+                            if let Some(thinking) = delta.thinking {
+                                if !thinking.is_empty() {
+                                    return Ok(StreamChunk::text(&thinking));
+                                }
+                            }
+                            // signature delta -> thinking signature
+                            if let Some(sig) = delta.signature {
+                                return Ok(StreamChunk::text(&format!(
+                                    "\n【thinking_signature】{}\n",
+                                    sig
+                                )));
+                            }
                         }
                     }
-                } else if chunk.chunk_type == "message_stop" {
-                    return Ok(StreamChunk::done());
+                    "content_block_start" => {
+                        // 记录 thinking block 起始标记
+                        if let Some(block) = &chunk.content_block {
+                            if block.block_type == "thinking" {
+                                if let Some(text) = &block.thinking {
+                                    if !text.is_empty() {
+                                        return Ok(StreamChunk::text(&format!(
+                                            "\n【思考中...】{}",
+                                            text
+                                        )));
+                                    }
+                                }
+                                return Ok(StreamChunk::text("\n【思考中...】\n"));
+                            }
+                            if block.block_type == "text" {
+                                if let Some(text) = &block.text {
+                                    if !text.is_empty() {
+                                        return Ok(StreamChunk::text(text));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    "message_delta" => {
+                        // delta 中包含 stop_reason
+                        if let Some(delta) = chunk.delta {
+                            if delta.stop_reason.is_some() || delta.stop_sequence.is_some() {
+                                return Ok(StreamChunk::done());
+                            }
+                        }
+                        return Ok(StreamChunk::done());
+                    }
+                    "message_stop" => {
+                        return Ok(StreamChunk::done());
+                    }
+                    "message_start" => {
+                        // 消息开始，可以忽略或记录 id
+                        if let Some(msg) = &chunk.message {
+                            if let Some(usage) = &msg.usage {
+                                let mut meta = std::collections::HashMap::new();
+                                meta.insert(
+                                    "input_tokens".to_string(),
+                                    serde_json::json!(usage.input_tokens),
+                                );
+                                return Ok(StreamChunk {
+                                    text: None,
+                                    is_done: false,
+                                    metadata: Some(meta),
+                                });
+                            }
+                        }
+                    }
+                    "content_block_stop" | "ping" => {
+                        // 忽略
+                    }
+                    "error" => {
+                        return Err(crate::error::AiError::StreamError(
+                            "Claude 流式响应错误".to_string(),
+                        ));
+                    }
+                    _ => {
+                        // 未知事件类型，忽略
+                    }
                 }
             }
             Err(_) => continue,
         }
     }
+
     Ok(StreamChunk::text(""))
 }

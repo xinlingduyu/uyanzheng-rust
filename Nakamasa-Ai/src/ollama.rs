@@ -1,5 +1,6 @@
 //! Ollama 提供商实现
 //! Ollama 有自己独特的 API 格式，不完全兼容 OpenAI
+//! 最新协议：支持 keep_alive、tools
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
@@ -11,7 +12,7 @@ use crate::error::Result;
 use crate::provider::AiProvider;
 use crate::types::*;
 
-/// Ollama 聊天请求体
+/// Ollama 聊天请求体（最新协议）
 #[derive(Debug, Serialize)]
 struct OllamaChatRequest {
     model: String,
@@ -20,6 +21,10 @@ struct OllamaChatRequest {
     stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     options: Option<OllamaOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tools: Option<Vec<serde_json::Value>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    keep_alive: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -124,6 +129,25 @@ impl OllamaProvider {
             })
             .collect()
     }
+
+    /// Ollama tools 格式：使用 functions 数组
+    fn convert_tools(tools: Option<Vec<crate::skills::Skill>>) -> Option<Vec<serde_json::Value>> {
+        tools.map(|skills| {
+            skills
+                .into_iter()
+                .map(|skill| {
+                    serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": skill.name,
+                            "description": skill.description,
+                            "parameters": skill.parameters,
+                        }
+                    })
+                })
+                .collect()
+        })
+    }
 }
 
 #[async_trait]
@@ -138,6 +162,8 @@ impl AiProvider for OllamaProvider {
                 top_p: request.top_p,
                 num_predict: request.max_tokens,
             }),
+            tools: Self::convert_tools(request.tools),
+            keep_alive: None,
         };
 
         let url = format!("{}/api/chat", self.api_base);
@@ -197,6 +223,8 @@ impl AiProvider for OllamaProvider {
                 top_p: request.top_p,
                 num_predict: request.max_tokens,
             }),
+            tools: Self::convert_tools(request.tools),
+            keep_alive: None,
         };
 
         let url = format!("{}/api/chat", self.api_base);

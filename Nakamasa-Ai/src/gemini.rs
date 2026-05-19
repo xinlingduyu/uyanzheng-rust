@@ -1,4 +1,5 @@
 //! Gemini (Google) 提供商实现
+//! 支持 Gemini API 最新协议：system_instruction、tools、streaming
 
 use async_trait::async_trait;
 use futures_util::{Stream, StreamExt};
@@ -10,10 +11,12 @@ use crate::error::Result;
 use crate::provider::AiProvider;
 use crate::types::*;
 
-/// Gemini API 请求体
+/// Gemini API 请求体（最新协议）
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
     contents: Vec<GeminiContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system_instruction: Option<GeminiContent>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generation_config: Option<GeminiGenerationConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -105,7 +108,6 @@ impl GeminiProvider {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-        // 添加额外的自定义头部
         for (key, value) in &config.extra_headers {
             headers.insert(
                 reqwest::header::HeaderName::from_bytes(key.as_bytes())
@@ -131,21 +133,15 @@ impl GeminiProvider {
         messages
             .iter()
             .filter_map(|m| {
-                // Gemini 不支持 system 角色，需要转换为 user 或忽略
+                // Gemini 不支持 system 角色在 contents 中，使用 system_instruction 字段
                 if matches!(m.role, MessageRole::System) {
-                    // System 消息可以附加到第一个 user 消息，或单独处理
-                    Some(GeminiContent {
-                        role: "user".to_string(),
-                        parts: vec![GeminiPart {
-                            text: format!("[System]: {}", m.content),
-                        }],
-                    })
+                    None
                 } else {
                     Some(GeminiContent {
                         role: match m.role {
                             MessageRole::User => "user".to_string(),
                             MessageRole::Assistant => "model".to_string(),
-                            MessageRole::Function => "user".to_string(),
+                            MessageRole::Function => "function".to_string(),
                             MessageRole::System => unreachable!(),
                         },
                         parts: vec![GeminiPart {
@@ -155,6 +151,34 @@ impl GeminiProvider {
                 }
             })
             .collect()
+    }
+
+    fn extract_system_message(messages: &[Message]) -> Option<String> {
+        let texts: Vec<&str> = messages
+            .iter()
+            .filter(|m| matches!(m.role, MessageRole::System))
+            .map(|m| m.content.as_str())
+            .collect();
+        if texts.is_empty() {
+            None
+        } else {
+            Some(texts.join("\n"))
+        }
+    }
+
+    /// Gemini tools 格式：使用 function_declarations
+    fn convert_tools(tools: Option<Vec<crate::skills::Skill>>) -> Option<Vec<serde_json::Value>> {
+        tools.map(|skills| {
+            vec![serde_json::json!({
+                "function_declarations": skills.into_iter().map(|skill| {
+                    serde_json::json!({
+                        "name": skill.name,
+                        "description": skill.description,
+                        "parameters": skill.parameters,
+                    })
+                }).collect::<Vec<_>>()
+            })]
+        })
     }
 }
 
@@ -174,18 +198,19 @@ impl AiProvider for GeminiProvider {
             None
         };
 
+        let system_instruction = Self::extract_system_message(&request.messages)
+            .map(|text| GeminiContent {
+                role: "user".to_string(),
+                parts: vec![GeminiPart { text }],
+            });
+
         let gemini_req = GeminiRequest {
             contents: Self::convert_messages(&request.messages),
+            system_instruction,
             generation_config,
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
         };
 
-        // Gemini API key 作为查询参数
         let url = format!(
             "{}/models/{}:generateContent?key={}",
             self.api_base, request.model, self.config.api_key
@@ -201,7 +226,6 @@ impl AiProvider for GeminiProvider {
             .json::<GeminiResponse>()
             .await?;
 
-        // 提取文本内容
         let text = response
             .candidates
             .first()
@@ -251,15 +275,17 @@ impl AiProvider for GeminiProvider {
             None
         };
 
+        let system_instruction = Self::extract_system_message(&request.messages)
+            .map(|text| GeminiContent {
+                role: "user".to_string(),
+                parts: vec![GeminiPart { text }],
+            });
+
         let gemini_req = GeminiRequest {
             contents: Self::convert_messages(&request.messages),
+            system_instruction,
             generation_config,
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
         };
 
         let url = format!(
@@ -327,6 +353,9 @@ fn parse_gemini_stream_chunk(text: &str) -> Result<StreamChunk> {
         let line = line.trim();
         if line.starts_with("data: ") {
             let data = &line[6..];
+            if data == "[DONE]" {
+                return Ok(StreamChunk::done());
+            }
             match serde_json::from_str::<GeminiStreamChunk>(data) {
                 Ok(chunk) => {
                     if let Some(candidate) = chunk.candidates.first() {

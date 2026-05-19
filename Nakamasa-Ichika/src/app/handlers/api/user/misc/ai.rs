@@ -24,11 +24,21 @@ use crate::app::utils::response::{render_error, render_success};
 /// AI 请求体
 #[derive(serde::Deserialize)]
 pub struct AiRequest {
+    /// 兼容旧 Chat Completions 风格的 messages 字段
+    #[serde(default)]
     pub messages: Vec<AiMessage>,
+    /// 兼容 OpenAI Responses API 的 input 字段
+    pub input: Option<AiInput>,
+    /// Responses API 的 instructions 字段，转换为 system 消息
+    pub instructions: Option<String>,
     #[serde(default)]
     pub stream: bool,
     pub temperature: Option<f32>,
+    pub top_p: Option<f32>,
+    #[serde(alias = "max_output_tokens")]
     pub max_tokens: Option<u32>,
+    /// Claude extended thinking budget tokens
+    pub thinking_budget_tokens: Option<u32>,
 }
 
 /// AI 消息
@@ -36,6 +46,16 @@ pub struct AiRequest {
 pub struct AiMessage {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// OpenAI Responses API input 字段兼容格式
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+pub enum AiInput {
+    Text(String),
+    Items(Vec<serde_json::Value>),
 }
 
 /// AI 非流式响应
@@ -163,24 +183,120 @@ fn create_ai_config_from_app_info(app_info: &AppInfo) -> Result<AiConfig, String
 
     Ok(builder.build())
 }
-/// 转换消息格式
-fn convert_messages(messages: Vec<AiMessage>) -> Vec<Message> {
+fn role_from_str(role: &str) -> MessageRole {
+    match role {
+        "system" | "developer" => MessageRole::System,
+        "assistant" => MessageRole::Assistant,
+        "function" | "tool" => MessageRole::Function,
+        _ => MessageRole::User,
+    }
+}
+
+/// 转换旧 messages 格式
+fn convert_messages(messages: &[AiMessage]) -> Vec<Message> {
     messages
-        .into_iter()
-        .map(|m| {
-            let role = match m.role.as_str() {
-                "system" => MessageRole::System,
-                "user" => MessageRole::User,
-                "assistant" => MessageRole::Assistant,
-                _ => MessageRole::User,
-            };
-            Message {
-                role,
-                content: m.content,
-                name: None,
-            }
+        .iter()
+        .map(|m| Message {
+            role: role_from_str(m.role.as_str()),
+            content: m.content.clone(),
+            name: m.name.clone(),
         })
         .collect()
+}
+
+fn extract_responses_input_text(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Array(parts) => {
+            let text = parts
+                .iter()
+                .filter_map(extract_responses_input_text)
+                .collect::<Vec<_>>()
+                .join("");
+            if text.is_empty() { None } else { Some(text) }
+        }
+        serde_json::Value::Object(map) => map
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(|text| text.to_string())
+            .or_else(|| map.get("content").and_then(extract_responses_input_text)),
+        _ => None,
+    }
+}
+
+fn responses_input_item_to_message(item: &serde_json::Value) -> Option<Message> {
+    match item {
+        serde_json::Value::String(text) if !text.trim().is_empty() => Some(Message {
+            role: MessageRole::User,
+            content: text.clone(),
+            name: None,
+        }),
+        serde_json::Value::Object(map) => {
+            let content = map
+                .get("content")
+                .and_then(extract_responses_input_text)
+                .or_else(|| {
+                    map.get("text")
+                        .and_then(|v| v.as_str())
+                        .map(|text| text.to_string())
+                })?;
+
+            if content.trim().is_empty() {
+                return None;
+            }
+
+            let role = map.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+            let name = map
+                .get("name")
+                .and_then(|v| v.as_str())
+                .map(|name| name.to_string());
+
+            Some(Message {
+                role: role_from_str(role),
+                content,
+                name,
+            })
+        }
+        _ => None,
+    }
+}
+
+/// 构建统一消息列表，同时兼容旧 messages 和 OpenAI Responses input
+fn build_messages(ai_req: &AiRequest) -> Result<Vec<Message>, String> {
+    let mut messages = Vec::new();
+
+    if let Some(instructions) = ai_req.instructions.as_deref() {
+        let instructions = instructions.trim();
+        if !instructions.is_empty() {
+            messages.push(Message::system(instructions));
+        }
+    }
+
+    let before_input_len = messages.len();
+
+    if !ai_req.messages.is_empty() {
+        messages.extend(convert_messages(&ai_req.messages));
+    } else if let Some(input) = &ai_req.input {
+        match input {
+            AiInput::Text(text) if !text.trim().is_empty() => {
+                messages.push(Message::user(text));
+            }
+            AiInput::Text(_) => {}
+            AiInput::Items(items) => {
+                messages.extend(items.iter().filter_map(responses_input_item_to_message));
+            }
+        }
+    }
+
+    if messages.len() == before_input_len {
+        return Err("messages或input不能为空".to_string());
+    }
+
+    if messages.iter().all(|m| m.content.trim().is_empty()) {
+        return Err("消息内容不能为空".to_string());
+    }
+
+    Ok(messages)
 }
 
 /// AI 对话接口
@@ -230,11 +346,28 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         config.temperature = Some(temp);
     }
 
+    if let Some(top_p) = ai_req.top_p {
+        config.top_p = Some(top_p);
+    }
+
     if let Some(max_tok) = ai_req.max_tokens {
         config.max_tokens = Some(max_tok);
     }
 
-    // 6. 创建 AI 提供商
+    let request_temperature = config.temperature;
+    let request_top_p = config.top_p;
+    let request_max_tokens = config.max_tokens;
+
+    // 6. 转换请求消息，兼容 messages 和 Responses API input
+    let messages = match build_messages(&ai_req) {
+        Ok(messages) => messages,
+        Err(e) => {
+            render_error(res, e, 201, app_key);
+            return;
+        }
+    };
+
+    // 7. 创建 AI 提供商
     let provider: Box<dyn AiProvider> = match nakamasa_ai::create_provider(config) {
         Ok(p) => p,
         Err(e) => {
@@ -244,12 +377,16 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 7. 构建请求
-    let messages = convert_messages(ai_req.messages);
+    // 8. 构建请求
     let model = provider.model().to_string();
-    let completion_req = CompletionRequest::new(messages, &model);
+    let mut completion_req = CompletionRequest::new(messages, &model);
+    completion_req.temperature = request_temperature;
+    completion_req.top_p = request_top_p;
+    completion_req.max_tokens = request_max_tokens;
+    completion_req.stream = Some(ai_req.stream);
+    completion_req.thinking_budget_tokens = ai_req.thinking_budget_tokens;
 
-    // 8. 处理响应
+    // 9. 处理响应
     if ai_req.stream {
         handle_stream_response(provider, completion_req, res, app_key, enc_info).await;
     } else {
@@ -303,8 +440,6 @@ async fn handle_stream_response(
     app_key: &str,
     enc_info: Option<&EncryptionInfo>,
 ) {
-    use futures_util::StreamExt;
-
     res.headers_mut()
         .insert("Content-Type", "text/event-stream".parse().unwrap());
     res.headers_mut()

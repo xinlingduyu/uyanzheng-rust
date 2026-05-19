@@ -56,6 +56,8 @@ struct LlamaCppChoice {
 struct LlamaCppMessageResponse {
     role: String,
     content: String,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -147,6 +149,23 @@ impl LlamaCppProvider {
             })
             .collect()
     }
+
+    /// OpenAI 格式的 tools 转换
+    fn convert_tools(tools: Option<Vec<crate::skills::Skill>>) -> Option<Vec<serde_json::Value>> {
+        tools.map(|skills| {
+            skills
+                .into_iter()
+                .map(|skill| {
+                    serde_json::json!({
+                        "type": "function",
+                        "name": skill.name,
+                        "description": skill.description,
+                        "parameters": skill.parameters,
+                    })
+                })
+                .collect()
+        })
+    }
 }
 
 #[async_trait]
@@ -159,12 +178,7 @@ impl AiProvider for LlamaCppProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(false),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
         };
 
         let url = format!("{}/chat/completions", self.api_base);
@@ -193,7 +207,7 @@ impl AiProvider for LlamaCppProvider {
                         _ => MessageRole::Assistant,
                     },
                     content: c.message.content,
-                    name: None,
+                    name: c.message.name,
                 },
                 finish_reason: c.finish_reason,
             })
@@ -222,12 +236,7 @@ impl AiProvider for LlamaCppProvider {
             top_p: request.top_p,
             max_tokens: request.max_tokens,
             stream: Some(true),
-            tools: request.tools.map(|skills| {
-                skills
-                    .into_iter()
-                    .map(|s| serde_json::to_value(s).unwrap())
-                    .collect()
-            }),
+            tools: Self::convert_tools(request.tools),
         };
 
         let url = format!("{}/chat/completions", self.api_base);

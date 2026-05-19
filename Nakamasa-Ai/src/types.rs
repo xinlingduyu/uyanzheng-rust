@@ -165,6 +165,9 @@ pub struct CompletionRequest {
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<Skill>>,
+    /// Claude extended thinking budget tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget_tokens: Option<u32>,
 }
 
 impl CompletionRequest {
@@ -177,6 +180,7 @@ impl CompletionRequest {
             max_tokens: None,
             stream: None,
             tools: None,
+            thinking_budget_tokens: None,
         }
     }
 
