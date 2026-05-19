@@ -11,7 +11,7 @@
 | [📖 项目架构](docs/agent.md) | 项目结构、模块划分、开发规范 |
 | [⚡ 构建与运行](docs/CLI_USAGE.md) | 后端/前端启动、配置、CLI 命令 |
 | [☁️ 云函数开发](docs/CLOUD_FUNCTION.md) | QuickJS 运行时 API、Db/Redis/Http 操作 |
-| [🤖 AI 配置](docs/QWEN.md) | AI 聊天、多 Provider 集成 |
+| [🤖 AI 对话接口](docs/AI_CHAT.md) | 多 Provider 集成、流式响应、错误处理 |
 | [📦 高性能缓存](./Nakamasa-utils/HIGH_PERF_CACHE.md) | 分层缓存、ShardedCacheV2 实现 |
 
 ---
