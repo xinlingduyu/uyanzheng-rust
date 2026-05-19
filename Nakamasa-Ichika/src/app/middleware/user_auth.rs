@@ -199,7 +199,7 @@ impl Handler for UserAuth {
         depot.insert("token_pre", token_pre.clone());
 
         // 数据校验（加密解密）
-        let (post_params, decrypted_data) = if self.data_check {
+        let (post_params, _decrypted_data) = if self.data_check {
             let app_info = depot.get::<AppInfo>("app_info").unwrap();
             match self.data_check_internal(req, app_info, res, ctrl).await {
                 Some(result) => result,
@@ -457,7 +457,7 @@ impl UserAuth {
         ctrl: &mut FlowCtrl,
         app_state: &Arc<AppState>,
         app_id: u64,
-        app_key: &str,
+        _app_key: &str,
         token_pre: &str,
         post_params: &HashMap<String, String>,
     ) -> Option<()> {

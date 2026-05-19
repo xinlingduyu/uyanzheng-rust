@@ -21,24 +21,29 @@ const form = reactive(odata)
 
 const userStore = useUserStore()
 
-const redirect = route.query.redirect ? route.query.redirect : '/'
+const defaultRedirect = '/'
+const sanitizeRedirect = (value) => {
+  const target = typeof value === 'string' ? value.trim() : ''
+  if (!target) return defaultRedirect
+  if (!target.startsWith('/') || target.startsWith('//') || target.includes('://') || target.startsWith('/\\')) {
+    return defaultRedirect
+  }
+  return target
+}
+
+const redirect = sanitizeRedirect(route.query.redirect)
 
 const handleSubmit = async ({ values, errors }) => {
-  console.log('[Login Debug] handleSubmit called', { values, errors, form })
   if (loading.value) {
-    console.log('[Login Debug] already loading, skipping')
     return
   }
   loading.value = true
   if (!errors) {
-    console.log('[Login Debug] calling login with form:', form)
     const result = await userStore.login(form)
-    console.log('[Login Debug] login result:', result)
     if (!result) {
       loading.value = false
       return
     }
-    console.log('[Login Debug] redirecting to:', redirect)
     router.push(redirect)
   }
   loading.value = false

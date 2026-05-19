@@ -150,7 +150,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     };
 
     let user_type = &user_info.user_type;
-    let uid = user_info.uid;
+    let _uid = user_info.uid;
     let appid = user_info.appid;
     let current_time = chrono::Utc::now().timestamp();
     let ip = get_client_ip(req);
@@ -218,7 +218,7 @@ async fn handle_user_fen_verify(
     current_time: i64,
     ip: &str,
     app_key: &str,
-    enc_info: Option<&crate::app::middleware::app_context::EncryptionInfo>,
+    _enc_info: Option<&crate::app::middleware::app_context::EncryptionInfo>,
 ) {
     let uid = user_info.uid;
     let appid = user_info.appid;

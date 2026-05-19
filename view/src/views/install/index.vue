@@ -724,7 +724,7 @@ const progress = computed(() => (currentStep.value / (steps.length - 1)) * 100)
     <div class="footer-copy">
       <span>Nakamasa-Ichika</span>
       <span>·</span>
-      <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank">Apache 2.0</a>
+      <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache 2.0</a>
     </div>
   </div>
 </template>

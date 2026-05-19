@@ -13,11 +13,6 @@ import { allMocks, initMockData } from '@/mock'
 const env = import.meta.env
 const mockMode = (env.VITE_APP_MOCK_MODE || 'off').trim()
 
-console.log('='.repeat(60))
-console.log('[Mock] 环境变量 VITE_APP_MOCK_MODE:', env.VITE_APP_MOCK_MODE)
-console.log('[Mock] 解析后模式:', mockMode)
-console.log('='.repeat(60))
-
 if (mockMode !== 'off') {
   // 设置模式
   setMockMode(mockMode)
@@ -27,8 +22,6 @@ if (mockMode !== 'off') {
   
   // 注册所有 Mock
   registerMocks(allMocks)
-  
-  console.log('[Mock] 系统初始化完成，共注册', allMocks.length, '个接口')
 }
 
 // ========== Axios 服务创建 ==========

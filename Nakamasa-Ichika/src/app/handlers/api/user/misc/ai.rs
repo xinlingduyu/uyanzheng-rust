@@ -187,7 +187,7 @@ fn convert_messages(messages: Vec<AiMessage>) -> Vec<Message> {
 #[handler]
 pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 1. 验证用户是否登录
-    let user_info = match depot.get::<UserInfo>("user_info") {
+    let _user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
             render_error(res, "未授权", 201, "");
@@ -247,7 +247,7 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 7. 构建请求
     let messages = convert_messages(ai_req.messages);
     let model = provider.model().to_string();
-    let mut completion_req = CompletionRequest::new(messages, &model);
+    let completion_req = CompletionRequest::new(messages, &model);
 
     // 8. 处理响应
     if ai_req.stream {

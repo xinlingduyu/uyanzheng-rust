@@ -80,7 +80,9 @@ router.beforeEach(async (to, from, next) => {
 
     if (! userStore.user && userStore.user == undefined ) {
       const data = await userStore.requestUserInfo()
-      data && next({ path: to.path, query: to.query })
+      const safeQuery = to.query ? { ...to.query } : {}
+      delete safeQuery.redirect
+      data && next({ path: to.path, query: safeQuery })
     } else {
       next()
     }

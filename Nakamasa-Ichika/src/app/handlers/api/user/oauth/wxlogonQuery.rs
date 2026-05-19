@@ -254,7 +254,7 @@ pub async fn wx_logon_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     }
 
     // PHP: $token = md5(uniqid().$Ures['id'].$wxlogonInfo['udid']);
-    let random_num: u64 = rand::thread_rng().r#gen();
+    let _random_num: u64 = rand::thread_rng().r#gen();
     let token = {
         let mut token_data = String::with_capacity(64);
         use std::fmt::Write;

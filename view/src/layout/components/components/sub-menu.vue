@@ -32,7 +32,10 @@
   const appStore = useAppStore()
   const routerPush = (menu) => {
     if (menu.meta && menu.meta.type === 'L') {
-      window.open(menu.path)
+      const url = String(menu.path || '')
+      if (/^(https?:)?\/\//i.test(url) && !/^javascript:/i.test(url)) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      }
     } else {
       router.push(menu.path)
       tagStore.addTag({ name: menu.name, title: menu.meta.title, path: menu.path })

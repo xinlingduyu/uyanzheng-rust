@@ -402,7 +402,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .fetch_optional(app_state.get_db())
     .await;
 
-    let (group_id, group_name, group_val, group_type) = match group_result {
+    let (group_id, _group_name, group_val, group_type) = match group_result {
         Ok(Some(row)) => (row.0, row.1, row.2, row.3),
         Ok(None) => {
             res.render(Json(ApiResponse::<()>::error("卡密组不存在", 201)));
@@ -434,7 +434,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     let mut success_count = 0;
-    let mut failed_count = 0;
 
     // 获取当前管理员 ID
     let admin_id: u64 = if let Ok(id) = depot.get::<u64>("admin_id") {
@@ -492,12 +491,9 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             Ok(r) => {
                 if r.rows_affected() > 0 {
                     success_count += 1;
-                } else {
-                    failed_count += 1;
                 }
             }
             Err(e) => {
-                failed_count += 1;
                 tracing::error!("第 {} 条卡密插入失败: {}", i + 1, e);
             }
         }
@@ -858,7 +854,7 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    let now_ts = Utc::now().timestamp();
+    let _now_ts = Utc::now().timestamp();
 
     // state="y" 表示正常，需要取消封禁（设置 ban 为 NULL 或过去时间）
     // state="n" 表示禁用，需要设置封禁（设置 ban 为当前时间 + 100年）

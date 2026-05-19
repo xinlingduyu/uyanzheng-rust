@@ -521,8 +521,37 @@ impl QuickJsRuntime {
             // 执行代码
             let result: Value = ctx.eval(code).map_err(|e| format!("执行错误: {}", e))?;
 
+            // 检查全局 handler 函数，若定义则调用 handler(param, User)
+            // 通过 MaybePromise 统一处理同步/async 返回值
+            let final_result = {
+                let globals = ctx.globals();
+                match globals.get::<_, rquickjs::Function>("handler") {
+                    Ok(handler_fn) => {
+                        let null_val = rquickjs::Value::new_null(ctx.clone());
+                        let param_val = globals
+                            .get::<_, rquickjs::Value>("param")
+                            .unwrap_or(null_val.clone());
+                        let user_val = globals
+                            .get::<_, rquickjs::Value>("User")
+                            .unwrap_or(null_val);
+                        let call_result = handler_fn
+                            .call::<_, rquickjs::Value>((param_val, user_val))
+                            .map_err(|e| format!("handler 调用错误: {}", e))?;
+
+                        // MaybePromise 自动处理：
+                        // - 同步函数返回值 → 直接取出
+                        // - async 函数返回值 (Promise) → 执行微任务队列后取出
+                        let maybe = rquickjs::promise::MaybePromise::from_value(call_result);
+                        maybe
+                            .finish::<rquickjs::Value>()
+                            .map_err(|e| format!("handler 执行错误: {}", e))?
+                    }
+                    Err(_) => result,
+                }
+            };
+
             // 转换结果为 JSON
-            Self::value_to_json(&ctx, result)
+            Self::value_to_json(&ctx, final_result)
         });
 
         self.runtime.set_interrupt_handler(None);

@@ -29,6 +29,6 @@
 import config from '@/../package.json'
 
 const openPage = (url = '') => {
-  window.open(url)
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 </script>

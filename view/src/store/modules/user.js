@@ -228,21 +228,18 @@ const useUserStore = defineStore('user', {
     },
 
     login(form) {
-      console.log('[UserStore Debug] login called with form:', form)
       return loginApi
         .login(form)
         .then((r) => {
-          console.log('[UserStore Debug] login API response:', r)
           if (r.code === 200) {
             this.setToken(r.data.token)
             return true
           } else {
-            console.log('[UserStore Debug] login failed, code:', r.code, 'message:', r.message)
             return false
           }
         })
         .catch((e) => {
-          console.error('[UserStore Debug] login error:', e)
+          console.error('[UserStore] login error:', e)
           return false
         })
     },

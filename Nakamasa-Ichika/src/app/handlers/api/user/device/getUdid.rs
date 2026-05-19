@@ -30,7 +30,7 @@ struct DeviceItem {
 
 #[handler]
 pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let app_state = match depot.obtain::<Arc<AppState>>() {
+    let _app_state = match depot.obtain::<Arc<AppState>>() {
         Ok(s) => s,
         Err(_) => {
             render_error(res, "服务器错误", 201, "");

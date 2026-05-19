@@ -26,7 +26,7 @@ use crate::config::AppConfig;
 ///
 /// 成功时返回 Ok(())，失败时返回错误。
 #[allow(dead_code)]
-pub async fn watch_config(shared_config: Arc<RwLock<AppConfig>>, path: &str) -> Result<()> {
+pub async fn watch_config(_shared_config: Arc<RwLock<AppConfig>>, path: &str) -> Result<()> {
     // 创建一个 Tokio mpsc 通道来桥接 notify 的同步回调和 Tokio 的异步世界
     let (tx, mut rx) = mpsc::channel(10);
 

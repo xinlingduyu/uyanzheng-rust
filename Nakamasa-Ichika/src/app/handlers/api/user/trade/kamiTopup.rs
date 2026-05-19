@@ -92,8 +92,8 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
     let appid = user_info.appid;
     let user_type = &user_info.user_type;
     let user_vip = user_info.vip.unwrap_or(0);
-    let user_fen = user_info.fen;
-    let user_sn_max = user_info.sn_max;
+    let _user_fen = user_info.fen;
+    let _user_sn_max = user_info.sn_max;
     let current_time = chrono::Utc::now().timestamp();
     let ip = get_client_ip(req);
     let redis_util = &app_state.redis_util;

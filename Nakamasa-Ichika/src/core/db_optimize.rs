@@ -63,7 +63,7 @@ impl SmartPool {
         }
 
         let chunks = items.chunks(batch_size);
-        let mut total_affected = 0;
+        let total_affected = 0;
 
         for _chunk in chunks {
             // TODO: 实现批量插入逻辑

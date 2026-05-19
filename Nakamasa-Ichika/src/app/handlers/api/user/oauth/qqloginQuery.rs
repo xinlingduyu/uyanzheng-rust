@@ -253,7 +253,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     }
 
     // PHP: $token = md5(uniqid().$Ures['id'].$logonInfo['udid']);
-    let random_num: u64 = rand::thread_rng().r#gen();
+    let _random_num: u64 = rand::thread_rng().r#gen();
     let token = md5_concat_3(
         &Utc::now().timestamp_millis().to_string(),
         &user_id.to_string(),

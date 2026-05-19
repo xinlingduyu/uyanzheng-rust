@@ -41,7 +41,7 @@ pub async fn init_sqlx_pool() -> anyhow::Result<Pool<MySql>> {
         .host(database_config.host())
         .port(database_config.port())
         .database(database_config.dbname())
-        .ssl_mode(sqlx::mysql::MySqlSslMode::Preferred)
+        .ssl_mode(sqlx::mysql::MySqlSslMode::Required)
         // 启用预处理语句缓存
         .statement_cache_capacity(100);
 

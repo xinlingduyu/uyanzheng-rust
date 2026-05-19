@@ -39,6 +39,7 @@ lru = "0.12"
 # 加密依赖
 aes = "0.8"
 cbc = "0.1"
+aes-gcm = "0.10"
 sha3 = "0.10"
 
 [features]

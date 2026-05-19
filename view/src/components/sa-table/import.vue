@@ -59,7 +59,7 @@ const sendDownload = () => {
   Message.info('请求服务器下载文件中...')
   const url = options.import.templateUrl
   if (/^(http|https)/g.test(url)) {
-    window.open(url)
+    window.open(url, '_blank', 'noopener,noreferrer')
   } else {
     commonApi.download(url).then((res) => {
       tool.download(res)

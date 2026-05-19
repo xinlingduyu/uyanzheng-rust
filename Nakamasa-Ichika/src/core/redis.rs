@@ -225,6 +225,9 @@ impl RedisUtil {
 
     /// 查找匹配的键（KEYS命令，生产环境慎用）
     pub async fn keys(&self, pool: &Pool, pattern: &str) -> anyhow::Result<Vec<String>> {
+        tracing::warn!(
+            "KEYS 命令在生产环境大数据量下会阻塞 Redis 主线程，建议改用 scan_keys()"
+        );
         let mut conn = pool.get().await?;
         let prefixed_pattern = self.with_prefix(pattern);
 

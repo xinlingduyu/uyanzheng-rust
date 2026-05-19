@@ -129,7 +129,7 @@ const handleSelect = async (name) => {
 }
 
 const handleAppStore = async () => {
-  window.open('https://saas.saithink.top/#/appStore')
+  window.open('https://saas.saithink.top/#/appStore', '_blank', 'noopener,noreferrer')
 }
 
 const handleLogout = async () => {
@@ -188,7 +188,6 @@ const initWebSocket = () => {
       }
     })
 
-    console.log('[WebSocket] 连接成功')
   } catch (error) {
     console.error('[WebSocket] 连接失败:', error)
   }

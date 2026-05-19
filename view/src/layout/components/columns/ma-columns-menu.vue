@@ -76,7 +76,7 @@ const initMenu = () => {
 
 const loadMenu = (bigMenu, index) => {
   if (bigMenu.meta.type === 'L') {
-    window.open(bigMenu.path)
+    window.open(bigMenu.path, '_blank', 'noopener,noreferrer')
     return
   }
   if (bigMenu.children && bigMenu.children.length > 0) {

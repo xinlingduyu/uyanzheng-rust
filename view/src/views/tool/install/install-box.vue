@@ -56,6 +56,12 @@ const visible = ref(false)
 const loading = ref(false)
 
 const uploadSize = 8 * 1024 * 1024
+const allowedExtensions = ['.zip', '.rar']
+
+const validateFileType = (filename) => {
+  const name = String(filename || '').toLowerCase()
+  return allowedExtensions.some(ext => name.endsWith(ext))
+}
 
 const initialApp = {
   app: '',
@@ -73,8 +79,11 @@ const uploadFileHandler = async (options) => {
   if (!options.fileItem) return
   let isCheck = true
   const file = options.fileItem.file
-  if (file.size > uploadSize) {
-    Message.warning(file.name + '超出文件大小限制')
+  if (!validateFileType(file.name)) {
+    Message.warning(file.name + '仅支持 .zip / .rar 格式')
+    isCheck = false
+  } else if (file.size > uploadSize) {
+    Message.warning(file.name + '超出8MB文件大小限制')
     isCheck = false
   }
   if (isCheck) {

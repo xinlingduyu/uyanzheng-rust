@@ -113,7 +113,7 @@ impl SmsPlugin for JieSmsPlugin {
             return Err("模板MID未配置".to_string());
         }
 
-        let access_key = self.access_key.as_ref().unwrap();
+        let _access_key = self.access_key.as_ref().unwrap();
         let mid = self.mid.as_ref().unwrap();
 
         // PHP: $data = ['mid'=>$this->mid,'mobile'=>$mobile,'param'=>json_encode(['code'=>$code,'time'=>$time])];

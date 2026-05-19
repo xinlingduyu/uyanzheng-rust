@@ -503,11 +503,11 @@ async fn handle_user_device_binding(
     pool: &sqlx::MySqlPool,
     uid: u64,
     udid: &str,
-    appid: u64,
+    _appid: u64,
     sn_max: i64,
     current_time: i64,
     logon_sn_num: i32,
-    logon_sn_dk: &str,
+    _logon_sn_dk: &str,
     _redis_util: &crate::core::redis::RedisUtil,
     _redis_pool: Option<&deadpool_redis::Pool>,
     sn_list_str: Option<String>, // 直接传入 sn_list 字符串，避免重复查询

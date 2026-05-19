@@ -127,11 +127,7 @@ impl SamplingCounter {
         let sampled = self.sampled_value.load(Ordering::Relaxed);
 
         // 计算实际采样率
-        let actual_rate = if sampled > 0 {
-            total / sampled
-        } else {
-            current_rate as u64
-        };
+        let actual_rate = total.checked_div(sampled).unwrap_or(current_rate as u64);
 
         // 根据实际采样率调整
         let new_rate = if actual_rate < current_rate as u64 / 2 {
