@@ -405,4 +405,55 @@ export default { name: 'MessageList' }
   text-align: center;
   background: transparent;
 }
+
+/* ========== 移动端适配 ========== */
+@media screen and (max-width: 768px) {
+  .chat-messages {
+    max-height: 50vh;
+    padding: 12px;
+  }
+
+  .chat-item {
+    gap: 8px;
+    max-width: 100%;
+  }
+
+  .chat-content {
+    max-width: calc(100% - 52px);
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+
+  .chat-text {
+    font-size: 13px;
+    line-height: 1.4;
+    word-break: break-all;
+  }
+
+  .chat-images :deep(.arco-image) {
+    width: 60px !important;
+    height: 60px !important;
+  }
+
+  .chat-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .chat-time {
+    font-size: 10px;
+  }
+
+  .reply-actions {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .reply-images {
+    order: -1;
+    width: 100%;
+    margin: 0;
+  }
+}
 </style>
