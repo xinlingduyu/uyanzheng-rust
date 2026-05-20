@@ -1,5 +1,6 @@
 [workspace]
 members = ["Nakamasa-Ichika", "Nakamasa-proc", "Nakamasa-utils", "Nakamasa-Ai"]
+default-members = ["Nakamasa-Ichika"]
 resolver = "2"
 
 # ===========================================
