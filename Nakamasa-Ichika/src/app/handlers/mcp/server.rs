@@ -122,8 +122,19 @@ fn ensure_session_cleanup() {
     });
 }
 
-/// 全局配置实例
-static CONFIG: Lazy<McpConfig> = Lazy::new(McpConfig::default);
+/// 全局配置实例（优先读取 config.yaml 中的 mcp 配置，未配置则使用默认值）
+static CONFIG: Lazy<McpConfig> = Lazy::new(|| {
+    let global_mcp = crate::config::get().mcp();
+    McpConfig {
+        order_prefix: global_mcp.order_prefix().to_string(),
+        server_name: global_mcp.server_name().to_string(),
+        server_version: global_mcp.server_version().to_string(),
+        sse_channel_size: global_mcp.sse_channel_size(),
+        default_pay_type: global_mcp.default_pay_type().to_string(),
+        session_ttl: Duration::from_secs(global_mcp.session_ttl_secs()),
+        cleanup_interval: Duration::from_secs(global_mcp.cleanup_interval_secs()),
+    }
+});
 
 fn generate_session_id() -> String {
     let ts = SystemTime::now()

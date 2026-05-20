@@ -2,6 +2,7 @@ mod app_config; // App配置
 mod cors;
 mod debug;
 mod i18n; // 国际化配置
+mod mcp; // MCP 配置
 mod mysql;
 mod redis; // Redis配置
 mod security;
@@ -16,6 +17,7 @@ pub use app_config::AppConfig as AppConfigDetails;
 pub use cors::CorsConfig;
 pub use debug::DebugConfig;
 pub use i18n::I18nConfig; // 导出国际化配置
+pub use mcp::McpServerSettings; // 导出 MCP 配置
 pub use mysql::MysqlConfig;
 pub use redis::RedisConfig; // 导出Redis配置
 pub use security::SecurityConfig;
@@ -47,6 +49,8 @@ pub struct AppConfig {
     security: SecurityConfig,
     #[serde(default)]
     cors: CorsConfig,
+    #[serde(default)]
+    mcp: McpServerSettings, // MCP 服务端配置
 }
 
 impl AppConfig {
@@ -80,6 +84,7 @@ impl AppConfig {
                 app: AppConfigDetails::default(),
                 security: SecurityConfig::default(),
                 cors: CorsConfig::default(),
+                mcp: McpServerSettings::default(),
             })
         })
     }
@@ -115,6 +120,10 @@ impl AppConfig {
     pub fn cors(&self) -> &CorsConfig {
         &self.cors
     }
+
+    pub fn mcp(&self) -> &McpServerSettings {
+        &self.mcp
+    }
 }
 
 pub fn get() -> &'static AppConfig {
@@ -129,6 +138,7 @@ pub fn get() -> &'static AppConfig {
             app: AppConfigDetails::default(),
             security: SecurityConfig::default(),
             cors: CorsConfig::default(),
+            mcp: McpServerSettings::default(),
         });
         &DEFAULT
     })
