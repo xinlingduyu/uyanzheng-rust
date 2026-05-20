@@ -13,12 +13,21 @@
 //! - `list_goods` — 获取可用商品列表（使用会话绑定的 app_id）
 //! - `create_payment` — 创建支付订单，需提供 account + goods_id
 //! - `query_order` — 查询订单支付状态
+//!
+//! ## 配置
+//!
+//! 本模块自带 `McpConfig` 配置结构体，关键参数可在模块内调整：
+//! - `order_prefix` — 订单号前缀（默认 "MCP"）
+//! - `server_name` / `server_version` — 服务标识
+//! - `sse_channel_size` — SSE 通道缓冲区大小
+//! - `session_ttl` — 会话过期时间
+//! - `default_pay_type` — 默认支付模式
 
 use std::collections::HashMap;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chrono::Utc;
 use futures_util::Stream;
@@ -31,6 +40,43 @@ use crate::app::plugins::pay::{PayOrder, PayPlugin};
 use crate::core::AppState;
 
 // ============================================================================
+// 配置
+// ============================================================================
+
+/// MCP 服务端配置
+#[derive(Clone, Debug)]
+pub struct McpConfig {
+    /// 订单号前缀
+    pub order_prefix: String,
+    /// 服务端名称（MCP 握手时返回）
+    pub server_name: String,
+    /// 服务端版本号
+    pub server_version: String,
+    /// SSE 通道缓冲区大小
+    pub sse_channel_size: usize,
+    /// 默认支付模式（传给支付插件）
+    pub default_pay_type: String,
+    /// 会话过期时间
+    pub session_ttl: Duration,
+    /// 会话清理间隔
+    pub cleanup_interval: Duration,
+}
+
+impl Default for McpConfig {
+    fn default() -> Self {
+        Self {
+            order_prefix: "MCP".to_string(),
+            server_name: "nakasama-mcp".to_string(),
+            server_version: "1.0.0".to_string(),
+            sse_channel_size: 256,
+            default_pay_type: "h5".to_string(),
+            session_ttl: Duration::from_secs(3600),  // 1 小时
+            cleanup_interval: Duration::from_secs(300), // 5 分钟清理一次
+        }
+    }
+}
+
+// ============================================================================
 // 会话管理
 // ============================================================================
 
@@ -39,10 +85,45 @@ struct McpSession {
     _rx: broadcast::Receiver<String>,
     /// 会话绑定的 app_id（建立 SSE 连接时传入）
     app_id: u64,
+    /// 会话创建时间
+    created_at: Instant,
 }
 
 static SESSIONS: Lazy<std::sync::RwLock<HashMap<String, Arc<McpSession>>>> =
     Lazy::new(|| std::sync::RwLock::new(HashMap::new()));
+
+/// 确保会话清理任务已启动（全局只执行一次）
+fn ensure_session_cleanup() {
+    use once_cell::sync::OnceCell;
+    static SPAWNED: OnceCell<bool> = OnceCell::new();
+    SPAWNED.get_or_init(|| {
+        let ttl = CONFIG.session_ttl;
+        let interval = CONFIG.cleanup_interval;
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let now = Instant::now();
+                let mut sessions = SESSIONS.write().unwrap_or_else(|e| e.into_inner());
+                let before = sessions.len();
+                sessions.retain(|id, s| {
+                    let alive = now.duration_since(s.created_at) < ttl;
+                    if !alive {
+                        tracing::debug!("MCP session expired: id={}, app_id={}", id, s.app_id);
+                    }
+                    alive
+                });
+                let removed = before - sessions.len();
+                if removed > 0 {
+                    tracing::info!("MCP session cleanup: removed {}, remaining {}", removed, sessions.len());
+                }
+            }
+        });
+        true
+    });
+}
+
+/// 全局配置实例
+static CONFIG: Lazy<McpConfig> = Lazy::new(McpConfig::default);
 
 fn generate_session_id() -> String {
     let ts = SystemTime::now()
@@ -53,7 +134,18 @@ fn generate_session_id() -> String {
     format!("mcp_{:x}_{:x}", ts, rand)
 }
 
-const SERVER_CAPS: &str = r#"{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":false}},"serverInfo":{"name":"nakamasa-mcp","version":"1.0.0"}}"#;
+fn server_caps_json() -> serde_json::Value {
+    serde_json::json!({
+        "protocolVersion": "2025-03-26",
+        "capabilities": {
+            "tools": { "listChanged": false }
+        },
+        "serverInfo": {
+            "name": CONFIG.server_name,
+            "version": CONFIG.server_version
+        }
+    })
+}
 
 fn make_error(code: i32, message: &str) -> String {
     format!(r#"{{"jsonrpc":"2.0","id":null,"error":{{"code":{},"message":"{}"}}}}"#, code, message.replace('"', r#"\""#))
@@ -71,45 +163,67 @@ fn make_no_id_result(result: &serde_json::Value) -> String {
 }
 
 // ============================================================================
-// Tool 定义
+// 工具定义
 // ============================================================================
 
-fn tools_json() -> serde_json::Value {
+/// 获取当前已注册的可支付通道列表
+fn get_available_channels(mgr: Option<&PayPluginManager>) -> Vec<String> {
+    match mgr {
+        Some(mgr) => {
+            let metas = mgr.get_all_meta();
+            let mut channels: Vec<String> = metas
+                .into_iter()
+                .map(|m| m.plugin_type)
+                .filter(|t| t == "ali" || t == "wx") // 只暴露支付宝和微信给 MCP
+                .collect();
+            if channels.is_empty() {
+                // 如果没有配置任何插件，返回默认值以便前端展示
+                channels = vec!["ali".to_string(), "wx".to_string()];
+            }
+            channels
+        }
+        None => vec!["ali".to_string(), "wx".to_string()],
+    }
+}
+
+fn tools_json(mgr: Option<&PayPluginManager>) -> serde_json::Value {
+    let channels = get_available_channels(mgr);
+
     serde_json::json!({
         "tools": [
             {
                 "name": "check_user",
-                "description": "查询用户是否存在，支持手机号/邮箱/自定义账号三种方式查找，返回uid和账号信息",
+                "description": "Query user by phone/email/account, return uid and profile info",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "account": { "type": "string", "description": "用户账号（手机号/邮箱/自定义账号，三种均可）" }
+                        "account": { "type": "string", "description": "User account (phone/email/custom account name)" }
                     },
                     "required": ["account"]
                 }
             },
             {
                 "name": "list_goods",
-                "description": "获取当前应用的可用商品列表（含名称、价格、类型、简介）",
+                "description": "List available goods/products for current app",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "page": { "type": "integer", "description": "页码，默认1" }
+                        "page": { "type": "integer", "description": "Page number, default 1" }
                     }
                 }
             },
             {
                 "name": "create_payment",
-                "description": "创建支付订单，需提供用户账号和商品ID，返回支付链接",
+                "description": "Create a payment order for user purchase, returns payment URL",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "account": { "type": "string", "description": "充值账号（手机号/邮箱/自定义账号）" },
-                        "goods_id": { "type": "integer", "description": "商品ID" },
+                        "account": { "type": "string", "description": "User account (phone/email/custom account name)" },
+                        "goods_id": { "type": "integer", "description": "Goods/product ID from list_goods" },
                         "channel": {
                             "type": "string",
-                            "description": "支付通道: ali=支付宝, wx=微信支付",
-                            "enum": ["ali", "wx"]
+                            "description": "Payment channel",
+                            "enum": channels
                         }
                     },
                     "required": ["account", "goods_id", "channel"]
@@ -117,11 +231,11 @@ fn tools_json() -> serde_json::Value {
             },
             {
                 "name": "query_order",
-                "description": "查询订单支付状态",
+                "description": "Query payment order status by order number",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "order_no": { "type": "string", "description": "商户订单号" }
+                        "order_no": { "type": "string", "description": "Merchant order number" }
                     },
                     "required": ["order_no"]
                 }
@@ -135,7 +249,7 @@ fn get_pay_manager(state: &Arc<AppState>) -> Option<Arc<PayPluginManager>> {
 }
 
 // ============================================================================
-// Tool 处理器
+// 工具处理器
 // ============================================================================
 
 /// 查询用户信息（支持手机号/邮箱/自定义账号）
@@ -178,7 +292,6 @@ fn handle_check_user(args: &serde_json::Value, state: &Arc<AppState>, app_id: u6
         Ok(None) => {
             let resp = serde_json::json!({
                 "found": false,
-                "uid": null,
                 "note": "User not found with this account identifier"
             });
             make_no_id_result(&resp)
@@ -237,9 +350,14 @@ fn handle_create_payment(args: &serde_json::Value, state: &Arc<AppState>, app_id
         return make_error(-32602, "Missing or invalid parameter: goods_id");
     }
 
-    let channel = args.get("channel").and_then(|v| v.as_str()).unwrap_or("ali");
-    if channel != "ali" && channel != "wx" {
-        return make_error(-32602, &format!("Unsupported channel: {}", channel));
+    let channel = args.get("channel").and_then(|v| v.as_str()).unwrap_or("");
+
+    // 校验通道是否可用（动态检查已注册的支付插件）
+    let pay_mgr = get_pay_manager(state);
+    let available = get_available_channels(pay_mgr.as_deref());
+    if channel.is_empty() || !available.iter().any(|c| c == channel) {
+        let valid_list = available.join(", ");
+        return make_error(-32602, &format!("Unsupported channel '{}'. Valid channels: {}", channel, valid_list));
     }
 
     let pool = match state.db.as_ref() {
@@ -292,7 +410,8 @@ fn handle_create_payment(args: &serde_json::Value, state: &Arc<AppState>, app_id
     // 生成订单号
     let current_time = Utc::now().timestamp();
     let order_no = format!(
-        "MCP{}{:05}",
+        "{}{}{:05}",
+        CONFIG.order_prefix,
         Utc::now().format("%Y%m%d%H%M%S"),
         rand::random::<u16>()
     );
@@ -328,12 +447,12 @@ fn handle_create_payment(args: &serde_json::Value, state: &Arc<AppState>, app_id
         money,
         notify_url: String::new(),
         return_url: String::new(),
-        pay_type: "h5".to_string(),
+        pay_type: CONFIG.default_pay_type.clone(),
         client_ip: None,
         scene_info: None,
     };
 
-    match get_pay_manager(state).and_then(|mgr| {
+    match pay_mgr.and_then(|mgr| {
         let plugin = mgr.get_plugin(channel).ok()?;
         plugin.create(&pay_order).ok()
     }) {
@@ -414,7 +533,7 @@ fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
 
     match method {
         "initialize" => {
-            let caps: serde_json::Value = serde_json::from_str(SERVER_CAPS).unwrap_or_default();
+            let caps = server_caps_json();
             match id {
                 Some(id_val) => make_result(id_val, &caps),
                 None => make_no_id_result(&caps),
@@ -422,7 +541,8 @@ fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
         }
         "notifications/initialized" => String::new(),
         "tools/list" => {
-            let tools = tools_json();
+            let pay_mgr = get_pay_manager(state);
+            let tools = tools_json(pay_mgr.as_deref());
             match id {
                 Some(id_val) => make_result(id_val, &tools),
                 None => make_no_id_result(&tools),
@@ -456,24 +576,80 @@ fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
 // ============================================================================
 
 /// SSE 端点：`GET /mcp/sse?app_id=xxx`
-/// app_id 必须传入，绑定到会话供后续工具调用使用
+///
+/// app_id 必须传入且为有效的应用ID，绑定到会话供后续工具调用使用。
 #[handler]
-pub async fn sse_handler(req: &mut Request, res: &mut Response) {
-    let app_id = req.query::<u64>("app_id").unwrap_or(0);
+pub async fn sse_handler(_req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let app_id = _req.query::<u64>("app_id").unwrap_or(0);
     if app_id == 0 {
         res.status_code(StatusCode::BAD_REQUEST);
         res.render(Text::Plain(make_error(-32000, "Missing or invalid app_id query parameter")));
         return;
     }
 
-    let (tx, rx) = broadcast::channel::<String>(256);
+    // 校验 app_id 是否存在（从数据库查询 u_app 表）
+    let state = match depot.obtain::<Arc<AppState>>() {
+        Ok(s) => s.clone(),
+        Err(_) => {
+            res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
+            res.render(Text::Plain(make_error(-32000, "Server state not available")));
+            return;
+        }
+    };
+
+    let pool = match state.db.as_ref() {
+        Some(p) => Some(p),
+        None => {
+            // 未安装状态，跳过 app_id 校验
+            tracing::warn!("MCP: Database not available, skipping app_id validation");
+            None
+        }
+    };
+
+    if let Some(pool) = pool {
+        let rt = tokio::runtime::Handle::current();
+        let valid = rt.block_on(async {
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM u_app WHERE id = ?")
+                .bind(app_id)
+                .fetch_one(pool)
+                .await
+        });
+
+        match valid {
+            Ok(count) if count > 0 => {
+                tracing::debug!("MCP app_id validated: app_id={}", app_id);
+            }
+            Ok(_) => {
+                res.status_code(StatusCode::BAD_REQUEST);
+                res.render(Text::Plain(make_error(
+                    -32000,
+                    &format!("App ID {} does not exist", app_id),
+                )));
+                return;
+            }
+            Err(e) => {
+                tracing::warn!("MCP: Failed to validate app_id {}: {}", app_id, e);
+                // 数据库查询失败时允许通过（避免因临时故障阻塞连接）
+            }
+        }
+    }
+
+    // 确保会话清理任务已启动
+    ensure_session_cleanup();
+
+    let (tx, rx) = broadcast::channel::<String>(CONFIG.sse_channel_size);
     let session_id = generate_session_id();
 
     {
         let mut sessions = SESSIONS.write().unwrap_or_else(|e| e.into_inner());
         sessions.insert(
             session_id.clone(),
-            Arc::new(McpSession { tx: tx.clone(), _rx: rx, app_id }),
+            Arc::new(McpSession {
+                tx: tx.clone(),
+                _rx: rx,
+                app_id,
+                created_at: Instant::now(),
+            }),
         );
     }
 
@@ -491,7 +667,7 @@ pub async fn sse_handler(req: &mut Request, res: &mut Response) {
 
     // 构建 SSE 流
     let endpoint_data = format!(
-        "event: endpoint\\ndata: /mcp/messages?session_id={}\\n\\n",
+        "event: endpoint\\ndata: /mcp/messages?session_id={}\\\n\\n",
         session_id
     );
 
@@ -507,7 +683,7 @@ pub async fn sse_handler(req: &mut Request, res: &mut Response) {
                 }
                 match rx.recv().await {
                     Ok(msg) => {
-                        let sse = format!("data: {}\\n\\n", msg);
+                        let sse = format!("data: {}\\\n\\n", msg);
                         Some((Ok(sse), (rx, true, String::new())))
                     }
                     Err(broadcast::error::RecvError::Closed) => None,
@@ -541,7 +717,7 @@ pub async fn messages_handler(req: &mut Request, depot: &mut Depot, res: &mut Re
         Some(s) => s,
         None => {
             res.status_code(StatusCode::NOT_FOUND);
-            res.render(Text::Plain(make_error(-32000, "Session not found")));
+            res.render(Text::Plain(make_error(-32000, "Session not found or expired")));
             return;
         }
     };
