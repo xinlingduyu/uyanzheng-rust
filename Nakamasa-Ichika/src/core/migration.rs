@@ -98,6 +98,17 @@ fn get_migrations() -> Vec<Migration> {
                 // 注意：cdk_single 表不存在，跳过
             ])),
         },
+        Migration {
+            version: "1.0.2",
+            description: "新增QQ钱包支付通道（pay_qqpay_state/type/config）",
+            migration_type: MigrationType::Database,
+            sql: Some(SqlSource::Statements(&[
+                r#"ALTER TABLE `{app}`
+                    ADD COLUMN IF NOT EXISTS pay_qqpay_state ENUM('on','off') DEFAULT 'off' COMMENT 'QQ钱包状态 on/off',
+                    ADD COLUMN IF NOT EXISTS pay_qqpay_type VARCHAR(24) DEFAULT 'jie' COMMENT 'QQ钱包支付引擎',
+                    ADD COLUMN IF NOT EXISTS pay_qqpay_config JSON DEFAULT NULL COMMENT 'QQ钱包配置'"#,
+            ])),
+        },
         // 添加更多迁移...
     ]
 }

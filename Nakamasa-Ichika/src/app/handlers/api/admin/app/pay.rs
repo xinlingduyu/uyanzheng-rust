@@ -49,6 +49,14 @@ const CHANNEL_DEFS: &[ChannelDef] = &[
         type_col: "pay_wx_type",
         config_col: "pay_wx_config",
     },
+    ChannelDef {
+        id: "qqpay",
+        label: "QQ钱包",
+        icon: "icon-qqpay",
+        state_col: "pay_qqpay_state",
+        type_col: "pay_qqpay_type",
+        config_col: "pay_qqpay_config",
+    },
 ];
 
 #[derive(Debug, Clone, Copy)]
