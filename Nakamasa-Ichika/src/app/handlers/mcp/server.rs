@@ -9,6 +9,7 @@
 //!
 //! ## 工具
 //!
+//! - `check_user` — 查询用户信息（支持手机号/邮箱/自定义账号）
 //! - `list_goods` — 获取可用商品列表（使用会话绑定的 app_id）
 //! - `create_payment` — 创建支付订单，需提供 account + goods_id
 //! - `query_order` — 查询订单支付状态
@@ -77,6 +78,17 @@ fn tools_json() -> serde_json::Value {
     serde_json::json!({
         "tools": [
             {
+                "name": "check_user",
+                "description": "查询用户是否存在，支持手机号/邮箱/自定义账号三种方式查找，返回uid和账号信息",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "account": { "type": "string", "description": "用户账号（手机号/邮箱/自定义账号，三种均可）" }
+                    },
+                    "required": ["account"]
+                }
+            },
+            {
                 "name": "list_goods",
                 "description": "获取当前应用的可用商品列表（含名称、价格、类型、简介）",
                 "inputSchema": {
@@ -125,6 +137,55 @@ fn get_pay_manager(state: &Arc<AppState>) -> Option<Arc<PayPluginManager>> {
 // ============================================================================
 // Tool 处理器
 // ============================================================================
+
+/// 查询用户信息（支持手机号/邮箱/自定义账号）
+fn handle_check_user(args: &serde_json::Value, state: &Arc<AppState>, app_id: u64) -> String {
+    let account = args.get("account").and_then(|v| v.as_str()).unwrap_or("");
+    if account.is_empty() {
+        return make_error(-32602, "Missing required parameter: account");
+    }
+
+    let pool = match state.db.as_ref() {
+        Some(p) => p,
+        None => return make_error(-32603, "Database not available"),
+    };
+
+    let rt = tokio::runtime::Handle::current();
+    let result = rt.block_on(async {
+        sqlx::query_as::<_, (u64, Option<String>, Option<String>, Option<String>, Option<String>)>(
+            "SELECT id, phone, email, acctno, nickname FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?",
+        )
+        .bind(account)
+        .bind(account)
+        .bind(account)
+        .bind(app_id)
+        .fetch_optional(pool)
+        .await
+    });
+
+    match result {
+        Ok(Some((uid, phone, email, acctno, nickname))) => {
+            let resp = serde_json::json!({
+                "found": true,
+                "uid": uid,
+                "phone": phone,
+                "email": email,
+                "acctno": acctno,
+                "nickname": nickname,
+            });
+            make_no_id_result(&resp)
+        }
+        Ok(None) => {
+            let resp = serde_json::json!({
+                "found": false,
+                "uid": null,
+                "note": "User not found with this account identifier"
+            });
+            make_no_id_result(&resp)
+        }
+        Err(e) => make_error(-32603, &format!("Database error: {}", e)),
+    }
+}
 
 /// 获取商品列表
 fn handle_list_goods(_args: &serde_json::Value, state: &Arc<AppState>, app_id: u64) -> String {
@@ -371,6 +432,7 @@ fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
             let tool_args = params.get("arguments").unwrap_or(&serde_json::Value::Null);
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let resp = match name {
+                "check_user" => handle_check_user(tool_args, state, app_id),
                 "list_goods" => handle_list_goods(tool_args, state, app_id),
                 "create_payment" => handle_create_payment(tool_args, state, app_id),
                 "query_order" => handle_query_order(tool_args, state, app_id),
