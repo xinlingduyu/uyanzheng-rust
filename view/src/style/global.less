@@ -241,3 +241,104 @@ html, body {
   color: var(--color-white);
   background-color: rgb(var(--primary-6));
 }
+
+/* =================================================
+   全站移动端响应式适配
+   作用于所有 Arco Design 页面
+   ================================================= */
+@media screen and (max-width: 768px) {
+  /* ---- 卡片 ---- */
+  .arco-card-body {
+    padding: 14px !important;
+  }
+  .arco-card-header {
+    padding: 10px 14px !important;
+  }
+
+  /* ---- 内联表单 → 垂直堆叠 ---- */
+  .arco-form[layout="inline"] {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  .arco-form[layout="inline"] .arco-form-item {
+    width: 100% !important;
+    margin-right: 0 !important;
+    flex-wrap: wrap;
+  }
+  .arco-form[layout="inline"] .arco-form-item:last-child {
+    margin-bottom: 0;
+  }
+  .arco-form[layout="inline"] .arco-form-item-control-wrapper {
+    width: 100%;
+  }
+  .arco-form[layout="inline"] .arco-input-wrapper,
+  .arco-form[layout="inline"] .arco-select-view {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  /* inline form 里的按钮组 */
+  .arco-form[layout="inline"] .arco-space {
+    width: 100%;
+  }
+  .arco-form[layout="inline"] .arco-space .arco-btn {
+    flex: 1;
+  }
+
+  /* ---- 统计卡片：2列布局 ---- */
+  .arco-row > .arco-col {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+  }
+  .arco-row > .arco-col[span="24"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* ---- 表格：水平滚动 ---- */
+  .arco-table {
+    overflow-x: auto;
+    display: block;
+    width: 100%;
+  }
+  .arco-table .arco-table-th,
+  .arco-table .arco-table-td {
+    white-space: nowrap;
+    padding: 8px 10px !important;
+    font-size: 12px;
+  }
+
+  /* ---- 弹窗：移动端全宽 ---- */
+  .arco-modal {
+    max-width: 94vw !important;
+    margin: 12px auto !important;
+  }
+  .arco-modal-header {
+    padding: 12px 16px !important;
+  }
+  .arco-modal-body {
+    padding: 14px 16px !important;
+  }
+  .arco-modal-footer {
+    padding: 12px 16px !important;
+  }
+
+  /* ---- 按钮组：堆叠 ---- */
+  .arco-space .arco-btn {
+    font-size: 13px;
+  }
+  .arco-btn-long {
+    width: 100%;
+  }
+
+  /* ---- 下拉/输入框触控优化 ---- */
+  .arco-input-wrapper,
+  .arco-select-view {
+    min-height: 36px;
+  }
+
+  /* ---- 标签间距 ---- */
+  .arco-tag {
+    font-size: 11px;
+    padding: 0 6px;
+  }
+}
