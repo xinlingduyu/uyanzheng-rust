@@ -3,10 +3,10 @@ import { request } from '@/utils/request.js'
 export default {
   /**
    * 获取支付插件列表和配置信息
-   * 后端返回格式:
+   * 后端返回格式 (v2 - 动态通道数组):
    * {
-   *   info: { pay_ali_state, pay_ali_type, pay_ali_config, pay_wx_state, pay_wx_type, pay_wx_config },
-   *   plug: [{ id, type, name, extra, form }]
+   *   channels: [{ id, label, icon, state, type, config }],
+   *   plugins: [{ id, type, name, extra, form }]
    * }
    */
   getInfo() {
@@ -17,21 +17,20 @@ export default {
   },
 
   /**
-   * 编辑支付配置
-   * @param {Object} data - 配置数据
-   * @param {number} data.id - 应用ID
-   * @param {string} [data.pay_ali_state] - 支付宝状态 "on"|"off"
-   * @param {string} [data.pay_ali_type] - 支付宝引擎 "jie"|"ali"
-   * @param {object} [data.pay_ali_config] - 支付宝配置
-   * @param {string} [data.pay_wx_state] - 微信状态 "on"|"off"
-   * @param {string} [data.pay_wx_type] - 微信引擎 "jie"|"wx"
-   * @param {object} [data.pay_wx_config] - 微信配置
+   * 编辑支付配置 (v2 - 通道数组格式)
+   * @param {Object} params
+   * @param {number} params.id - 应用ID
+   * @param {Array} params.channels - 通道配置数组
+   * @param {string} params.channels[].id - 通道ID (如 "ali", "wx")
+   * @param {string} params.channels[].state - "on"|"off"
+   * @param {string} params.channels[].type - 支付引擎ID (如 "jie", "ali", "wx")
+   * @param {Object} params.channels[].config - 引擎配置
    */
-  edit(data = {}) {
+  edit({ id, channels } = {}) {
     return request({
       url: '/admin/app/pay/edit',
       method: 'post',
-      data
+      data: { id, channels }
     })
   }
 }
