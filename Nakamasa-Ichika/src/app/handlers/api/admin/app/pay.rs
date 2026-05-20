@@ -3,10 +3,13 @@
 //!
 //! ## 设计说明
 //!
-//! 支付通道采用「通道定义表」模式：将每个支付通道（支付宝、微信等）的定义
-//! 集中在一个 const 数组中，包含其 ID、显示名称以及到数据库列的映射。
-//! 新增支付通道只需在 `CHANNEL_DEFS` 中追加一条定义，后端自动处理
-//! 查询/保存，前端自动渲染。
+//! 支付通道采用「通道定义表」模式：将每个支付通道的定义集中在一个 const 数组
+//! `CHANNEL_DEFS` 中。SQL 查询和更新均从此数组动态构建，**新增支付通道只需**：
+//!
+//! 1. 在 `CHANNEL_DEFS` 中追加一条定义
+//! 2. 在 `u_app` 表中添加对应的三列: `{state_col}`, `{type_col}`, `{config_col}`
+//!
+//! 前后端代码均无需修改。
 
 use chrono::Utc;
 use salvo::prelude::*;
@@ -18,12 +21,17 @@ use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
 use crate::core::middleware::get_client_ip;
 use crate::core::AppState;
+use sqlx::Row;
 
 // ============================================================================
 // 通道定义
 // ============================================================================
 
-/// 支付通道定义 —— 扩展支付方式只需在此处追加条目
+/// 支付通道定义 —— **扩展支付方式只需在此处追加条目**
+///
+/// 每条定义对应 `u_app` 表中的三列（state / type / config），
+/// 命名需遵循 `pay_{channel_id}_state` / `pay_{channel_id}_type` / `pay_{channel_id}_config` 的约定。
+/// SQL 查詢和 UPDATE 均从此数组动态构建，无需改动其他代码。
 const CHANNEL_DEFS: &[ChannelDef] = &[
     ChannelDef {
         id: "ali",
@@ -43,6 +51,7 @@ const CHANNEL_DEFS: &[ChannelDef] = &[
     },
 ];
 
+#[derive(Debug, Clone, Copy)]
 struct ChannelDef {
     /// 通道 ID，唯一标识（如 "ali", "wx"）
     id: &'static str,
@@ -58,11 +67,31 @@ struct ChannelDef {
     config_col: &'static str,
 }
 
+impl ChannelDef {
+    /// 获取该通道对应的三列名
+    fn columns(&self) -> [&'static str; 3] {
+        [self.state_col, self.type_col, self.config_col]
+    }
+}
+
+// ============================================================================
+// 动态 SQL 构建
+// ============================================================================
+
+/// 构建 SELECT 查询的列名部分（不含 "SELECT id, " 前缀）
+fn select_columns_sql() -> String {
+    CHANNEL_DEFS
+        .iter()
+        .flat_map(|def| def.columns())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 // ============================================================================
 // 获取支付配置
 // ============================================================================
 
-/// 获取支付插件列表和配置信息
+/// 获取支付通道列表和配置信息
 #[handler]
 pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -94,13 +123,14 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // 查询应用的一行数据，SELECT 所有支付相关列
-    let row = sqlx::query_as::<_, PayDbRow>(
-        "SELECT id, pay_ali_state, pay_ali_type, pay_ali_config, pay_wx_state, pay_wx_type, pay_wx_config FROM u_app WHERE id = ?"
-    )
-    .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+    // 动态构建 SELECT 查询，列名来自 CHANNEL_DEFS
+    let select_cols = select_columns_sql();
+    let sql = format!("SELECT id, {} FROM u_app WHERE id = ?", select_cols);
+
+    let row = sqlx::query(&sql)
+        .bind(appid)
+        .fetch_optional(app_state.get_db())
+        .await;
 
     let row = match row {
         Ok(Some(r)) => r,
@@ -115,16 +145,22 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // 根据通道定义表生成 channels 数组
+    // 从动态行中按列名提取每个通道的配置
     let channels: Vec<serde_json::Value> = CHANNEL_DEFS
         .iter()
         .map(|def| {
-            let (state, r#type, config) = row.get_channel(def);
+            let state: String = row
+                .get::<Option<String>, &str>(def.state_col)
+                .unwrap_or_else(|| "off".to_string());
+            let r#type: String = row
+                .get::<Option<String>, &str>(def.type_col)
+                .unwrap_or_else(|| "jie".to_string());
+            let config_blob: Option<Vec<u8>> = row.get::<Option<Vec<u8>>, &str>(def.config_col);
+            let config = blob_to_json(&config_blob);
             channel_json(def, state, r#type, config)
         })
         .collect();
 
-    // 生成插件列表（与之前不变）
     let plugins = generate_plugins_json();
 
     res.render(Json(ApiResponse::success(
@@ -189,18 +225,9 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    // 验证每个通道，收集需要更新的列和值
-    let mut ali_state: Option<String> = None;
-    let mut ali_type: Option<String> = None;
-    let mut ali_config: Option<Vec<u8>> = None;
-    let mut wx_state: Option<String> = None;
-    let mut wx_type: Option<String> = None;
-    let mut wx_config: Option<Vec<u8>> = None;
-
+    // 对每个前端传入的通道执行验证和单条 UPDATE（列名从 ChannelDef 动态获取）
     for ch in &edit_req.channels {
-        // 根据通道 ID 查找定义
-        let def = CHANNEL_DEFS.iter().find(|d| d.id == ch.channel_id);
-        let def = match def {
+        let def = match CHANNEL_DEFS.iter().find(|d| d.id == ch.channel_id) {
             Some(d) => d,
             None => {
                 res.render(Json(ApiResponse::<()>::error(
@@ -219,7 +246,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             )));
             return;
         }
-
         // 验证 plugin_type
         if ch.plugin_type.len() < 2 || ch.plugin_type.len() > 12
             || !ch.plugin_type.chars().all(|c| c.is_alphanumeric())
@@ -230,7 +256,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             )));
             return;
         }
-
         // 验证 config 必须是对象
         if !ch.config.is_object() {
             res.render(Json(ApiResponse::<()>::error(
@@ -239,8 +264,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             )));
             return;
         }
-
-        // 序列化 config
         let config_bytes = match serde_json::to_string(&ch.config) {
             Ok(s) => Some(s.as_bytes().to_vec()),
             Err(e) => {
@@ -253,113 +276,55 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
         };
 
-        // 按通道列名映射到对应变量
-        match def.id {
-            "ali" => {
-                ali_state = Some(ch.state.clone());
-                ali_type = Some(ch.plugin_type.clone());
-                ali_config = config_bytes;
-            }
-            "wx" => {
-                wx_state = Some(ch.state.clone());
-                wx_type = Some(ch.plugin_type.clone());
-                wx_config = config_bytes;
-            }
-            _ => {
-                res.render(Json(ApiResponse::<()>::error(
-                    format!("不支持的支付通道: {}", def.id),
-                    201,
-                )));
-                return;
-            }
+        let sql = format!(
+            "UPDATE u_app SET {} = ?, {} = ?, {} = ? WHERE id = ?",
+            def.state_col, def.type_col, def.config_col
+        );
+
+        let update = sqlx::query(&sql)
+            .bind(&ch.state)
+            .bind(&ch.plugin_type)
+            .bind(&config_bytes)
+            .bind(edit_req.id)
+            .execute(app_state.get_db())
+            .await;
+
+        if let Err(e) = update {
+            tracing::error!("更新{}支付配置失败: {}", def.label, e);
+            res.render(Json(ApiResponse::<()>::error(
+                format!("{} 更新失败", def.label),
+                201,
+            )));
+            return;
         }
     }
 
-    // 更新数据库
-    let result = sqlx::query(
-        "UPDATE u_app SET 
-         pay_ali_state = ?, pay_ali_type = ?, pay_ali_config = ?,
-         pay_wx_state = ?, pay_wx_type = ?, pay_wx_config = ?
-         WHERE id = ?",
+    // 记录操作日志
+    let admin_id = depot
+        .get::<u64>("admin_id")
+        .copied()
+        .unwrap_or(0);
+    let ip = get_client_ip(req).to_string();
+    let now = Utc::now().timestamp();
+    let _ = sqlx::query(
+        "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(&ali_state)
-    .bind(&ali_type)
-    .bind(&ali_config)
-    .bind(&wx_state)
-    .bind(&wx_type)
-    .bind(&wx_config)
-    .bind(edit_req.id)
+    .bind("adm")
+    .bind(admin_id)
+    .bind("pay_edit")
+    .bind(true)
+    .bind(now)
+    .bind(&ip)
+    .bind(Option::<i64>::None)
     .execute(app_state.get_db())
     .await;
 
-    match result {
-        Ok(r) => {
-            if r.rows_affected() > 0 {
-                let admin_id = depot
-                    .get::<u64>("admin_id")
-                    .copied()
-                    .unwrap_or(0);
-                let ip = get_client_ip(req).to_string();
-                let now = Utc::now().timestamp();
-                let _ = sqlx::query(
-                    "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
-                )
-                .bind("adm")
-                .bind(admin_id)
-                .bind("pay_edit")
-                .bind(true)
-                .bind(now)
-                .bind(&ip)
-                .bind(Option::<i64>::None)
-                .execute(app_state.get_db())
-                .await;
-
-                res.render(Json(ApiResponse::success_msg("编辑成功")));
-            } else {
-                res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
-            }
-        }
-        Err(e) => {
-            tracing::error!("更新支付配置失败: {}", e);
-            res.render(Json(ApiResponse::<()>::error("数据库错误", 201)));
-        }
-    }
+    res.render(Json(ApiResponse::success_msg("编辑成功")));
 }
 
 // ============================================================================
 // 辅助函数
 // ============================================================================
-
-/// 数据库查询结果行
-#[derive(Debug, sqlx::FromRow)]
-struct PayDbRow {
-    id: u64,
-    pay_ali_state: Option<String>,
-    pay_ali_type: Option<String>,
-    pay_ali_config: Option<Vec<u8>>,
-    pay_wx_state: Option<String>,
-    pay_wx_type: Option<String>,
-    pay_wx_config: Option<Vec<u8>>,
-}
-
-impl PayDbRow {
-    /// 根据通道定义提取对应的 (state, type, config_json)
-    fn get_channel(&self, def: &ChannelDef) -> (String, String, serde_json::Value) {
-        match def.id {
-            "ali" => (
-                self.pay_ali_state.clone().unwrap_or_else(|| "off".to_string()),
-                self.pay_ali_type.clone().unwrap_or_else(|| "jie".to_string()),
-                blob_to_json(&self.pay_ali_config),
-            ),
-            "wx" => (
-                self.pay_wx_state.clone().unwrap_or_else(|| "off".to_string()),
-                self.pay_wx_type.clone().unwrap_or_else(|| "jie".to_string()),
-                blob_to_json(&self.pay_wx_config),
-            ),
-            _ => ("off".to_string(), String::new(), serde_json::json!({})),
-        }
-    }
-}
 
 /// 将 BLOB 字节转换为 JSON Value
 fn blob_to_json(bytes: &Option<Vec<u8>>) -> serde_json::Value {
