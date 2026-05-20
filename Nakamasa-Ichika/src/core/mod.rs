@@ -257,6 +257,8 @@ pub use quickjs_runtime::QuickJsRuntime as V8Runtime;
 
 use crate::cli::CliArgs;
 use crate::config;
+use crate::app::plugins::pay::manager::PayPluginManager;
+use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, WxPayPlugin};
 use salvo::Router;
 use std::path::Path;
 use std::sync::Arc;
@@ -392,8 +394,38 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     let redis_prefix = config::get().redis().prefix().to_string();
     let redis_util = Arc::new(RedisUtil::new(&redis_prefix));
 
-    // 创建 AppState
-    let app_state = Arc::new(AppState::new(Some(db), Some(redis_pool), redis_util));
+    // 初始化支付插件管理器
+    let pay_manager = {
+        let mgr = PayPluginManager::new();
+
+        // 注册支付宝插件
+        if let Err(e) = mgr.register(Box::new(AliPayPlugin::new())) {
+            tracing::warn!("支付宝插件注册失败: {}", e);
+        } else {
+            tracing::info!("支付宝插件已注册");
+        }
+
+        // 注册微信支付插件
+        if let Err(e) = mgr.register(Box::new(WxPayPlugin::new())) {
+            tracing::warn!("微信支付插件注册失败: {}", e);
+        } else {
+            tracing::info!("微信支付插件已注册");
+        }
+
+        // 注册皆网支付插件（聚合支付）
+        if let Err(e) = mgr.register(Box::new(JiePayPlugin::new())) {
+            tracing::warn!("皆网支付插件注册失败: {}", e);
+        } else {
+            tracing::info!("皆网支付插件已注册");
+        }
+
+        mgr
+    };
+
+    // 创建 AppState（注入支付插件管理器）
+    let mut app_state_inner = AppState::new(Some(db), Some(redis_pool), redis_util);
+    app_state_inner.pay_manager = Some(Arc::new(pay_manager));
+    let app_state = Arc::new(app_state_inner);
 
     // 使用命令行参数覆盖配置（泄漏到静态内存以满足 'static 要求）
     let server_config = Box::leak(Box::new(build_server_config_from_cli(&cli_args)));

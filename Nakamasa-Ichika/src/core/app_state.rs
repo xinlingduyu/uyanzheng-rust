@@ -40,8 +40,7 @@ use sqlx::mysql::MySqlPool;
 use crate::config::AppConfig;
 use crate::core::RedisUtil;
 use crate::core::admin_cache::AdminCacheService;
-
-// 引入高性能缓存 V2
+use crate::app::plugins::pay::manager::PayPluginManager;
 use Nakamasa_utils::high_perf_cache::{
     CacheConfig as V2CacheConfig, EvictionPolicy, ShardedCacheV2,
 };
@@ -157,6 +156,15 @@ pub struct AppState {
     ///
     /// 使用函数指针实现延迟加载，避免循环依赖。
     pub config: Arc<dyn Fn() -> &'static AppConfig + Send + Sync>,
+
+    // ========================================================================
+    // 支付插件
+    // ========================================================================
+    /// 支付插件管理器
+    ///
+    /// 管理支付宝、微信、皆网等支付插件的注册和调用。
+    /// 需要先注册插件再初始化配置后方可使用。
+    pub pay_manager: Option<Arc<PayPluginManager>>,
 }
 
 // ============================================================================
@@ -392,6 +400,7 @@ impl AppState {
             app_info_cache: Arc::new(ShardedCacheV2::new(app_info_cache_config)),
             ini_response_cache: Arc::new(ShardedCacheV2::new(ini_response_cache_config)),
             token_cache: Arc::new(ShardedCacheV2::new(token_cache_config)),
+            pay_manager: None,
         }
     }
 
@@ -441,6 +450,12 @@ impl AppState {
     #[inline]
     pub fn try_get_redis(&self) -> Option<&RedisPool> {
         self.redis_pool.as_ref()
+    }
+
+    /// 获取支付插件管理器
+    #[inline]
+    pub fn get_pay_manager(&self) -> Option<Arc<PayPluginManager>> {
+        self.pay_manager.clone()
     }
 
     // ========================================================================

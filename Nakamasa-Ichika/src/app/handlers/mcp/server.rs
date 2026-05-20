@@ -107,9 +107,8 @@ fn tools_json() -> serde_json::Value {
     })
 }
 
-fn get_pay_manager(_state: &Arc<AppState>) -> Option<Arc<PayPluginManager>> {
-    // TODO: PayPluginManager 待加入 AppState
-    None
+fn get_pay_manager(state: &Arc<AppState>) -> Option<Arc<PayPluginManager>> {
+    state.get_pay_manager()
 }
 
 // ============================================================================
