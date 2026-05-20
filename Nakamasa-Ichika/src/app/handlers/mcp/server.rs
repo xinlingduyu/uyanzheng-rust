@@ -4,13 +4,14 @@
 //!
 //! ## 端点
 //!
-//! - `GET /mcp/sse` — SSE 连接端点
-//! - `POST /mcp/messages` — JSON-RPC 消息端点
+//! - `GET /mcp/sse?app_id=xxx` — SSE 连接端点（需传入 app_id）
+//! - `POST /mcp/messages?session_id=xxx` — JSON-RPC 消息端点
 //!
 //! ## 工具
 //!
-//! - `create_payment` — 创建支付订单
-//! - `query_order` — 查询订单状态
+//! - `list_goods` — 获取可用商品列表（使用会话绑定的 app_id）
+//! - `create_payment` — 创建支付订单，需提供 account + goods_id
+//! - `query_order` — 查询订单支付状态
 
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -18,6 +19,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use chrono::Utc;
 use futures_util::Stream;
 use once_cell::sync::Lazy;
 use salvo::prelude::*;
@@ -34,6 +36,8 @@ use crate::core::AppState;
 struct McpSession {
     tx: broadcast::Sender<String>,
     _rx: broadcast::Receiver<String>,
+    /// 会话绑定的 app_id（建立 SSE 连接时传入）
+    app_id: u64,
 }
 
 static SESSIONS: Lazy<std::sync::RwLock<HashMap<String, Arc<McpSession>>>> =
@@ -73,22 +77,30 @@ fn tools_json() -> serde_json::Value {
     serde_json::json!({
         "tools": [
             {
-                "name": "create_payment",
-                "description": "创建支付订单，返回支付链接或二维码",
+                "name": "list_goods",
+                "description": "获取当前应用的可用商品列表（含名称、价格、类型、简介）",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "app_id": { "type": "string", "description": "应用ID" },
-                        "user_id": { "type": "integer", "description": "用户ID" },
-                        "amount": { "type": "number", "description": "支付金额(元)" },
+                        "page": { "type": "integer", "description": "页码，默认1" }
+                    }
+                }
+            },
+            {
+                "name": "create_payment",
+                "description": "创建支付订单，需提供用户账号和商品ID，返回支付链接",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "account": { "type": "string", "description": "充值账号（手机号/邮箱/自定义账号）" },
+                        "goods_id": { "type": "integer", "description": "商品ID" },
                         "channel": {
                             "type": "string",
-                            "description": "支付通道: ali=支付宝, wx=微信支付, jie=借条",
-                            "enum": ["ali", "wx", "jie"]
-                        },
-                        "description": { "type": "string", "description": "订单描述" }
+                            "description": "支付通道: ali=支付宝, wx=微信支付",
+                            "enum": ["ali", "wx"]
+                        }
                     },
-                    "required": ["app_id", "user_id", "amount", "channel"]
+                    "required": ["account", "goods_id", "channel"]
                 }
             },
             {
@@ -97,8 +109,7 @@ fn tools_json() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "order_no": { "type": "string", "description": "商户订单号" },
-                        "app_id": { "type": "string", "description": "应用ID" }
+                        "order_no": { "type": "string", "description": "商户订单号" }
                     },
                     "required": ["order_no"]
                 }
@@ -115,34 +126,145 @@ fn get_pay_manager(state: &Arc<AppState>) -> Option<Arc<PayPluginManager>> {
 // Tool 处理器
 // ============================================================================
 
-fn handle_create_payment(args: &serde_json::Value, _state: &Arc<AppState>) -> String {
-    let amount = args.get("amount").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    if amount <= 0.0 {
-        return make_error(-32602, "Invalid amount: must be greater than 0");
+/// 获取商品列表
+fn handle_list_goods(_args: &serde_json::Value, state: &Arc<AppState>, app_id: u64) -> String {
+    let pool = match state.db.as_ref() {
+        Some(p) => p,
+        None => return make_error(-32603, "Database not available"),
+    };
+
+    let rt = tokio::runtime::Handle::current();
+    let result = rt.block_on(async {
+        sqlx::query_as::<_, (i64, String, String, f64, Option<String>)>(
+            "SELECT id, name, type, money, blurb FROM u_goods WHERE state = 'y' AND appid = ? ORDER BY id DESC",
+        )
+        .bind(app_id)
+        .fetch_all(pool)
+        .await
+    });
+
+    match result {
+        Ok(rows) => {
+            let goods: Vec<serde_json::Value> = rows
+                .into_iter()
+                .map(|(id, name, r#type, money, blurb)| {
+                    serde_json::json!({
+                        "id": id,
+                        "name": name,
+                        "type": r#type,
+                        "money": money,
+                        "blurb": blurb.unwrap_or_default(),
+                    })
+                })
+                .collect();
+            let resp = serde_json::json!({ "goods": goods, "total": goods.len() });
+            make_no_id_result(&resp)
+        }
+        Err(e) => make_error(-32603, &format!("Database error: {}", e)),
+    }
+}
+
+/// 创建支付订单
+fn handle_create_payment(args: &serde_json::Value, state: &Arc<AppState>, app_id: u64) -> String {
+    let account = args.get("account").and_then(|v| v.as_str()).unwrap_or("");
+    if account.is_empty() {
+        return make_error(-32602, "Missing required parameter: account");
+    }
+
+    let goods_id = args.get("goods_id").and_then(|v| v.as_i64()).unwrap_or(0);
+    if goods_id <= 0 {
+        return make_error(-32602, "Missing or invalid parameter: goods_id");
     }
 
     let channel = args.get("channel").and_then(|v| v.as_str()).unwrap_or("ali");
-    let description = args.get("description").and_then(|v| v.as_str()).unwrap_or("MCP支付");
-    let app_id = args.get("app_id").and_then(|v| v.as_str()).unwrap_or("");
-    let user_id = args.get("user_id").and_then(|v| v.as_i64()).unwrap_or(0);
-
-    if channel != "ali" && channel != "wx" && channel != "jie" {
+    if channel != "ali" && channel != "wx" {
         return make_error(-32602, &format!("Unsupported channel: {}", channel));
     }
 
-    let _ = (app_id, user_id);
+    let pool = match state.db.as_ref() {
+        Some(p) => p,
+        None => return make_error(-32603, "Database not available"),
+    };
+
+    let rt = tokio::runtime::Handle::current();
+
+    // 查询用户
+    let user = rt.block_on(async {
+        sqlx::query_as::<_, (u64,)>(
+            "SELECT id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?",
+        )
+        .bind(account)
+        .bind(account)
+        .bind(account)
+        .bind(app_id)
+        .fetch_optional(pool)
+        .await
+    });
+
+    let uid = match user {
+        Ok(Some((uid,))) => uid,
+        Ok(None) => return make_error(-32602, "User account not found"),
+        Err(e) => return make_error(-32603, &format!("Database error when querying user: {}", e)),
+    };
+
+    // 查询商品
+    let goods = rt.block_on(async {
+        sqlx::query_as::<_, (i64, String, String, f64, i64, String)>(
+            "SELECT id, name, type, money, val, state FROM u_goods WHERE id = ? AND appid = ?",
+        )
+        .bind(goods_id)
+        .bind(app_id)
+        .fetch_optional(pool)
+        .await
+    });
+
+    let (gid, goods_name, goods_type, money, val, goods_state) = match goods {
+        Ok(Some(row)) => row,
+        Ok(None) => return make_error(-32602, "Goods not found"),
+        Err(e) => return make_error(-32603, &format!("Database error when querying goods: {}", e)),
+    };
+
+    if goods_state != "y" {
+        return make_error(-32602, "Goods is no longer available");
+    }
 
     // 生成订单号
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let order_no = format!("MCP{}{:04}", ts, rand::random::<u16>());
+    let current_time = Utc::now().timestamp();
+    let order_no = format!(
+        "MCP{}{:05}",
+        Utc::now().format("%Y%m%d%H%M%S"),
+        rand::random::<u16>()
+    );
 
+    // 插入订单
+    let insert = rt.block_on(async {
+        sqlx::query(
+            "INSERT INTO u_order (uid, gid, order_no, name, money, type, val, pay_type, status, add_time, appid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'wait', ?, ?)",
+        )
+        .bind(uid)
+        .bind(gid)
+        .bind(&order_no)
+        .bind(&goods_name)
+        .bind(money)
+        .bind(&goods_type)
+        .bind(val)
+        .bind(channel)
+        .bind(current_time)
+        .bind(app_id)
+        .execute(pool)
+        .await
+    });
+
+    if let Err(e) = insert {
+        tracing::error!("Failed to insert order: {}", e);
+        return make_error(-32603, "Failed to create order record");
+    }
+
+    // 构建 PayOrder
     let pay_order = PayOrder {
         order_no: order_no.clone(),
-        name: description.to_string(),
-        money: amount,
+        name: goods_name,
+        money,
         notify_url: String::new(),
         return_url: String::new(),
         pay_type: "h5".to_string(),
@@ -150,14 +272,14 @@ fn handle_create_payment(args: &serde_json::Value, _state: &Arc<AppState>) -> St
         scene_info: None,
     };
 
-    match get_pay_manager(_state).and_then(|mgr| {
+    match get_pay_manager(state).and_then(|mgr| {
         let plugin = mgr.get_plugin(channel).ok()?;
         plugin.create(&pay_order).ok()
     }) {
         Some(result) => {
             let resp = serde_json::json!({
                 "order_no": order_no,
-                "amount": amount,
+                "amount": money,
                 "channel": channel,
                 "pay_url": result.pay_url,
                 "qrcode": result.qrcode,
@@ -168,17 +290,18 @@ fn handle_create_payment(args: &serde_json::Value, _state: &Arc<AppState>) -> St
         None => {
             let resp = serde_json::json!({
                 "order_no": order_no,
-                "amount": amount,
+                "amount": money,
                 "channel": channel,
                 "status": "pending",
-                "note": "Payment plugin not configured, please complete manually"
+                "note": "Payment plugin not configured, please complete payment manually through the app"
             });
             make_no_id_result(&resp)
         }
     }
 }
 
-fn handle_query_order(args: &serde_json::Value, state: &Arc<AppState>) -> String {
+/// 查询订单
+fn handle_query_order(args: &serde_json::Value, state: &Arc<AppState>, _app_id: u64) -> String {
     let order_no = args.get("order_no").and_then(|v| v.as_str()).unwrap_or("");
     if order_no.is_empty() {
         return make_error(-32602, "Missing required parameter: order_no");
@@ -218,7 +341,7 @@ fn handle_query_order(args: &serde_json::Value, state: &Arc<AppState>) -> String
 // JSON-RPC 分发
 // ============================================================================
 
-fn dispatch(body: &str, state: &Arc<AppState>) -> String {
+fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
     let req: serde_json::Value = match serde_json::from_str(body) {
         Ok(v) => v,
         Err(e) => return make_error(-32700, &format!("Parse error: {}", e)),
@@ -248,14 +371,13 @@ fn dispatch(body: &str, state: &Arc<AppState>) -> String {
             let tool_args = params.get("arguments").unwrap_or(&serde_json::Value::Null);
             let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let resp = match name {
-                "create_payment" => handle_create_payment(tool_args, state),
-                "query_order" => handle_query_order(tool_args, state),
+                "list_goods" => handle_list_goods(tool_args, state, app_id),
+                "create_payment" => handle_create_payment(tool_args, state, app_id),
+                "query_order" => handle_query_order(tool_args, state, app_id),
                 _ => make_error(-32601, &format!("Unknown tool: {}", name)),
             };
             // 如果有 id，包装为带 id 的响应
             if let Some(id_val) = id {
-                // resp is already a complete jsonrpc response, we need to add the id
-                // Simple approach: parse as JSON and re-serialize with id
                 if let Ok(mut resp_val) = serde_json::from_str::<serde_json::Value>(&resp) {
                     resp_val["id"] = id_val.clone();
                     return serde_json::to_string(&resp_val).unwrap_or(resp);
@@ -271,9 +393,17 @@ fn dispatch(body: &str, state: &Arc<AppState>) -> String {
 // HTTP Handlers
 // ============================================================================
 
-/// SSE 端点：`GET /mcp/sse`
+/// SSE 端点：`GET /mcp/sse?app_id=xxx`
+/// app_id 必须传入，绑定到会话供后续工具调用使用
 #[handler]
-pub async fn sse_handler(_req: &mut Request, res: &mut Response) {
+pub async fn sse_handler(req: &mut Request, res: &mut Response) {
+    let app_id = req.query::<u64>("app_id").unwrap_or(0);
+    if app_id == 0 {
+        res.status_code(StatusCode::BAD_REQUEST);
+        res.render(Text::Plain(make_error(-32000, "Missing or invalid app_id query parameter")));
+        return;
+    }
+
     let (tx, rx) = broadcast::channel::<String>(256);
     let session_id = generate_session_id();
 
@@ -281,9 +411,11 @@ pub async fn sse_handler(_req: &mut Request, res: &mut Response) {
         let mut sessions = SESSIONS.write().unwrap_or_else(|e| e.into_inner());
         sessions.insert(
             session_id.clone(),
-            Arc::new(McpSession { tx: tx.clone(), _rx: rx }),
+            Arc::new(McpSession { tx: tx.clone(), _rx: rx, app_id }),
         );
     }
+
+    tracing::info!("MCP SSE session created: id={}, app_id={}", session_id, app_id);
 
     // SSE 响应头
     res.headers_mut()
@@ -297,7 +429,7 @@ pub async fn sse_handler(_req: &mut Request, res: &mut Response) {
 
     // 构建 SSE 流
     let endpoint_data = format!(
-        "event: endpoint\ndata: /mcp/messages?session_id={}\n\n",
+        "event: endpoint\\ndata: /mcp/messages?session_id={}\\n\\n",
         session_id
     );
 
@@ -313,12 +445,12 @@ pub async fn sse_handler(_req: &mut Request, res: &mut Response) {
                 }
                 match rx.recv().await {
                     Ok(msg) => {
-                        let sse = format!("data: {}\n\n", msg);
+                        let sse = format!("data: {}\\n\\n", msg);
                         Some((Ok(sse), (rx, true, String::new())))
                     }
                     Err(broadcast::error::RecvError::Closed) => None,
                     Err(broadcast::error::RecvError::Lagged(_)) => {
-                        Some((Ok(": keepalive\n\n".to_string()), (rx, true, String::new())))
+                        Some((Ok(": keepalive\\n\\n".to_string()), (rx, true, String::new())))
                     }
                 }
             },
@@ -368,7 +500,8 @@ pub async fn messages_handler(req: &mut Request, depot: &mut Depot, res: &mut Re
         }
     };
 
-    let response = dispatch(&body, &state);
+    let app_id = session.app_id;
+    let response = dispatch(&body, &state, app_id);
     if response.is_empty() {
         // notification - 无响应
         res.status_code(StatusCode::ACCEPTED);
