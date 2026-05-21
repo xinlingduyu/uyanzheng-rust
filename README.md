@@ -72,8 +72,6 @@ cd view && npm install && npm run dev
 
 | 文件 | 内容 |
 |------|------|
-| [AGENTS.md](./AGENTS.md) | AI Agent 项目上下文（全量） |
-| [CLAUDE.md](./CLAUDE.md) | Claude 配置说明 |
 | [docs/CLI_USAGE.md](./docs/CLI_USAGE.md) | 命令行使用详情 |
 | [docs/CLOUD_FUNCTION.md](./docs/CLOUD_FUNCTION.md) | 云函数开发手册 |
 
