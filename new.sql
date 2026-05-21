@@ -120,6 +120,9 @@ CREATE TABLE `u_app` (
   `pay_qqpay_state` enum('on','off') DEFAULT 'off',
   `pay_qqpay_type` varchar(24) DEFAULT 'jie',
   `pay_qqpay_config` json DEFAULT NULL,
+  `pay_paypal_state` enum('on','off') DEFAULT 'off',
+  `pay_paypal_type` varchar(24) DEFAULT 'jie',
+  `pay_paypal_config` json DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `app_key` (`app_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
