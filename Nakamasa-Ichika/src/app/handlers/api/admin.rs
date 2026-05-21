@@ -32,6 +32,7 @@ pub mod upload;
 pub mod user;
 pub mod ver;
 use crate::app::middleware::admin_auth::AdminAuth;
+#[cfg(unix)]
 use crate::core::flamegraph;
 use salvo::Router;
 
@@ -877,37 +878,47 @@ pub fn admin_routes() -> Router {
                 .hoop(AdminAuth::new())
                 .post(blocklist::blocklist::del_all),
         )
-        // Flamegraph - 火焰图性能分析（需要认证）
-        .push(
-            Router::with_path("/flamegraph/start")
-                .hoop(AdminAuth::new())
-                .post(flamegraph::flame_start),
-        )
-        .push(
-            Router::with_path("/flamegraph/stop")
-                .hoop(AdminAuth::new())
-                .post(flamegraph::flame_stop),
-        )
-        .push(
-            Router::with_path("/flamegraph/status")
-                .hoop(AdminAuth::new())
-                .get(flamegraph::flame_status),
-        )
-        .push(
-            Router::with_path("/flamegraph/svg")
-                .hoop(AdminAuth::new())
-                .get(flamegraph::flame_svg),
-        )
-        .push(
-            Router::with_path("/flamegraph/pprof")
-                .hoop(AdminAuth::new())
-                .get(flamegraph::flame_pprof),
-        )
-        .push(
-            Router::with_path("/flamegraph/auto")
-                .hoop(AdminAuth::new())
-                .post(flamegraph::flame_auto_profile),
-        )
+        // Flamegraph - 火焰图性能分析（需要认证，仅 Unix 平台）
+        .push({
+            #[cfg(unix)]
+            {
+                Router::new()
+                    .push(
+                        Router::with_path("/flamegraph/start")
+                            .hoop(AdminAuth::new())
+                            .post(flamegraph::flame_start),
+                    )
+                    .push(
+                        Router::with_path("/flamegraph/stop")
+                            .hoop(AdminAuth::new())
+                            .post(flamegraph::flame_stop),
+                    )
+                    .push(
+                        Router::with_path("/flamegraph/status")
+                            .hoop(AdminAuth::new())
+                            .get(flamegraph::flame_status),
+                    )
+                    .push(
+                        Router::with_path("/flamegraph/svg")
+                            .hoop(AdminAuth::new())
+                            .get(flamegraph::flame_svg),
+                    )
+                    .push(
+                        Router::with_path("/flamegraph/pprof")
+                            .hoop(AdminAuth::new())
+                            .get(flamegraph::flame_pprof),
+                    )
+                    .push(
+                        Router::with_path("/flamegraph/auto")
+                            .hoop(AdminAuth::new())
+                            .post(flamegraph::flame_auto_profile),
+                    )
+            }
+            #[cfg(not(unix))]
+            {
+                Router::new()
+            }
+        })
         // 更新日志 - 个人中心
         .push(
             Router::with_path("/uplog")

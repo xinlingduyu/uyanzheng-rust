@@ -208,6 +208,7 @@ pub mod v8_runtime;
 /// 火焰图性能分析
 ///
 /// 提供运行时 CPU 性能分析，支持生成 SVG 火焰图和 pprof 格式数据。
+#[cfg(unix)]
 pub mod flamegraph;
 
 /// 数据库迁移模块
@@ -241,7 +242,8 @@ pub use handler_ext::*;
 // JavaScript 运行时导出
 pub use quickjs_runtime::{CloudFunctionContext, QuickJsRuntime, execute_cloud_function};
 
-// 火焰图性能分析导出
+// 火焰图性能分析导出（仅 Unix 平台）
+#[cfg(unix)]
 pub use flamegraph::{
     ProfilerStatus, generate_flamegraph_svg, generate_pprof_data, get_status, profile_for_duration,
     start_profiler, stop_profiler,
