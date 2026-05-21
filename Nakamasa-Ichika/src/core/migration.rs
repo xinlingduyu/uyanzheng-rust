@@ -109,17 +109,6 @@ fn get_migrations() -> Vec<Migration> {
                     ADD COLUMN IF NOT EXISTS pay_qqpay_config JSON DEFAULT NULL COMMENT 'QQ钱包配置'"#,
             ])),
         },
-        Migration {
-            version: "1.0.3",
-            description: "新增PayPal支付通道（pay_paypal_state/type/config）",
-            migration_type: MigrationType::Database,
-            sql: Some(SqlSource::Statements(&[
-                r#"ALTER TABLE `{app}`
-                    ADD COLUMN IF NOT EXISTS pay_paypal_state ENUM('on','off') DEFAULT 'off' COMMENT 'PayPal状态 on/off',
-                    ADD COLUMN IF NOT EXISTS pay_paypal_type VARCHAR(24) DEFAULT 'jie' COMMENT 'PayPal支付引擎',
-                    ADD COLUMN IF NOT EXISTS pay_paypal_config JSON DEFAULT NULL COMMENT 'PayPal配置'"#,
-            ])),
-        },
         // 添加更多迁移...
     ]
 }
