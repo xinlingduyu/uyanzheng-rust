@@ -284,11 +284,14 @@ html, body {
     flex: 1;
   }
 
-  /* ---- 统计卡片：移动端自适应 ---- */
-  /* 仅作用于没有明确设置 xs 断点的栅格列 */
-  .arco-row > .arco-col:not([class*="arco-col-xs-"]) {
+  /* ---- 统计卡片：2列布局 ---- */
+  .arco-row > .arco-col {
     flex: 0 0 50% !important;
     max-width: 50% !important;
+  }
+  .arco-row > .arco-col[span="24"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
   }
 
   /* ---- 表格：水平滚动 ---- */
