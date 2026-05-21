@@ -211,6 +211,12 @@ pub mod v8_runtime;
 #[cfg(unix)]
 pub mod flamegraph;
 
+/// TUI 仪表盘模块
+///
+/// 提供三框终端仪表盘：系统信息 | 资源监控 | 启动日志。
+/// 基于 ratatui + crossterm，兼容 Termux/Android 环境。
+pub mod tui_dashboard;
+
 /// 数据库迁移模块
 pub mod migration;
 
@@ -261,7 +267,9 @@ use crate::cli::CliArgs;
 use crate::config;
 use crate::app::plugins::pay::manager::PayPluginManager;
 use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, WxPayPlugin};
+use crate::core::tui_dashboard::{LogBuffer, TuiGuard};
 use salvo::Router;
+use std::io::Write as IoWrite;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -310,13 +318,55 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     // 初始化终端语言（启动时只执行一次）
     init_terminal_language();
 
-    // 配置日志输出级别和格式
+    // 创建日志缓冲区（TUI 和 fallback 模式共用）
+    let log_buffer = LogBuffer::new();
+
+    // Tee writer：日志同时写入 LogBuffer 和 stderr
+    // 这样即使 TUI 崩溃，stderr 上仍有日志可溯
+    struct TeeWriter {
+        buffer: Arc<LogBuffer>,
+    }
+    impl IoWrite for TeeWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let _ = std::io::stderr().write(buf);
+            let _ = self.buffer.push_bytes(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            std::io::stderr().flush()
+        }
+    }
+    impl Clone for TeeWriter {
+        fn clone(&self) -> Self {
+            Self {
+                buffer: self.buffer.clone(),
+            }
+        }
+    }
+
+    // 为 TUI 和 tracing 各 clone 一份 buffer
+    let log_buffer_tui = log_buffer.clone();
+
+    // 配置日志系统
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_target(true)
         .with_thread_ids(true)
         .with_line_number(true)
+        .with_writer(move || {
+            // 始终使用 TeeWriter：日志同时写入 LogBuffer 和 stderr
+            TeeWriter {
+                buffer: log_buffer.clone(),
+            }
+        })
         .init();
+
+    // 创建 TUI 守卫（RAII，Drop 时自动清理仪表盘线程）
+    let _tui_guard = if cli_args.tui {
+        Some(TuiGuard::start(log_buffer_tui))
+    } else {
+        None
+    };
 
     tracing::info!("{}", terminal_t("app.starting"));
     tracing::debug!("Terminal language: {}", current_lang());
@@ -358,7 +408,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
         // 使用命令行参数覆盖配置（泄漏到静态内存以满足 'static 要求）
         let server_config = Box::leak(Box::new(build_server_config_from_cli(&cli_args)));
         let server = server::Server::new(server_config);
-        return server.start(app_state, router).await;
+        return Ok(server.start(app_state, router).await?);
     }
 
     // 初始化 MySQL 连接

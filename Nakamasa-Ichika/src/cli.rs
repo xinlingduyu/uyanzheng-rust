@@ -10,11 +10,12 @@
 //! | `--protocol` | `-P` | 协议类型 (http/https) | https |
 //! | `--cert` | `-c` | TLS 证书文件路径 | 使用内置证书 |
 //! | `--key` | `-k` | TLS 私钥文件路径 | 使用内置私钥 |
+//! | `--tui` | | 启用 TUI 仪表盘 | 关闭（传统日志输出） |
 //!
 //! ## 使用示例
 //!
 //! ```bash
-//! # 使用默认配置（HTTPS，端口 8080，内置证书）
+//! # 使用默认配置（HTTPS，端口 8080，内置证书，传统日志输出）
 //! cargo run
 //!
 //! # 指定 HTTP 协议和端口
@@ -22,6 +23,9 @@
 //!
 //! # 指定 HTTPS 和自定义证书
 //! cargo run -- --port 8443 --cert /path/to/cert.pem --key /path/to/key.pem
+//!
+//! # 启用 TUI 仪表盘（樱花粉色三框监控界面）
+//! cargo run -- --tui
 //!
 //! # 简写形式
 //! cargo run -- -p 8080 -P http
@@ -56,6 +60,10 @@ pub struct CliArgs {
     /// TLS 私钥文件路径（仅 HTTPS 模式）
     #[arg(short = 'k', long = "key", value_name = "KEY_PATH")]
     pub key_path: Option<PathBuf>,
+
+    /// 启用 TUI 仪表盘（默认使用传统日志输出）
+    #[arg(long = "tui", default_value_t = false)]
+    pub tui: bool,
 }
 
 /// 协议类型枚举
