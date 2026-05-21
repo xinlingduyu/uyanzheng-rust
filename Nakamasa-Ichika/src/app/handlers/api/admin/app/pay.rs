@@ -57,6 +57,14 @@ const CHANNEL_DEFS: &[ChannelDef] = &[
         type_col: "pay_qqpay_type",
         config_col: "pay_qqpay_config",
     },
+    ChannelDef {
+        id: "paypal",
+        label: "PayPal",
+        icon: "icon-paypal",
+        state_col: "pay_paypal_state",
+        type_col: "pay_paypal_type",
+        config_col: "pay_paypal_config",
+    },
 ];
 
 #[derive(Debug, Clone, Copy)]
