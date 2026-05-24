@@ -145,15 +145,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     render_success_msg(res, app_key);
 }
 
-///
-/// ```php
-/// protected function __setToken($token,$data){
-///     $this->redis->select(1);
-///     $res = $this->redis->setex($this->tokenPre.$token,$this->app['logon_token_exp'],json_encode($data));
-///     $this->redis->setex($this->tokenPre."online_{$data['uid']}_".md5($data['udid']),$this->app['logon_token_exp'],$token);
-///     return $res;
-/// }
-/// ```
 async fn set_token(
     redis_util: &crate::core::redis::RedisUtil,
     redis_pool: &deadpool_redis::Pool,
