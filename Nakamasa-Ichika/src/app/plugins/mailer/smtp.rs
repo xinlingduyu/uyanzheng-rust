@@ -171,15 +171,4 @@ impl MailerPlugin for SmtpMailer {
     }
 }
 
-/// 便捷发送邮件函数
-pub async fn send_email(
-    config: &MailerConfig,
-    to: &str,
-    subject: &str,
-    body: &str,
-    is_html: bool,
-) -> Result<MailResult, String> {
-    let mut mailer = SmtpMailer::new();
-    mailer.init(config.clone())?;
-    mailer.send(to, subject, body, is_html).await
-}
+

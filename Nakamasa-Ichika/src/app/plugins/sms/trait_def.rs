@@ -15,6 +15,7 @@ pub struct SmsResult {
 /// 所有短信插件都需要实现这个trait
 pub trait SmsPlugin: Send + Sync {
     /// 获取插件名称
+    #[allow(dead_code)]
     fn name(&self) -> &str;
 
     /// 获取插件类型

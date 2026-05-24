@@ -20,13 +20,86 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::PayRequest;
 use crate::app::models::responses::PayInfo;
-use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPalPayPlugin, PayOrder, PayPlugin, QqPayPlugin, WxPayPlugin};
+use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPalPayPlugin, PayOrder, PayPlugin, PayResult, QqPayPlugin, WxPayPlugin};
 use crate::app::utils::response::{
     render_error, render_success,
 };
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 use crate::core::json_optimize::FastJson;
+
+/// 通用支付分支处理函数（QQ/PayPal）
+/// 从 AppInfo 读取对应支付引擎配置，创建插件实例并返回支付结果
+fn qq_or_paypal_branch(
+    app_info: &AppInfo,
+    app_key: &str,
+    payment: &str,
+    display_name: &str,
+    goods_name: String,
+    order_no: String,
+    money: i64,
+    pay_mode: &str,
+    notify_url: String,
+    return_url: String,
+    res: &mut Response,
+) -> Result<PayResult, ()> {
+    let _state_field = format!("{}_state", payment);
+    let _config_field = format!("{}_config", payment);
+    let _type_field = format!("{}_type", payment);
+
+    // 通过反射获取字段值
+    let state = if payment == "qq" { &app_info.qqpay_state } else { &app_info.paypal_state };
+    let config = if payment == "qq" { &app_info.qqpay_config } else { &app_info.paypal_config };
+    let pay_type_name = if payment == "qq" { app_info.qqpay_type.as_str() } else { app_info.paypal_type.as_str() };
+
+    if state != "on" {
+        render_error(res, format!("{}支付未开启", display_name), 150, app_key);
+        return Err(());
+    }
+
+    let config_bytes = match config {
+        Some(cfg) => cfg,
+        None => {
+            render_error(res, format!("{}支付未配置", display_name), 150, app_key);
+            return Err(());
+        }
+    };
+
+    let config_json = match std::str::from_utf8(config_bytes) {
+        Ok(s) => match FastJson::parse_borrowed(s) {
+            Ok(json) => json,
+            Err(_) => {
+                render_error(res, format!("{}配置解析失败", display_name), 150, app_key);
+                return Err(());
+            }
+        },
+        Err(_) => {
+            render_error(res, format!("{}配置解析失败", display_name), 150, app_key);
+            return Err(());
+        }
+    };
+
+    let plugin = match create_pay_plugin(pay_type_name, &config_json) {
+        Ok(p) => p,
+        Err(e) => {
+            render_error(res, e, 150, app_key);
+            return Err(());
+        }
+    };
+
+    let order = PayOrder {
+        order_no,
+        name: goods_name,
+        money: money as f64,
+        notify_url,
+        return_url,
+        pay_type: pay_mode.to_string(),
+        client_ip: None,
+        scene_info: None,
+    };
+
+    plugin.create(&order).map_err(|_| ())
+}
 
 /// 获取服务器URL（从请求中提取）
 fn get_server_url(req: &Request) -> String {
@@ -382,50 +455,16 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         plugin.create(&order)
     } else if pay_type == "qq" {
         // QQ 钱包支付
-        let config = serde_json::json!({}); // QQ 支付配置暂从 u_app 扩展字段读取，当前传空使用插件默认
-        let plugin = match create_pay_plugin("qq", &config) {
-            Ok(p) => p,
-            Err(e) => {
-                render_error(res, e, 150, app_key);
-                return;
-            }
-        };
-
-        let order = PayOrder {
-            order_no: order_no.clone(),
-            name: goods_name.clone(),
-            money: money as f64,
-            notify_url: notify_url.clone(),
-            return_url: return_url.clone(),
-            pay_type: pay_mode.to_string(),
-            client_ip: None,
-            scene_info: None,
-        };
-
-        plugin.create(&order)
+        match qq_or_paypal_branch(app_info, app_key, "qq", "QQ钱包", goods_name.clone(), order_no.clone(), money, pay_mode, notify_url.clone(), return_url.clone(), res) {
+            Ok(result) => Ok(result),
+            Err(_) => return,
+        }
     } else if pay_type == "paypal" {
         // PayPal 支付
-        let config = serde_json::json!({});
-        let plugin = match create_pay_plugin("paypal", &config) {
-            Ok(p) => p,
-            Err(e) => {
-                render_error(res, e, 150, app_key);
-                return;
-            }
-        };
-
-        let order = PayOrder {
-            order_no: order_no.clone(),
-            name: goods_name.clone(),
-            money: money as f64,
-            notify_url: notify_url.clone(),
-            return_url: return_url.clone(),
-            pay_type: pay_mode.to_string(),
-            client_ip: None,
-            scene_info: None,
-        };
-
-        plugin.create(&order)
+        match qq_or_paypal_branch(app_info, app_key, "paypal", "PayPal", goods_name.clone(), order_no.clone(), money, pay_mode, notify_url, return_url, res) {
+            Ok(result) => Ok(result),
+            Err(_) => return,
+        }
     } else {
         render_error(res, "不支持的支付类型", 201, app_key);
         return;

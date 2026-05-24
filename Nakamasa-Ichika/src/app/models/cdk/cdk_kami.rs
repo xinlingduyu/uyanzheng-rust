@@ -121,6 +121,7 @@ pub struct Kami {
 impl Kami {
     /// 创建新卡券
     #[allow(clippy::too_many_arguments)]
+    #[allow(dead_code)]
     pub fn new(
         group_id: i32,
         card_type: CardType,
@@ -168,7 +169,8 @@ impl Kami {
         self.user_id.is_some() && self.use_time.is_some()
     }
 
-    /// 检查卡券是否被禁用
+    /// 检查卡券是否被冻结
+    #[allow(dead_code)]
     pub fn is_banned(&self) -> bool {
         if let Some(ban_until) = self.ban_until {
             let now = Utc::now().timestamp();
@@ -178,12 +180,14 @@ impl Kami {
         }
     }
 
-    /// 检查卡券是否有效（未使用且未禁用）
+    /// 检查卡券是否有效（未过期、未使用、未冻结）
+    #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         !self.is_used() && !self.is_banned()
     }
 
-    /// 使用卡券
+    /// 使用卡券（减少次数/标记已用）
+    #[allow(dead_code)]
     pub fn use_card(&mut self, user_id: i32, use_ip: String) -> Result<(), &'static str> {
         if self.is_used() {
             return Err("卡券已被使用");
@@ -201,7 +205,8 @@ impl Kami {
         Ok(())
     }
 
-    /// 导出卡券
+    /// 导出卡券信息（用于前端展示）
+    #[allow(dead_code)]
     pub fn export(&mut self) {
         let now = Utc::now().timestamp() as i32;
         self.export_state = OutState::Y;
@@ -209,11 +214,13 @@ impl Kami {
     }
 
     /// 获取序列号列表
+    #[allow(dead_code)]
     pub fn get_sn_list(&self) -> Option<&Value> {
         self.sn_list.as_ref().map(|json| &json.0)
     }
 
     /// 更新序列号列表
+    #[allow(dead_code)]
     pub fn update_sn_list(&mut self, sn_list: Value) {
         self.sn_list = Some(Json(sn_list));
     }

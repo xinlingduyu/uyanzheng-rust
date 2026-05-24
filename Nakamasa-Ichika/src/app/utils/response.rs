@@ -280,6 +280,7 @@ impl EncryptedApiResponse {
 
     /// 创建无数据的带签名成功响应
     #[inline]
+    #[allow(dead_code)]
     pub fn success_msg(app_key: &str) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
@@ -296,6 +297,7 @@ impl EncryptedApiResponse {
 
     /// 创建带自定义消息的无数据成功响应
     #[inline]
+    #[allow(dead_code)]
     pub fn success_with_msg(msg: impl Into<Cow<'static, str>>, app_key: &str) -> Self {
         let time = chrono::Utc::now().timestamp();
         let sign_data = format!("{}{}{}", 0, time, app_key);
@@ -336,12 +338,14 @@ impl<'a> ApiResponseBuilder<'a> {
 
     /// 设置加密配置
     #[inline]
+    #[allow(dead_code)]
     pub fn with_encryption(mut self, config: &'a EncryptionConfig) -> Self {
         self.encryption_config = Some(config);
         self
     }
 
     /// 构建成功响应 - 自动选择加密或非加密
+    #[allow(dead_code)]
     pub fn build_success<T: Serialize + Clone>(&self, data: Option<T>) -> ResponseType<T> {
         if let Some(config) = self.encryption_config {
             ResponseType::Encrypted(EncryptedApiResponse::success(self.app_key, data, config))
@@ -351,6 +355,7 @@ impl<'a> ApiResponseBuilder<'a> {
     }
 
     /// 构建错误响应
+    #[allow(dead_code)]
     pub fn build_error<T: Serialize>(
         &self,
         msg: impl Into<Cow<'static, str>>,

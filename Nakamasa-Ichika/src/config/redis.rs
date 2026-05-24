@@ -66,9 +66,11 @@ impl RedisConfig {
     pub fn decrypted_connection_url(&self, secret: &str) -> String {
         let mut url = "redis://".to_string();
 
-        // 添加认证信息（使用解密后的密码）
-        if self.decrypted_password(secret).is_some() {
-            url.push_str(":***@");
+        // 添加认证信息（使用解密后的密码，非空才添加）
+        if let Some(password) = self.decrypted_password(secret) {
+            if !password.is_empty() {
+                url.push_str(&format!(":{}@", password));
+            }
         }
 
         // 添加主机和端口

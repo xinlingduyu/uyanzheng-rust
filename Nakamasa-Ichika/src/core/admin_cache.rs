@@ -61,11 +61,13 @@ impl<T> CacheResult<T> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn is_miss(&self) -> bool {
         matches!(self, CacheResult::Miss(_))
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn data(&self) -> Option<&T> {
         match self {
             CacheResult::Hit(data) | CacheResult::Miss(data) => Some(data),
@@ -74,6 +76,7 @@ impl<T> CacheResult<T> {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn into_data(self) -> Option<T> {
         match self {
             CacheResult::Hit(data) | CacheResult::Miss(data) => Some(data),
@@ -147,6 +150,7 @@ impl AdminCacheService {
     }
 
     /// 通过ID获取管理员（优先缓存）
+    #[allow(dead_code)]
     pub async fn get_by_id(&self, id: u64) -> CacheResult<AdminData> {
         // 尝试从缓存获取
         if let Some(data) = self.cache.get(&id) {
@@ -166,6 +170,7 @@ impl AdminCacheService {
     }
 
     /// 通过用户名获取管理员（优先缓存）
+    #[allow(dead_code)]
     pub async fn get_by_name(&self, username: &str) -> CacheResult<AdminData> {
         // 尝试从用户名索引获取ID
         let username_key = username.to_string();
@@ -250,6 +255,7 @@ impl AdminCacheService {
 
     /// 更新缓存中的管理员数据
     #[inline]
+    #[allow(dead_code)]
     pub fn update(&self, data: AdminData) {
         let id = data.id;
         let user = data.user.clone();
@@ -268,6 +274,7 @@ impl AdminCacheService {
 
     /// 使指定用户名的缓存失效
     #[inline]
+    #[allow(dead_code)]
     pub fn invalidate_by_name(&self, username: &str) {
         let username_key = username.to_string();
         if let Some(id) = self.name_index.get(&username_key) {
@@ -278,12 +285,14 @@ impl AdminCacheService {
 
     /// 清空所有缓存
     #[inline]
+    #[allow(dead_code)]
     pub fn clear(&self) {
         self.cache.clear();
         self.name_index.clear();
     }
 
     /// 获取缓存统计
+    #[allow(dead_code)]
     pub fn stats(&self) -> AdminCacheStats {
         AdminCacheStats {
             entries: self.cache.len(),
@@ -294,6 +303,7 @@ impl AdminCacheService {
     // ==================== 内部数据库操作 ====================
 
     /// 从数据库加载管理员（通过ID）
+    #[allow(dead_code)]
     async fn load_from_db_by_id(&self, id: u64) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
 
@@ -324,6 +334,7 @@ impl AdminCacheService {
     }
 
     /// 从数据库加载管理员（通过用户名）
+    #[allow(dead_code)]
     async fn load_from_db_by_name(&self, username: &str) -> Result<Option<AdminData>, String> {
         let db = self.db.as_ref().ok_or("Database not available")?;
 

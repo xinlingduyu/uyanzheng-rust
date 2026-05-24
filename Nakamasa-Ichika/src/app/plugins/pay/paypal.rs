@@ -131,15 +131,6 @@ impl PayPalPayPlugin {
         })
     }
 
-    /// 发送 POST 请求（空 body，带 Bearer 认证，用于 capture）
-    fn submit_post(&self, url: &str) -> Result<String, String> {
-        let token = self.get_access_token()?;
-        tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current()
-                .block_on(async { http_client::post_bearer(url, &token).await })
-        })
-    }
-
     /// 发送 GET 请求（带 Bearer 认证，用于查询）
     fn submit_get(&self, url: &str) -> Result<String, String> {
         let token = self.get_access_token()?;

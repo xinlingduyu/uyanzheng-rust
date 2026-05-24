@@ -14,5 +14,5 @@ pub use ali::AliPayPlugin;
 pub use jie::JiePayPlugin;
 pub use paypal::PayPalPayPlugin;
 pub use qq::QqPayPlugin;
-pub use trait_def::{NotifyVerifyResult, PayOrder, PayPlugin};
+pub use trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
 pub use wx::WxPayPlugin;

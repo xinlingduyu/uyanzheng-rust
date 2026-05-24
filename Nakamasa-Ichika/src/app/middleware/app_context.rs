@@ -69,6 +69,14 @@ pub struct AppInfo {
     pub wechat_pay_state: String, // 'on' or 'off'
     pub wechat_pay_type: String, // 支付插件类型 'jie', 'wx' 等
     pub wechat_pay_config: Option<Vec<u8>>,
+    /// QQ 钱包支付配置
+    pub qqpay_state: String,
+    pub qqpay_type: String,
+    pub qqpay_config: Option<Vec<u8>>,
+    /// PayPal 支付配置
+    pub paypal_state: String,
+    pub paypal_type: String,
+    pub paypal_config: Option<Vec<u8>>,
 
     /// AI 配置
     pub ai_state: String, // 'on' or 'off'
@@ -131,6 +139,7 @@ impl AppContext {
 
     /// 跳过数据校验
     #[inline]
+    #[allow(dead_code)]
     pub fn skip_data_check(mut self) -> Self {
         self.data_check = false;
         self
@@ -599,6 +608,8 @@ async fn fetch_app_info_with_version(
             A.logon_sn_unbde_val, A.logon_sn_unbde_type,
             A.pay_ali_state, A.pay_ali_type, A.pay_ali_config,
             A.pay_wx_state, A.pay_wx_type, A.pay_wx_config,
+            A.pay_qqpay_state, A.pay_qqpay_type, A.pay_qqpay_config,
+            A.pay_paypal_state, A.pay_paypal_type, A.pay_paypal_config,
             A.ai_state, A.ai_provider, A.ai_api_base, A.ai_api_key,
             A.ai_model, A.ai_temperature, A.ai_max_tokens,
             V.ver_state, V.ver_off_msg, V.ver_url, V.ver_content, V.mid,
@@ -631,9 +642,9 @@ async fn fetch_app_info_with_version(
     };
 
     // 解析版本信息
-    // 注意：索引已更新，添加了7个AI字段
+    // 注意：列索引已更新 +6（新增 qqpay x3 + paypal x3 列）
     let ver_state: String = row
-        .try_get::<Option<String>, _>(54)?
+        .try_get::<Option<String>, _>(60)?
         .unwrap_or_else(|| "on".to_string());
     if ver_state.is_empty() {
         return Ok(None);
@@ -641,26 +652,26 @@ async fn fetch_app_info_with_version(
 
     let ver = VersionInfo {
         ver_state,
-        ver_off_msg: row.try_get(55).ok(),
-        ver_url: row.try_get(56).ok(),
-        ver_content: row.try_get(57).ok(),
+        ver_off_msg: row.try_get(61).ok(),
+        ver_url: row.try_get(62).ok(),
+        ver_content: row.try_get(63).ok(),
     };
 
     // 解析加密配置
-    // V.mid is at column 58, M.type is at column 59
-    let mi: Option<EncryptionInfo> = match row.try_get::<Option<String>, _>(59)? {
+    // V.mid is at column 64, M.type is at column 65
+    let mi: Option<EncryptionInfo> = match row.try_get::<Option<String>, _>(65)? {
         Some(enc_type) => {
             // M.config 是 JSON 类型，需要用 serde_json::Value 读取
             let config: serde_json::Value = row
-                .try_get::<Option<serde_json::Value>, _>(60)?
+                .try_get::<Option<serde_json::Value>, _>(66)?
                 .unwrap_or(serde_json::Value::Null);
             Some(EncryptionInfo {
                 enc_type,
                 config,
                 sign: row
-                    .try_get::<Option<String>, _>(61)?
+                    .try_get::<Option<String>, _>(67)?
                     .unwrap_or_else(|| "n".to_string()),
-                time: row.try_get::<Option<i32>, _>(62)?.unwrap_or(0),
+                time: row.try_get::<Option<i32>, _>(68)?.unwrap_or(0),
             })
         }
         None => None,
@@ -744,16 +755,32 @@ async fn fetch_app_info_with_version(
             .try_get::<Option<String>, _>(45)?
             .unwrap_or_else(|| "jie".to_string()),
         wechat_pay_config: row.try_get(46).ok(),
-        // AI 配置字段
-        ai_state: row
+        // QQ 钱包支付配置
+        qqpay_state: row
             .try_get::<Option<String>, _>(47)?
             .unwrap_or_else(|| "off".to_string()),
-        ai_provider: row.try_get(48).ok(),
-        ai_api_base: row.try_get(49).ok(),
-        ai_api_key: row.try_get(50).ok(),
-        ai_model: row.try_get(51).ok(),
-        ai_temperature: row.try_get(52).ok(),
-        ai_max_tokens: row.try_get(53).ok(),
+        qqpay_type: row
+            .try_get::<Option<String>, _>(48)?
+            .unwrap_or_else(|| "qq".to_string()),
+        qqpay_config: row.try_get(49).ok(),
+        // PayPal 支付配置
+        paypal_state: row
+            .try_get::<Option<String>, _>(50)?
+            .unwrap_or_else(|| "off".to_string()),
+        paypal_type: row
+            .try_get::<Option<String>, _>(51)?
+            .unwrap_or_else(|| "paypal".to_string()),
+        paypal_config: row.try_get(52).ok(),
+        // AI 配置字段 (索引已更新，+6 因新增 qqpay/paypal 列)
+        ai_state: row
+            .try_get::<Option<String>, _>(53)?
+            .unwrap_or_else(|| "off".to_string()),
+        ai_provider: row.try_get(54).ok(),
+        ai_api_base: row.try_get(55).ok(),
+        ai_api_key: row.try_get(56).ok(),
+        ai_model: row.try_get(57).ok(),
+        ai_temperature: row.try_get(58).ok(),
+        ai_max_tokens: row.try_get(59).ok(),
         ver,
         mi,
     }))

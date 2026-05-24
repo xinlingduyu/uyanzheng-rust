@@ -48,6 +48,7 @@ struct QqTokenResponse {
 
 /// QQ用户信息响应
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct QqUserInfo {
     ret: Option<i32>,
     msg: Option<String>,

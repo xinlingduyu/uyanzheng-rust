@@ -7,10 +7,10 @@ use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use rand::rngs::OsRng;
 use rsa::pkcs1::DecodeRsaPrivateKey;
-use rsa::pkcs1v15::{SigningKey, VerifyingKey};
+use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
 use rsa::sha2::Sha256;
-use rsa::signature::{SignatureEncoding, Signer, Verifier};
+use rsa::signature::{SignatureEncoding, Signer};
 use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 
 /// RSA 最大加密明文块大小 (1024位密钥)
@@ -138,26 +138,6 @@ impl RsaEncryption {
         let signature = signing_key.sign(data.as_bytes());
 
         Ok(url_safe_base64_encode(signature.to_bytes().as_ref()))
-    }
-
-    /// 公钥验签 (SHA256WithRSA)
-    pub fn verify(&self, data: &str, signature: &str) -> Result<bool, String> {
-        let public_key = self
-            .public_key
-            .as_ref()
-            .ok_or_else(|| "公钥未配置".to_string())?;
-
-        // URL-safe Base64 解码签名
-        let sig_bytes = url_safe_base64_decode(signature)?;
-
-        let verifying_key = VerifyingKey::<Sha256>::new(public_key.clone());
-
-        use rsa::pkcs1v15::Signature;
-
-        let sig = Signature::try_from(sig_bytes.as_slice())
-            .map_err(|e| format!("签名格式错误: {:?}", e))?;
-
-        Ok(verifying_key.verify(data.as_bytes(), &sig).is_ok())
     }
 }
 

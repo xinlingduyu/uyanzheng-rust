@@ -5,7 +5,6 @@ use Nakamasa_utils::jwt::JwtBuilder;
 use salvo::prelude::*;
 use serde::Serialize;
 use std::sync::Arc;
-use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::app::models::admin_requests::AdminLoginRequest;
@@ -18,7 +17,6 @@ use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
 // 预分配错误消息 - 静态字符串零分配
 static ERR_PARSE_FAIL: &str = "参数解析失败";
-static ERR_ACCOUNT_DISABLED: &str = "账号已被禁用";
 static ERR_TOKEN_GEN_FAIL: &str = "Token生成失败";
 static ERR_WRONG_CREDENTIALS: &str = "账号密码不正确";
 static ERR_DB_ERROR: &str = "数据库错误";
@@ -27,9 +25,6 @@ static ERR_TOKEN_EMPTY: &str = "Token不能为空";
 static ERR_TOKEN_VERIFY_FAIL: &str = "Token验证失败";
 static ERR_TOKEN_INVALID: &str = "Token失效";
 static ERR_TOKEN_EXPIRED: &str = "Token已过期或不存在";
-
-// 预编译JSON值
-static AUTH_ALL: LazyLock<serde_json::Value> = LazyLock::new(|| serde_json::json!(["all"]));
 
 /// 快速获取当前时间戳
 #[inline]

@@ -36,18 +36,6 @@ impl AppConfig {
         &self.wx_appid
     }
 
-    pub fn wx_secret(&self) -> &str {
-        &self.wx_secret
-    }
-
-    pub fn qq_appid(&self) -> &str {
-        &self.qq_appid
-    }
-
-    pub fn qq_appkey(&self) -> &str {
-        &self.qq_appkey
-    }
-
     pub fn admin(&self) -> &AdminConfig {
         &self.admin
     }

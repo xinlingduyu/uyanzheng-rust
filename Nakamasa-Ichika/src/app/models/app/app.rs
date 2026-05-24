@@ -275,66 +275,79 @@ impl App {
     }
 
     /// 检查注册是否开启
+    #[allow(dead_code)]
     pub fn is_registration_open(&self) -> bool {
         self.reg_state == SwitchState::On
     }
 
     /// 检查登录是否开启
+    #[allow(dead_code)]
     pub fn is_login_open(&self) -> bool {
         self.login_state == SwitchState::On
     }
 
     /// 获取微信登录配置
+    #[allow(dead_code)]
     pub fn get_wx_login_config(&self) -> Option<&Value> {
         self.wx_login_config.as_ref().map(|json| &json.0)
     }
 
     /// 更新微信登录配置
+    #[allow(dead_code)]
     pub fn update_wx_login_config(&mut self, config: Value) {
         self.wx_login_config = Some(Json(config));
     }
 
     /// 获取QQ登录配置
+    #[allow(dead_code)]
     pub fn get_qq_login_config(&self) -> Option<&Value> {
         self.qq_login_config.as_ref().map(|json| &json.0)
     }
 
     /// 更新QQ登录配置
+    #[allow(dead_code)]
     pub fn update_qq_login_config(&mut self, config: Value) {
         self.qq_login_config = Some(Json(config));
     }
 
     /// 检查是否免费模式
+    #[allow(dead_code)]
     pub fn is_free_mode(&self) -> bool {
         self.mode == ModeState::N
     }
 
-    /// 检查邀请人是否必填
+    /// 检查是否需要推荐人
+    #[allow(dead_code)]
     pub fn is_inviter_required(&self) -> bool {
         self.reg_inviter_required == ModeState::Y
     }
 
     /// 检查是否允许多设备登录
+    #[allow(dead_code)]
     pub fn is_multi_device_allowed(&self) -> bool {
         self.multi_device_login == ModeState::Y
     }
 
     /// 检查SMTP是否启用
+    #[allow(dead_code)]
     pub fn is_smtp_enabled(&self) -> bool {
         self.smtp_state == SwitchState::On
     }
 
     /// 检查短信是否启用
+    #[allow(dead_code)]
     pub fn is_sms_enabled(&self) -> bool {
         self.sms_state == SwitchState::On
     }
 
     /// 检查支付宝支付是否启用
+    #[allow(dead_code)]
     pub fn is_alipay_enabled(&self) -> bool {
         self.alipay_state == SwitchState::On
     }
 
     /// 检查微信支付是否启用
+    #[allow(dead_code)]
     pub fn is_wechat_pay_enabled(&self) -> bool {
         self.wechat_pay_state == SwitchState::On
     }

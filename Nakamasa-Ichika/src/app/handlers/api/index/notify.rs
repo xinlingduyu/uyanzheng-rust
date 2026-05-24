@@ -379,17 +379,11 @@ async fn handle_notify_inner(
 
     let app_type: String = app.get("app_type");
 
-    // 根据 payment 类型确定实际列名取值
-    let pay_type_val: Option<String> = if payment == "ali" {
-        app.try_get("pay_ali_type").ok()
-    } else {
-        app.try_get("pay_wx_type").ok()
-    };
-    let pay_config_val: Option<String> = if payment == "ali" {
-        app.try_get("pay_ali_config").ok()
-    } else {
-        app.try_get("pay_wx_config").ok()
-    };
+    // 根据 payment 类型动态确定列名
+    let pay_type_col = format!("pay_{}_type", payment);
+    let pay_config_col = format!("pay_{}_config", payment);
+    let pay_type_val: Option<String> = app.try_get(pay_type_col.as_str()).ok();
+    let pay_config_val: Option<String> = app.try_get(pay_config_col.as_str()).ok();
 
     // 解析配置
     let config: serde_json::Value = match pay_config_val {
@@ -461,8 +455,8 @@ pub async fn qq_notify(req: &mut Request, depot: &mut Depot, res: &mut Response)
         req,
         depot,
         res,
-        "qq",
-        "SELECT app_type, pay_qq_type, pay_qq_config FROM u_app WHERE id = ?",
+        "qqpay",
+        "SELECT app_type, pay_qqpay_type, pay_qqpay_config FROM u_app WHERE id = ?",
         "qq",
     )
     .await;
