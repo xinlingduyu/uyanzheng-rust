@@ -63,8 +63,6 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'order' => ['wordnum','13,32','查询订单号有误'],
     let mut validator = Validator::new();
     validator.wordnum("token", &query_req.token, 32, 32);
     validator.wordnum("order", &query_req.order, 13, 32);
@@ -74,7 +72,6 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
@@ -91,7 +88,6 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     let (uid, appid) = (user_info.uid, user_info.appid);
 
-    // PHP: $list = $this->db->where('uid = ? and order_no = ? and appid = ?',[$this->user['id'],$_POST['order'],$this->app['id']])->fetch('order_no,trade_no,name,money,ptype,add_time,end_time,state');
     let result = sqlx::query_as::<_, (String, Option<String>, String, i64, String, i64, Option<i64>, String)>(
         "SELECT order_no, trade_no, name, money, payment, add_time, end_time, state FROM u_order WHERE uid = ? AND order_no = ? AND appid = ?"
     )

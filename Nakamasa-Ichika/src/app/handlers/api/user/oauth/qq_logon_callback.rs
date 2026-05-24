@@ -131,7 +131,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $checkRules = ['code' => ['wordnum','32,32','CODE参数不规范'], 'state' => ['wordnum','32,32','状态标识参数不规范']];
     let code = match req.query::<String>("code") {
         Some(c) if c.len() >= 10 && c.len() <= 64 => c,
         _ => {
@@ -157,7 +156,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $qqlogon_info = $this->redis->get('qqlogon_info_'.$_GET['state']);
     let info_key = format!("qqlogon_info_{}", state);
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
@@ -171,7 +169,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $logonInfo = json_decode($qqlogon_info,true);
     let logon_info: QqLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
@@ -221,7 +218,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         .get("appKey")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    // PHP: redirect_uri='.$qqConf['APP_URL'] - QQ互联要求redirect_uri必须与申请应用时填写的一致
     let qq_callback_url = qq_config_json
         .get("APP_URL")
         .and_then(|v| v.as_str())
@@ -244,7 +240,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         return;
     }
 
-    // PHP: $url='https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id='.$qqConf['appID'].'&client_secret={}&code={}&redirect_uri='.$qqConf['APP_URL'].'&fmt=json&need_openid=1';
     let token_url = format!(
         "https://graph.qq.com/oauth2.0/token?grant_type=authorization_code&client_id={}&client_secret={}&code={}&redirect_uri={}&fmt=json&need_openid=1",
         qq_appid,
@@ -278,7 +273,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: if (!$tokenData || !isset($tokenData['access_token']) || !isset($tokenData['openid'])) { ... }
     let access_token = match token_result.access_token {
         Some(token) => token,
         None => {
@@ -298,7 +292,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $apiUrl = "https://graph.qq.com/user/get_user_info?access_token={}&oauth_consumer_key={$qqConf['appID']}&openid=".$tokenData['openid'];
     let user_info_url = format!(
         "https://graph.qq.com/user/get_user_info?access_token={}&oauth_consumer_key={}&openid={}",
         access_token, qq_appid, openid
@@ -338,14 +331,12 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
 
     let qq_openid = openid;
     let qq_nickname = qq_info.nickname.unwrap_or_else(|| "QQ用户".to_string());
-    // PHP: $regData['avatars']=$open_info['figureurl_qq']
     let qq_figureurl = qq_info.figureurl_qq.unwrap_or_else(|| {
         qq_info
             .figureurl_qq_1
             .unwrap_or_else(|| qq_info.figureurl_2.unwrap_or_default())
     });
 
-    // PHP: $this->__logon($_GET['state'],$logonInfo,$open_info);
     let result = __logon(
         app_state,
         &state,
@@ -361,7 +352,6 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     res.render(render_result_page(result.0, result.1, &result.2));
 }
 
-/// PHP: __logon方法 - 登录或注册
 async fn __logon(
     app_state: &Arc<AppState>,
     uuid: &str,
@@ -375,7 +365,6 @@ async fn __logon(
     let current_time = Utc::now().timestamp();
     let appid = logon_info.appid;
 
-    // PHP: $Ures = $this->db->where('open_qq = ? and appid = ?', [$open_info['openid'],$logon_info['appid']])->fetch('id');
     let existing_user =
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE open_qq = ? AND appid = ?")
             .bind(qq_openid)
@@ -385,7 +374,6 @@ async fn __logon(
 
     match existing_user {
         Ok(Some((uid,))) => {
-            // PHP: 已有用户，直接登录
             let logon_key = format!("logon_{}", uuid);
             if let Err(e) = redis_util
                 .setex(redis_pool, &logon_key, 600, &uid.to_string())
@@ -394,7 +382,6 @@ async fn __logon(
                 }            ("登录成功", 2, "登录成功".to_string())
         }
         Ok(None) => {
-            // PHP: 新用户注册
             // 查询应用配置
             let app_result = sqlx::query_as::<_, (Option<String>, i64, Option<String>, Option<String>, i64, i64)>(
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
@@ -422,25 +409,21 @@ async fn __logon(
             let inviter_award_val = app_cfg.4;
             let invitee_award_val = app_cfg.5;
 
-            // PHP: $pwd = rand(100000,999999);
             let pwd: i32 = rand::thread_rng().r#gen_range(100000..999999);
             let password = {
                 let pwd_str = pwd.to_string();
                 md5_to_str(&md5_hex(pwd_str.as_bytes())).to_string()
             };
 
-            // PHP: $acctno = (time()-1727712001).str_pad(rand(0, 99), 2, '0', STR_PAD_LEFT);
             let acctno = format!(
                 "{}{:02}",
                 current_time - 1727712001,
                 rand::thread_rng().r#gen_range(0..99)
             );
 
-            // PHP: $regData = ['acctno'=>$acctno,'open_qq'=>$open_info['openid'],'password'=>md5($pwd),'nickname'=>$open_info['nickname'],'avatars'=>$open_info['figureurl_qq'],'vip'=>0,'fen'=>0,'reg_time'=>time(),'reg_ip'=>'127.0.0.1','reg_sn'=>$logon_info['udid'],'appid'=>$logon_info['appid']];
             let mut reg_vip: i64 = 0;
             let mut reg_fen: i64 = 0;
 
-            // PHP: if($app['reg_award_val'] > 0){...}
             if reg_award_val > 0 {
                 if reg_award == "vip" {
                     reg_vip = current_time + reg_award_val;
@@ -449,7 +432,6 @@ async fn __logon(
                 }
             }
 
-            // PHP: 邀请人奖励
             let mut inviter_id_val: Option<i64> = None;
             if let Some(inv_id) = logon_info.invid {
                 // 查询邀请人是否存在
@@ -464,7 +446,6 @@ async fn __logon(
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
                     inviter_id_val = Some(inv_id);
 
-                    // PHP: 邀请人奖励
                     if inviter_award_val > 0 {
                         if inviter_award == "vip" {
                             let new_vip = if inv_vip.unwrap_or(0) > current_time {
@@ -486,7 +467,6 @@ async fn __logon(
                         }
                     }
 
-                    // PHP: 受邀者奖励
                     if invitee_award_val > 0 {
                         if invitee_award == "vip" {
                             reg_vip = current_time + invitee_award_val;

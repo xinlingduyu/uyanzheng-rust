@@ -91,7 +91,6 @@ async fn get_logon_config(pool: &sqlx::MySqlPool, appid: u64) -> Option<LogonCon
     }
 }
 
-/// 生成类似PHP uniqid的唯一ID
 #[inline]
 fn generate_uniqid() -> String {
     let now = std::time::SystemTime::now()

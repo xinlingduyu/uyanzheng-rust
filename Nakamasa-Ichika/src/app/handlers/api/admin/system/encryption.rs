@@ -303,7 +303,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut where_clause = String::from("(appid = ? OR appid IS NULL)");
     let mut params: Vec<String> = vec![appid.to_string()];
 
-    // 处理搜索条件 - 与PHP源码逻辑一致
     if let Some(so) = &list_req.so
         && let Some(keyword) = &so.keyword
         && !keyword.is_empty()

@@ -1,5 +1,4 @@
 //! 管理员认证中间件
-//! 参考PHP base/admin.php 的 tokenVerify 方法
 
 use crate::app::utils::response::ApiResponse;
 use crate::core::AppState;

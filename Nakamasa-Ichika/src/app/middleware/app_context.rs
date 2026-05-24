@@ -1,5 +1,5 @@
 //! 应用上下文中间件
-//! 一比一还原PHP base/user.php的__init方法逻辑
+
 //! 从路由路径中提取 appid、ver_key、ver_val，并查询 app 数据存入 depot
 //! 优化版：使用 FastJson 减少序列化开销，使用 Cow 减少字符串分配
 //! 支持请求加密解密：根据版本配置的加密方案自动解密客户端请求
@@ -16,7 +16,6 @@ use sqlx::Row;
 use std::sync::Arc;
 
 /// 应用信息（从数据库查询）
-/// 一比一还原PHP的$this->app结构
 #[derive(Debug, Clone, Serialize)]
 pub struct AppInfo {
     pub id: u64,
@@ -106,7 +105,6 @@ pub struct EncryptionInfo {
 }
 
 /// 应用上下文中间件
-/// 一比一还原PHP的__init方法
 pub struct AppContext {
     /// 是否检查API路由
     pub api_router_check: bool,
@@ -456,7 +454,6 @@ async fn decrypt_and_verify_request(
 
     // ============================================================
     // 2. 解析解密后的数据并合并参数
-    // PHP: $_POST = array_merge($_POST, $encryption->txtArr($dedata));
     // 注意：解密后的数据是JSON格式，需要用JSON解析
     // ============================================================
     let decrypted_params: std::collections::HashMap<String, String> =
@@ -493,7 +490,6 @@ async fn decrypt_and_verify_request(
 
     // ============================================================
     // 3. 验证时间戳
-    // PHP: if(!isset($_POST['time']) || (time()-intval($_POST['time'])) > $this->app['mi']['time'])
     // ============================================================
     if enc_info.time > 0 {
         let client_time = merged_params
@@ -511,7 +507,6 @@ async fn decrypt_and_verify_request(
 
     // ============================================================
     // 4. 验证签名（支持两种方式）
-    // PHP: $sign != $encryption->arrSign($_POST,$this->app['app_key']) && $sign != md5($dedata.$this->app['app_key'])
     // ============================================================
     if enc_info.sign == "y" {
         let client_sign = merged_params.get("sign").ok_or("缺少sign参数")?;

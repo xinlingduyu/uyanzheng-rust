@@ -54,7 +54,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: 'account' => ['email,phone','5,32','账号有误']
     // 验证account可以是email或phone
     let account = &reset_req.account;
     let mut validator = Validator::new();
@@ -76,18 +75,13 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $dtime = time() - (60*$this->app['vc_time']);
     let dtime = current_time - (vc_time * 60) as i64;
 
-    // PHP: if(!isset($_POST['code']) || empty($_POST['code']))$this->out->e(118);
     if reset_req.code == 0 {
         render_error(res, "验证码为空", 118, app_key);
         return;
     }
 
-    // PHP: $vcDB = db('vcode');
-    // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [$_POST['account'],$_POST['code'],'repwd','y',$dtime,$this->app['id']])->update(['usable'=>'n']);
-    // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
     // 验证验证码并标记为已使用
     let verify_result = sqlx::query(
         "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
@@ -114,8 +108,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     }
 
-    // PHP: $Ures = $this->db->where('(phone = ? or email = ?) and appid = ?', [$_POST['account'],$_POST['account'],$this->app['id']])->fetch();
-    // PHP: if(!$Ures)$this->out->e(129);
     // 查询用户
     let user_result = sqlx::query_as::<_, (i64, String)>(
         "SELECT id, password FROM u_user WHERE (phone = ? OR email = ?) AND appid = ?",
@@ -128,7 +120,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     match user_result {
         Ok(Some((uid, _old_password))) => {
-            // PHP: $res = $this->db->where('id = ?', [$Ures['id']])->update(['password'=>md5($_POST['newPassword'])]);
             // 使用优化的 MD5 计算
             let new_hash_bytes = md5_hex(reset_req.new_password.as_bytes());
             let new_hash = md5_to_str(&new_hash_bytes).to_string();
@@ -143,7 +134,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
             match result {
                 Ok(r) => {
                     if r.rows_affected() > 0 {
-                        // PHP: $this->log->u($this->app['app_type'],$Ures['id'])->add($res);
                         // 记录日志
                         let _ = sqlx::query(
                             "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -158,17 +148,14 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
                         .execute(app_state.get_db())
                         .await;
 
-                        // PHP: $this->__delToken($Ures['id']);
                         // 删除该用户的所有token（踢下线）
                         if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                             delete_all_user_tokens(&app_state.redis_util, redis_pool, appid, uid)
                                 .await;
                         }
 
-                        // PHP: $this->out->e(200,"重置密码成功");
                         render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                     } else {
-                        // PHP: if(!$res)$this->out->e(201,"重置密码失败");
                         render_error(res, "重置密码失败", 201, app_key);
                     }
                 }
@@ -179,7 +166,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
             }
         }
         Ok(None) => {
-            // PHP: if(!$Ures)$this->out->e(129);
             render_error(res, "账号不存在", 129, app_key);
         }
         Err(e) => {
@@ -190,8 +176,6 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
 }
 
 /// 删除用户的所有token（踢下线）- 优化版
-/// 一比一还原PHP的 __delToken 方法
-/// PHP: protected function __delToken($uid){
 ///     $this->redis->select(1);
 ///     $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
 ///     foreach ($keys as $key) {
@@ -206,10 +190,8 @@ async fn delete_all_user_tokens(
     appid: u64,
     uid: i64,
 ) {
-    // PHP: $this->tokenPre = $this->appConfig['USER_TOKEN_PRE'].$this->app['app_type'].'_'.$this->app['id'].'_';
     // token前缀格式: user_{appid}_
 
-    // PHP: $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
     let pattern = format!("user_{}_online_{}_*", appid, uid);
 
     tracing::debug!("清除用户 {} 的所有token, pattern: {}", uid, pattern);
@@ -218,16 +200,13 @@ async fn delete_all_user_tokens(
     match redis_util.scan_keys(redis_pool, &pattern, Some(100)).await {
         Ok(keys) => {
             for key in &keys {
-                // PHP: $token = $this->redis->get($key);
                 if let Ok(Some(token)) = redis_util.get(redis_pool, key).await {
-                    // PHP: $this->redis->del($this->tokenPre.$token);
                     let token_key = format!("user_{}__{}", appid, token);
                     if let Err(e) = redis_util.del(redis_pool, &token_key).await {
                         tracing::debug!("删除token失败: {}, key: {}", e, token_key);
                     }
                 }
 
-                // PHP: $this->redis->del($key);
                 if let Err(e) = redis_util.del(redis_pool, key).await {
                     tracing::debug!("删除online key失败: {}, key: {}", e, key);
                 }

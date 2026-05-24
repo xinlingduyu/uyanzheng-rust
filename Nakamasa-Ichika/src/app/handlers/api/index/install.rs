@@ -639,7 +639,6 @@ pub async fn env(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
     let env_info = serde_json::json!({
         "name": hostname,
         "software": true,
-        "php": true,
         "os": true,
         "redis": true,
         "ue": true,

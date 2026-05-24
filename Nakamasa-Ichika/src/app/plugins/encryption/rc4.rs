@@ -1,5 +1,4 @@
 //! RC4 加解密实现
-//! 一比一还原 PHP Ue/tools/encryption/rc4/rc4.php
 //! 纯 Rust 实现, 完全跨平台
 
 use super::Encryption;
@@ -14,7 +13,7 @@ impl Rc4Encryption {
     /// 创建 RC4 加密实例
     /// password: 密码字符串
     pub fn new(password: &str) -> Self {
-        // PHP 使用 UTF-8 转 GBK 编码
+        // 使用 UTF-8 转 GBK 编码
         let (password_gbk, _, _) = GBK.encode(password);
         Self {
             password: password_gbk.to_vec(),
@@ -22,7 +21,6 @@ impl Rc4Encryption {
     }
 
     /// RC4 核心算法
-    /// PHP: mi 方法
     fn rc4_crypt(&self, data: &[u8], _is_decrypt: bool) -> Result<Vec<u8>, String> {
         let pwd = &self.password;
         let pwd_len = pwd.len();
@@ -68,20 +66,17 @@ impl Rc4Encryption {
 
 impl Encryption for Rc4Encryption {
     /// 加密
-    /// PHP: encode = mi(data, password, 0)
     /// 返回: hex 编码的密文
     fn encode(&self, data: &str) -> Result<String, String> {
-        // UTF-8 转 GBK (与 PHP 一致)
+        // UTF-8 转 GBK
         let (data_gbk, _, _) = GBK.encode(data);
 
         let encrypted = self.rc4_crypt(data_gbk.as_ref(), false)?;
 
-        // PHP 返回 bin2hex
         Ok(hex::encode(encrypted))
     }
 
     /// 解密
-    /// PHP: decode = mi(data, password, 1)
     /// 输入: hex 编码的密文
     fn decode(&self, data: &str) -> Result<String, String> {
         // hex 解码

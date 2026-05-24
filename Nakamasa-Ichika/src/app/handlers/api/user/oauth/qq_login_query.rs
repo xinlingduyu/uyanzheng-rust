@@ -65,7 +65,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
 
-    // PHP: $checkRules = ['uuid' => ['wordnum','32,32','二维码参数有误']];
     let mut validator = Validator::new();
     validator.wordnum("uuid", &query_req.uuid, 32, 32);
 
@@ -83,7 +82,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
 
-    // PHP: $qqlogon_info = $this->redis->get('qqlogon_info_'.$_POST['uuid']);
     let info_key = format!("qqlogon_info_{}", query_req.uuid);
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
@@ -98,7 +96,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
 
-    // PHP: $logonInfo = json_decode($qqlogon_info,true);
     let qqlogon_info: QqLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
@@ -107,11 +104,9 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     };
 
-    // PHP: $uid = $this->redis->get('logon_'.$_POST['uuid']);
     let logon_key = format!("logon_{}", query_req.uuid);
     let uid_str = redis_util.get(redis_pool, &logon_key).await;
 
-    // PHP: if(!$uid)$this->out->e(0,'待扫码');
     let uid = match uid_str {
         Ok(Some(s)) => match s.parse::<u64>() {
             Ok(id) => id,
@@ -176,7 +171,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let sn_max: i32 = user_row.try_get(14).unwrap_or(0);
     let inv_code: Option<String> = user_row.try_get(15).ok();
 
-    // PHP: if($Ures['ban'] > time())$this->out->e(127,$Ures['ban_msg']);
     if let Some(ban_time) = ban
         && ban_time > Utc::now().timestamp()
     {
@@ -188,10 +182,8 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let current_time = Utc::now().timestamp();
     let mut token_state = "y".to_string();
 
-    // PHP: 设备绑定逻辑
     let sn_list_val = sn_list.clone();
     if sn_list_val.is_none() || sn_list_val.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
-        // PHP: $sn_list = json_encode([['udid'=>$logonInfo['udid'],'time'=>time()]]);
         let new_sn_list = json!([{"udid": &qqlogon_info.udid, "time": current_time}]).to_string();
         let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
             .bind(&new_sn_list)
@@ -199,17 +191,14 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
             .execute(app_state.get_db())
             .await;
     } else {
-        // PHP: $client_Arr = json_decode($Ures['sn_list'],true);
         let client_arr: Vec<serde_json::Value> =
             serde_json::from_str(sn_list_val.as_ref().unwrap()).unwrap_or_default();
 
-        // PHP: $found_key = array_search($logonInfo['udid'],array_column($client_Arr,'udid'));
         let found = client_arr
             .iter()
             .any(|item| item.get("udid").and_then(|v| v.as_str()) == Some(&qqlogon_info.udid));
 
         if !found {
-            // PHP: 新设备登录
             if app_info.logon_sn_num > 0 {
                 if client_arr.len() >= (app_info.logon_sn_num + sn_max) as usize {
                     token_state = "n".to_string();
@@ -224,7 +213,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                         .await;
                 }
             } else {
-                // PHP: 不限制设备数，绑定新设备并踢掉其他设备
                 let new_sn_list =
                     json!([{"udid": &qqlogon_info.udid, "time": current_time}]).to_string();
                 let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
@@ -235,7 +223,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 // TODO: 删除该用户所有token
             }
         } else {
-            // PHP: 已绑定设备登录，检查是否允许多开
             if app_info.logon_sn_dk != "y" {
                 let udid_md5_bytes = md5_hex(qqlogon_info.udid.as_bytes());
                 let udid_md5 = md5_to_str(&udid_md5_bytes);
@@ -252,7 +239,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         }
     }
 
-    // PHP: $token = md5(uniqid().$Ures['id'].$logonInfo['udid']);
     let _random_num: u64 = rand::thread_rng().r#gen();
     let token = md5_concat_3(
         &Utc::now().timestamp_millis().to_string(),
@@ -282,7 +268,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         })
         .unwrap_or_default();
 
-    // PHP: $this->__setToken($token,['uid'=>$Ures['id'],'udid'=>$logonInfo['udid'],'p'=>$Ures['password'],'appid'=>$this->app['id']]);
     let token_data = TokenData {
         uid: user_id,
         udid: qqlogon_info.udid.clone(),
@@ -307,7 +292,6 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         return;
     }
 
-    // PHP: 返回登录信息 - 按API文档格式
     render_success(
         res,
         app_key,

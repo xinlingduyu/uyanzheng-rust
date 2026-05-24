@@ -53,7 +53,6 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: $checkRules = ['token' => ['wordnum','32,32','TOKEN有误'], 'password' => ['Password','6,18','当前密码有误'], 'newPassword' => ['Password','6,18','新密码长度需要满足6-18位数,不支持中文以及.-*_以外特殊字符']]
     // 验证参数
     let mut validator = Validator::new();
     validator
@@ -87,21 +86,18 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
     let new_hash_bytes = md5_hex(modify_req.new_password.as_bytes());
     let new_hash = md5_to_str(&new_hash_bytes);
 
-    // PHP: if($this->user['password'] != md5($_POST['password']))$this->out->e(132);
     // 验证当前密码
     if current_hash != user_info.password {
         render_error(res, "当前密码错误", 132, app_key);
         return;
     }
 
-    // PHP: if(md5($_POST['newPassword']) == md5($_POST['password']))$this->out->e(133);
     // 验证新旧密码不能相同
     if new_hash == current_hash {
         render_error(res, "新旧密码不能相同", 133, app_key);
         return;
     }
 
-    // PHP: $res = $this->db->where('id = ? and appid = ?',[$this->user['id'],$this->app['id']])->update(['password'=>md5($_POST['newPassword'])]);
     // 更新密码 - 根据用户类型选择表
     let result = if user_type == "kami" {
         sqlx::query("UPDATE u_cdk_kami SET password = ? WHERE id = ? AND appid = ?")
@@ -122,7 +118,6 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, time, ip, ip_address, appid) VALUES (?, ?, ?, ?, ?, NULL, ?)"
@@ -136,7 +131,6 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->__delToken($this->user['id']);
                 // 删除Redis中该用户的所有token（踢下线）
                 if let Some(redis_pool) = app_state.redis_pool.as_ref() {
                     delete_all_user_tokens(redis_util, redis_pool, appid, uid, user_type).await;
@@ -155,7 +149,6 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
 }
 
 /// 删除用户的所有token（踢下线）- 优化版
-/// PHP: __delToken($uid)
 async fn delete_all_user_tokens(
     redis_util: &crate::core::redis::RedisUtil,
     redis_pool: &deadpool_redis::Pool,

@@ -69,7 +69,6 @@ async fn get_logon_config(pool: &sqlx::MySqlPool, appid: u64) -> Option<LogonCon
     }
 }
 
-/// 生成类似PHP uniqid的唯一ID
 fn generate_uniqid() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -107,7 +106,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $checkRules = ['access_token' => ['wordnum','1,64',''], 'openid' => ['wordnum','1,64',''], 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']];
     let mut validator = Validator::new();
     validator
         .wordnum("access_token", &qq_req.access_token, 1, 128)
@@ -120,13 +118,11 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
-    // PHP: if(empty($this->app['logon_qqopen_config']))$this->out->e(201,'QQ登录未配置');
     let qq_config_str = match &app_info.logon_open_qqconfig {
         Some(config) => config,
         None => {
@@ -135,7 +131,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $qqConf = json_decode($this->app['logon_qqopen_config'],true);
     let qq_config: serde_json::Value = match serde_json::from_str(qq_config_str) {
         Ok(json) => json,
         Err(_) => {
@@ -144,7 +139,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: if(!$qqConf || !isset($qqConf['appID']) || !isset($qqConf['state']) || !isset($qqConf['appKey']))$this->out->e(201,'QQ登录配置有误');
     let state_config = qq_config
         .get("state")
         .and_then(|v| v.as_str())
@@ -154,7 +148,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // PHP: if($qqConf['state'] != 'on')$this->out->e(201,'QQ登录未开启');
     if state_config != "on" {
         render_error(res, "QQ登录未开启", 201, app_key);
         return;
@@ -184,7 +177,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     }
 
     // 使用QQ互联SDK返回的access_token获取用户信息
-    // PHP: $apiUrl = "https://graph.qq.com/user/get_user_info?access_token={$tokenData['access_token']}&oauth_consumer_key={$qqConf['appID']}&openid=".$tokenData['openid'];
     let user_info_url = format!(
         "https://graph.qq.com/user/get_user_info?access_token={}&oauth_consumer_key={}&openid={}",
         qq_req.access_token, app_id_qq, qq_req.openid
@@ -229,13 +221,11 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
     let qq_openid = qq_req.openid.clone();
     let qq_nickname = qq_info.nickname.unwrap_or_else(|| "QQ用户".to_string());
-    // PHP: 'avatars'=>$open_info['figureurl_qq'] 优先使用高清头像
     let qq_figureurl = qq_info
         .figureurl_qq
         .or(qq_info.figureurl)
         .unwrap_or_default();
 
-    // PHP: 查询是否已有用户
     let existing_user = sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>)>(
         "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq
          FROM u_user WHERE open_qq = ? AND appid = ?"
@@ -263,7 +253,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             open_wx,
             open_qq,
         ))) => {
-            // PHP: 已有用户，直接登录
             // 检查是否被禁用
             if let Some(ban_time) = ban
                 && ban_time > current_time
@@ -485,7 +474,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Ok(None) => {
-            // PHP: 新用户注册
             // 查询应用配置
             let app_result = sqlx::query_as::<_, (Option<String>, i64, Option<String>, Option<String>, i64, i64)>(
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
@@ -514,22 +502,18 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let inviter_award_val = app_cfg.4;
             let invitee_award_val = app_cfg.5;
 
-            // PHP: $pwd = rand(100000,999999);
             let pwd: i32 = rand::thread_rng().r#gen_range(100000..999999);
             let password = md5_str_from_str(&pwd.to_string());
 
-            // PHP: $acctno = (time()-1727712001).str_pad(rand(0, 99), 2, '0', STR_PAD_LEFT); 随机账号
             let acctno = format!(
                 "{}{:02}",
                 current_time - 1727712001,
                 rand::thread_rng().r#gen_range(0..100)
             );
 
-            // PHP: $regData = ['acctno'=>$acctno,'open_qq'=>$open_info['openid'],'password'=>md5($pwd),'nickname'=>$open_info['nickname'],'avatars'=>$open_info['figureurl_qq'],...];
             let mut reg_vip: i64 = 0;
             let mut reg_fen: i64 = 0;
 
-            // PHP: if($app['reg_award_val'] > 0){...}
             if reg_award_val > 0 {
                 if reg_award == "vip" {
                     reg_vip = current_time + reg_award_val;
@@ -538,7 +522,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 }
             }
 
-            // PHP: 邀请人奖励
             let mut inviter_id_val: Option<i64> = None;
             if let Some(inv_id) = qq_req.invid {
                 // 查询邀请人是否存在
@@ -553,7 +536,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
                     inviter_id_val = Some(inv_id);
 
-                    // PHP: 邀请人奖励
                     if inviter_award_val > 0 {
                         if inviter_award == "vip" {
                             let new_vip = if inv_vip.unwrap_or(0) > current_time {
@@ -575,7 +557,6 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         }
                     }
 
-                    // PHP: 受邀者奖励
                     if invitee_award_val > 0 {
                         if invitee_award == "vip" {
                             reg_vip = current_time + invitee_award_val;

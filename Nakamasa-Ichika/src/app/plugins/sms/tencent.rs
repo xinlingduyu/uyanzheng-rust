@@ -1,5 +1,4 @@
 //! 腾讯云短信插件
-//! 一比一还原PHP: Ue/tools/sms/tencent/tencentSms.php + Util.php
 
 use super::trait_def::{SmsPlugin, SmsResult};
 use serde_json::json;
@@ -23,16 +22,14 @@ impl TencentSmsPlugin {
         }
     }
 
-    /// getRandom - 一比一还原PHP
-    /// PHP: rand(100000, 999999)
+    /// getRandom
     fn get_random() -> u32 {
         use rand::Rng;
         let mut rng = rand::thread_rng();
         rng.gen_range(100000..=999999)
     }
 
-    /// calculateSigForTempl - 一比一还原PHP
-    /// PHP: hash("sha256", "appkey=".$appkey."&random=".$random."&time=".$curTime."&mobile=".$phoneNumber)
+    /// calculateSigForTempl
     fn calculate_sig(appkey: &str, random: u32, cur_time: i64, phone_number: &str) -> String {
         let sig_str = format!(
             "appkey={}&random={}&time={}&mobile={}",
@@ -59,7 +56,7 @@ impl SmsPlugin for TencentSmsPlugin {
         "tencent"
     }
 
-    /// 配置表单 - 一比一还原PHP config.php
+    /// 配置表单
     fn config_form(&self) -> serde_json::Value {
         json!({
             "name": "腾讯云短信",
@@ -128,7 +125,7 @@ impl SmsPlugin for TencentSmsPlugin {
         Ok(())
     }
 
-    /// 发送短信 - 一比一还原PHP
+    /// 发送短信
     fn send(&self, mobile: &str, code: &str, time: i32) -> Result<SmsResult, String> {
         if self.appid.is_none() || self.appid.as_deref() == Some("") {
             return Err("SDK AppID未配置".to_string());
@@ -148,20 +145,18 @@ impl SmsPlugin for TencentSmsPlugin {
         let sname = self.sname.as_ref().unwrap();
         let mid = self.mid.as_ref().unwrap();
 
-        // PHP: sendWithParam(86, $phone, [$code, $time])
         let random = Self::get_random();
         let cur_time = chrono::Utc::now().timestamp();
 
-        // PHP: $wholeUrl = $this->url . "?sdkappid=" . $this->appid . "&random=" . $random;
         let url = format!(
             "https://yun.tim.qq.com/v5/tlssmssvr/sendsms?sdkappid={}&random={}",
             appid, random
         );
 
-        // PHP: 计算签名
+        // 计算签名
         let sig = Self::calculate_sig(appkey, random, cur_time, mobile);
 
-        // PHP: 构建请求体
+        // 构建请求体
         let body = json!({
             "tel": {
                 "nationcode": "86",
@@ -176,7 +171,7 @@ impl SmsPlugin for TencentSmsPlugin {
             "ext": ""
         });
 
-        // 异步发送HTTP请求 - 一比一还原PHP curl
+        // 异步发送HTTP请求
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -193,11 +188,6 @@ impl SmsPlugin for TencentSmsPlugin {
                             Ok(text) => {
                                 if let Ok(status) = serde_json::from_str::<serde_json::Value>(&text)
                                 {
-                                    // PHP: if (!$status) { result = ['code'=>201,'msg'=>'TencentSms Error']; }
-                                    // PHP: elseif(!isset($status['result']) || $status['result'] != 0) {
-                                    //          result = ['code'=>201,'msg'=>isset($status['ErrorInfo'])?$status['ErrorInfo']:$status['errmsg']];
-                                    //      }
-                                    // PHP: else { result = ['code'=>200,'msg'=>$status['errmsg']]; }
                                     let result_val =
                                         status.get("result").and_then(|v| v.as_i64()).unwrap_or(-1);
 

@@ -1,5 +1,4 @@
 //! DES 加解密实现
-//! 一比一还原 PHP Ue/tools/encryption/des/des.php
 //! 支持 ECB 和 CBC 模式
 
 use super::Encryption;
@@ -48,7 +47,6 @@ impl DesEncryption {
 
 impl Encryption for DesEncryption {
     /// 加密
-    /// PHP: openssl_encrypt($str, 'des-ecb', $key) 或 openssl_encrypt($str, 'des-cbc', $key, OPENSSL_RAW_DATA, $iv)
     /// 返回: hex 编码的密文
     fn encode(&self, data: &str) -> Result<String, String> {
         let key = GenericArray::from(self.key);
@@ -64,12 +62,10 @@ impl Encryption for DesEncryption {
             .len();
         buf.truncate(ct_len);
 
-        // PHP 使用 bin2hex
         Ok(hex::encode(&buf))
     }
 
     /// 解密
-    /// PHP: openssl_decrypt($str, 'des-ecb', $key) 或 openssl_decrypt(hex2bin($str), 'des-cbc', $key, OPENSSL_RAW_DATA, $iv)
     /// 输入: hex 编码的密文
     fn decode(&self, data: &str) -> Result<String, String> {
         // hex 解码

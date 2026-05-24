@@ -74,8 +74,6 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'pg' => ['int','1,11','页面有误',1]
     let mut validator = Validator::new();
     validator.wordnum("token", &order_req.token, 32, 32);
 
@@ -84,7 +82,6 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 只支持用户版应用
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
@@ -100,7 +97,6 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // PHP: $page = isset($_POST['pg']) ? (intval($_POST['pg']) >= 1 ? intval($_POST['pg']):1) : 1;
     const PAGE_SIZE: u32 = 10;
     let page = order_req.pg.unwrap_or(1).max(1);
     let offset = (page - 1) * PAGE_SIZE;
@@ -121,7 +117,6 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 获取订单列表
-    // PHP: $list = $this->db->where('uid = ? and appid = ?',[$this->user['id'],$this->app['id']])->order('id desc')->page($page,10)->fetchAll('order_no,trade_no,name,money,ptype,add_time,end_time,state');
     let result = sqlx::query_as::<_, (String, Option<String>, String, i64, String, i64, Option<i64>, String)>(
         "SELECT order_no, trade_no, name, money, payment, add_time, end_time, state FROM u_order WHERE uid = ? AND appid = ? ORDER BY id DESC LIMIT ? OFFSET ?"
     )

@@ -53,9 +53,6 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN不规范'],
-    // PHP: 'phone' => ['phone','','手机号不规范']
-    // PHP: 'code'  => ['int','4,6','验证码填写不规范']
     let mut validator = Validator::new();
     validator
         .wordnum("token", &re_req.token, 32, 32)
@@ -81,10 +78,8 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $dtime = time() - (60*$this->app['vc_time']);
     let dtime = current_time - (vc_time * 60) as i64;
 
-    // PHP: if($this->user['phone'] != $_POST['phone'])$this->out->e(201,'手机号有误');
     // 验证用户当前手机号是否与提交的手机号一致
     let current_phone = user_info.phone.as_deref().unwrap_or("");
     if current_phone != re_req.phone {
@@ -92,9 +87,6 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         return;
     }
 
-    // PHP: $vcDB = db('vcode');
-    // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [$_POST['phone'],$_POST['code'],'rePhone','y',$dtime,$this->app['id']])->update(['usable'=>'n']);
-    // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
     // 验证验证码并标记为已使用
     let verify_result = sqlx::query(
         "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
@@ -121,7 +113,6 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['phone'=>NULL]);
     // 更新手机号为NULL
     let result = sqlx::query("UPDATE u_user SET phone = NULL WHERE id = ? AND appid = ?")
         .bind(uid)
@@ -132,7 +123,6 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -147,10 +137,8 @@ pub async fn re_phone(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->out->e(200,"解绑成功");
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
-                // PHP: if(!$res)$this->out->e(201,"解绑失败");
                 render_error(res, "解绑失败", 201, app_key);
             }
         }

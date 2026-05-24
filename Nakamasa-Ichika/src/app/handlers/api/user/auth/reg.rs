@@ -135,7 +135,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 检查应用类型
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
@@ -151,7 +150,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // PHP: if($this->app['reg_state'] == 'off')$this->out->e(102,$this->app['reg_off_msg']);
     // 检查注册状态
     if reg_config.reg_state == "off" {
         let msg = reg_config
@@ -165,7 +163,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     // 根据注册方式验证参数
     let mut validator = Validator::new();
 
-    // PHP: $wayMsg = ['phone'=>'注册的手机号有误','email'=>'注册的邮箱有误','wordnum'=>'注册的账号有误，仅支持5~18位字母+数字'];
     let reg_way = reg_config.reg_way.as_str();
     match reg_way {
         "phone" => {
@@ -179,13 +176,10 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: 'password' => ['Password','6,18','密码长度需要满足6-18位数,不支持中文以及.-*_以外特殊字符']
     validator.password("password", &reg_req.password, 6, 18);
 
-    // PHP: 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']
     validator.udid("udid", &reg_req.udid, 1, 128);
 
-    // PHP: 'invid' => ['int','1,11','邀请人ID填写有误',$this->app['reg_is_inviter'] == 'n']
     // 如果需要邀请人
     if reg_config.reg_is_inviter == "y" && reg_req.invid.is_none() {
         render_error(res, "需要邀请人ID", 201, app_key);
@@ -208,8 +202,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         ip
     );
 
-    // PHP: $res = $this->db->where("(phone = ? or email = ? or acctno = ?) and appid = ?",[...])->fetch();
-    // PHP: if($res)$this->out->e(120);
     // 检查账号是否已存在
     let user_check = sqlx::query_as::<_, (u64,)>(
         "SELECT id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?",
@@ -235,7 +227,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: if($this->app['reg_time_ip'] > 0)
     // IP重复注册检查
     if reg_config.reg_time_ip > 0 {
         let ip_time = current_time - (reg_config.reg_time_ip as i64 * 3600);
@@ -255,7 +246,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: if($this->app['reg_time_sn'] > 0)
     // 设备重复注册检查
     if reg_config.reg_time_sn > 0 {
         let sn_time = current_time - (reg_config.reg_time_sn as i64 * 3600);
@@ -275,20 +265,15 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: if($this->app['reg_way'] == 'phone' || $this->app['reg_way'] == 'email')
     // phone或email注册需要验证码
     if reg_way == "phone" || reg_way == "email" {
-        // PHP: if(!isset($_POST['code']) || empty($_POST['code']))$this->out->e(118);
         if reg_req.code.is_none() || reg_req.code.unwrap_or(0) == 0 {
             render_error(res, "验证码为空", 118, app_key);
             return;
         }
 
-        // PHP: $dtime = time() - (60*$this->app['vc_time']);
         let dtime = current_time - (reg_config.vc_time as i64 * 60);
 
-        // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [...])->update(['usable'=>'n']);
-        // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
         let verify_result = sqlx::query(
             "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
         )
@@ -321,17 +306,14 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     }
 
-    // PHP: $regData['password'] = md5($_POST['password']);
     // 使用优化的MD5计算
     let password_hash_bytes = md5_hex(reg_req.password.as_bytes());
     let password_hash = md5_to_str(&password_hash_bytes).to_string();
 
-    // PHP: $user = $this->app['reg_way'] == 'wordnum' ? 'acctno' : $this->app['reg_way'];
     // 初始化注册数据
     let mut initial_vip: i64 = 0;
     let mut initial_fen: i64 = 0;
 
-    // PHP: if($this->app['reg_award_val'] > 0)
     // 注册奖励
     if reg_config.reg_award_val > 0 {
         if reg_config.reg_award == "vip" {
@@ -348,8 +330,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     if let Some(invid) = reg_req.invid
         && invid > 0
     {
-        // PHP: $inv_res = $this->db->where('id = ? and appid = ?',[$_POST['invid'],$this->app['id']])->fetch();
-        // PHP: if(!$inv_res)$this->out->e(122);
         let inviter_check = sqlx::query_as::<_, (i64, Option<i64>, i64)>(
             "SELECT id, vip, fen FROM u_user WHERE id = ? AND appid = ?",
         )
@@ -368,11 +348,9 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     inv_fen
                 );
 
-                // PHP: if($this->app['inviter_award_val'] > 0)
                 // 邀请人奖励
                 if reg_config.inviter_award_val > 0 {
                     if reg_config.inviter_award == "vip" {
-                        // PHP: if($inv_res['vip'] != 9999999999)
                         let new_vip = if inv_vip.unwrap_or(0) != 9999999999 {
                             if inv_vip.unwrap_or(0) > current_time {
                                 inv_vip.unwrap_or(0) + reg_config.inviter_award_val
@@ -411,7 +389,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     }
                 }
 
-                // PHP: if($this->app['invitee_award_val'] > 0)
                 // 受邀者奖励
                 if reg_config.invitee_award_val > 0 {
                     if reg_config.invitee_award == "vip" {
@@ -441,7 +418,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     }
 
     // 插入新用户
-    // PHP: $user = $this->app['reg_way'] == 'wordnum' ? 'acctno' : $this->app['reg_way'];
     // 根据注册方式设置对应字段，其他字段为NULL
     let acctno: Option<&str> = if reg_way == "wordnum" {
         Some(&reg_req.account)
@@ -495,7 +471,6 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->out->e(200,'注册成功');
                 render_success_msg(res, app_key);
             } else {
                 render_error(res, "注册失败，请重试", 201, app_key);

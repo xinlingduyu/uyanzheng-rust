@@ -1,5 +1,4 @@
 //! 皆网短信插件
-//! 一比一还原PHP: Ue/tools/sms/jie/jieSms.php
 
 use super::trait_def::{SmsPlugin, SmsResult};
 use serde_json::json;
@@ -18,8 +17,7 @@ impl JieSmsPlugin {
         }
     }
 
-    /// 生成签名 - 一比一还原PHP
-    /// PHP: ksort($data); $arr = urldecode(http_build_query($data)); return md5($arr.$this->AccessKey);
+    /// 生成签名
     fn sign(&self, data: &serde_json::Value) -> String {
         use std::collections::BTreeMap;
 
@@ -68,7 +66,7 @@ impl SmsPlugin for JieSmsPlugin {
         "jie"
     }
 
-    /// 配置表单 - 一比一还原PHP config.php
+    /// 配置表单
     fn config_form(&self) -> serde_json::Value {
         json!({
             "name": "皆网短信",
@@ -103,9 +101,8 @@ impl SmsPlugin for JieSmsPlugin {
         Ok(())
     }
 
-    /// 发送短信 - 一比一还原PHP
+    /// 发送短信
     fn send(&self, mobile: &str, code: &str, time: i32) -> Result<SmsResult, String> {
-        // PHP: if(empty($this->AccessKey))return false;
         if self.access_key.is_none() || self.access_key.as_deref() == Some("") {
             return Err("AccessKey未配置".to_string());
         }
@@ -116,7 +113,6 @@ impl SmsPlugin for JieSmsPlugin {
         let _access_key = self.access_key.as_ref().unwrap();
         let mid = self.mid.as_ref().unwrap();
 
-        // PHP: $data = ['mid'=>$this->mid,'mobile'=>$mobile,'param'=>json_encode(['code'=>$code,'time'=>$time])];
         // 注意: param的值是JSON字符串，不是JSON对象
         let param_json = json!({"code": code, "time": time}).to_string();
         let data = json!({
@@ -125,7 +121,6 @@ impl SmsPlugin for JieSmsPlugin {
             "param": param_json.clone()
         });
 
-        // PHP: $post = http_build_query($data);
         let post_data = format!(
             "mid={}&mobile={}&param={}",
             mid,
@@ -133,19 +128,13 @@ impl SmsPlugin for JieSmsPlugin {
             urlencoding::encode(&param_json)
         );
 
-        // PHP: $param = $post."&sign=".$this->sign($data);
         let sign = self.sign(&data);
         let param = format!("{}&sign={}", post_data, sign);
 
-        // PHP: $this->host .= '/send';
         let url = "http://www.jienet.com/sms/api/send";
-
-        // 异步发送HTTP请求 - 一比一还原PHP curl
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                // PHP: curl_setopt($curl, CURLOPT_CUSTOMREQUEST, $this->method);
-                // PHP: curl_setopt($curl, CURLOPT_POSTFIELDS, $param);
                 match super::http_client::client()?
                     .post(url)
                     .timeout(std::time::Duration::from_secs(30))
@@ -157,10 +146,8 @@ impl SmsPlugin for JieSmsPlugin {
                     Ok(resp) => {
                         match resp.text().await {
                             Ok(text) => {
-                                // PHP: $result = json_decode($res,true);
                                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text)
                                 {
-                                    // PHP: if(is_array($result)) return $result;
                                     return Ok(SmsResult {
                                         success: result
                                             .get("success")

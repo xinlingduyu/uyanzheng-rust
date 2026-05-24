@@ -5,10 +5,14 @@ pub mod ali;
 pub mod http_client;
 pub mod jie;
 pub mod manager;
+pub mod paypal;
+pub mod qq;
 pub mod trait_def;
 pub mod wx;
 
 pub use ali::AliPayPlugin;
 pub use jie::JiePayPlugin;
+pub use paypal::PayPalPayPlugin;
+pub use qq::QqPayPlugin;
 pub use trait_def::{NotifyVerifyResult, PayOrder, PayPlugin};
 pub use wx::WxPayPlugin;

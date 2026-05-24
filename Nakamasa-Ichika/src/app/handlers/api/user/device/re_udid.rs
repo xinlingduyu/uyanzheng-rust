@@ -55,8 +55,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']
     let mut validator = Validator::new();
     validator
         .wordnum("token", &re_req.token, 32, 32)
@@ -83,7 +81,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $snList_Arr = json_decode($this->user['sn_list'],true);
     // 解析设备列表
     let sn_list_arr: Vec<DeviceInfo> = user_info
         .sn_list
@@ -91,9 +88,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
-    // PHP: $find = false;
-    // PHP: $snList = [];
-    // PHP: foreach ($snList_Arr as $rows){
     //     if($rows['udid'] == $_POST['udid']){
     //         $find = true;
     //     }else{
@@ -111,13 +105,11 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 
-    // PHP: if(!$find)$this->out->e(201,'解绑设备不存在');
     if !found {
         render_error(res, "解绑设备不存在", 201, app_key);
         return;
     }
 
-    // PHP: if($this->user['tokenState'] == 'n' && count($snList) < $this->app['logon_sn_num']+$this->user['sn_max']){
     //     $snList[] = ['udid'=>$this->user['udid'],'time'=>time()];
     // }
     // 如果当前设备token_state为n且解绑后有空位，自动绑定当前设备
@@ -136,7 +128,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         "sn_list": sn_list_json
     });
 
-    // PHP: if($this->app['logon_sn_unbdeVal'] > 0){
     //     if($this->app['logon_sn_unbdeType'] == 'vip'){
     //         ...VIP消耗逻辑
     //     }else{
@@ -148,13 +139,11 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         if logon_sn_unbde_type == "vip" {
             // VIP消耗
             if user_type == "user" {
-                // PHP: if($this->user['vip'] < time())$this->out->e(170);
                 let user_vip = user_info.vip.unwrap_or(0);
                 if user_vip < current_time {
                     render_error(res, "VIP到期无法解绑", 170, app_key);
                     return;
                 }
-                // PHP: if($this->user['vip'] < 9999999999){
                 //     $data['vip'] = $this->user['vip']-$this->app['logon_sn_unbdeVal'];
                 // }
                 if user_vip < 9999999999 {
@@ -175,7 +164,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         } else {
             // 积分消耗
             if user_type == "user" {
-                // PHP: if($this->user['fen'] < $this->app['logon_sn_unbdeVal'])$this->out->e(171);
                 if user_info.fen < logon_sn_unbde_val as i64 {
                     render_error(res, "积分余额不足", 171, app_key);
                     return;
@@ -234,7 +222,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"

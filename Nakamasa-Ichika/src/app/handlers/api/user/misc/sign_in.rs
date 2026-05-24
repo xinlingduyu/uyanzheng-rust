@@ -96,7 +96,6 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &sign_req.token, 32, 32);
 
@@ -120,7 +119,6 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 只支持用户版应用
     if app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
@@ -133,9 +131,6 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    // PHP: $sRes = $this->db->where('ug = ? and uid = ? and type = ? and state = ? and time > ? and appid = ?',['user',$this->user['id'],'signIn','y',timeRange(),$this->app['id']])->fetch();
-    // PHP: if($sRes)$this->out->e(134);
-    // 检查今日是否已签到 - 使用PHP的timeRange()逻辑
     // timeRange()返回今天0点的时间戳
     let start_of_day = get_time_range();
 
@@ -156,7 +151,6 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 获取签到奖励配置（使用缓存）
     let award_config = get_diary_award_config(app_state, appid).await;
 
-    // PHP: $addRes = $this->db->add(['ug'=>'user','uid'=>$this->user['id'],'type'=>'signIn','time'=>time(),'ip'=>$this->ip,'appid'=>$this->app['id']]);
     // 添加签到记录
     let add_res = sqlx::query(
         "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -173,7 +167,6 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match add_res {
         Ok(_) => {
-            // PHP: if($this->app['diary_award'] == 'vip'){
             //     if($this->app['diary_award_val'] > 0){
             //         if($this->user['vip'] == 9999999999)$this->out->e(200,"签到成功");
             //         if($this->user['vip'] > time()){
@@ -225,22 +218,18 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }
             }
 
-            // PHP: $this->out->e(200,"签到成功");
             render_success(res, app_key, None::<()>, app_info.mi.as_ref());
         }
         Err(e) => {
             tracing::error!("签到失败: {}", e);
-            // PHP: $this->out->e(201,"签到失败");
             render_error(res, "签到失败", 201, app_key);
         }
     }
 }
 
-/// 一比一还原PHP的timeRange()函数 - 优化版
 /// 返回今天0点的时间戳（中国时区 UTC+8）
 #[inline]
 fn get_time_range() -> i64 {
-    // PHP: timeRange() 返回当天0点的时间戳
     // 使用中国时区 (UTC+8)
     let now = chrono::Utc::now();
     // 直接计算：获取当前UTC时间戳，减去今天已过的小时、分钟、秒

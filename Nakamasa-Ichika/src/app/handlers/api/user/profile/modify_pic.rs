@@ -45,7 +45,6 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     let app_key = &app_info.app_key;
     let app_type = app_info.app_type.as_str();
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 检查应用类型
     if app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
@@ -60,7 +59,6 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: $checkRules = ['token' => ['wordnum','32,32','TOKEN有误'], 'file' => ['wordnum','32,32','file有误']]
     // 验证参数
     let mut validator = Validator::new();
     validator.wordnum("token", &modify_req.token, 32, 32);
@@ -85,7 +83,6 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: if(isset($post["file"]))
     // 准备头像URL - 确保以 / 开头
     let avatars_owned;
     let avatars: &str = if modify_req.file.starts_with('/') {
@@ -95,7 +92,6 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
         &avatars_owned
     };
 
-    // PHP: $res = $this->db->where('id = ? and appid = ?',[$this->user['id'],$this->app['id']])->update(['avatars'=>'/'.$uploadedFile]);
     let result = sqlx::query("UPDATE u_user SET avatars = ? WHERE id = ? AND appid = ?")
         .bind(avatars)
         .bind(uid as i64)
@@ -105,7 +101,6 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     match result {
         Ok(r) if r.rows_affected() > 0 => {
-            // PHP: $this->log->u('user',$this->user['id'])->add($res);
             // 记录日志
             let _ = sqlx::query(
                 "INSERT INTO u_logs (ug, uid, type, time, ip, ip_address, appid) VALUES (?, ?, ?, ?, ?, NULL, ?)"

@@ -80,7 +80,6 @@ pub mod admin_auth;
 /// 用户认证中间件
 ///
 /// 验证用户的 Token 和设备绑定，支持加密数据解密。
-/// 完整实现 PHP 版本的 `__init`, `__dataCheck`, `__TokenCheck` 逻辑。
 ///
 /// # 注入数据
 ///

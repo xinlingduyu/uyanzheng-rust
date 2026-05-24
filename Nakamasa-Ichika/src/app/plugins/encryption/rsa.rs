@@ -1,5 +1,4 @@
 //! RSA 加解密实现
-//! 一比一还原 PHP Ue/tools/encryption/rsa/rsa.php
 //! 使用 RSA2 (SHA256WithRSA) 签名算法
 //! 支持分块加密/解密
 
@@ -83,7 +82,6 @@ impl RsaEncryption {
     }
 
     /// 使用公钥加密
-    /// PHP: publicEncrypt
     pub fn public_encrypt(&self, data: &str) -> Result<String, String> {
         let public_key = self
             .public_key
@@ -107,7 +105,6 @@ impl RsaEncryption {
     }
 
     /// 使用私钥解密
-    /// PHP: privateDecrypt
     pub fn private_decrypt(&self, data: &str) -> Result<String, String> {
         let private_key = self
             .private_key
@@ -130,7 +127,6 @@ impl RsaEncryption {
     }
 
     /// 私钥签名 (SHA256WithRSA)
-    /// PHP: rsaSign
     #[allow(dead_code)]
     pub fn sign(&self, data: &str) -> Result<String, String> {
         let private_key = self
@@ -145,7 +141,6 @@ impl RsaEncryption {
     }
 
     /// 公钥验签 (SHA256WithRSA)
-    /// PHP: verifySign
     pub fn verify(&self, data: &str, signature: &str) -> Result<bool, String> {
         let public_key = self
             .public_key
@@ -173,20 +168,17 @@ impl Encryption for RsaEncryption {
     }
 
     /// 解密 (默认使用私钥解密)
-    /// PHP: decode = privateDecrypt
     fn decode(&self, data: &str) -> Result<String, String> {
         self.private_decrypt(data)
     }
 }
 
 /// URL-safe Base64 编码
-/// PHP: urlSafeBase64encode
 pub fn url_safe_base64_encode(data: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(data)
 }
 
 /// URL-safe Base64 解码
-/// PHP: urlSafeBase64decode
 pub fn url_safe_base64_decode(data: &str) -> Result<Vec<u8>, String> {
     // 处理可能缺失的填充
     let padded = if !data.len().is_multiple_of(4) {

@@ -20,7 +20,7 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::PayRequest;
 use crate::app::models::responses::PayInfo;
-use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayOrder, PayPlugin, WxPayPlugin};
+use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPalPayPlugin, PayOrder, PayPlugin, QqPayPlugin, WxPayPlugin};
 use crate::app::utils::response::{
     render_error, render_success,
 };
@@ -48,6 +48,8 @@ fn create_pay_plugin(
         "jie" => Box::new(JiePayPlugin::new()),
         "ali" => Box::new(AliPayPlugin::new()),
         "wx" => Box::new(WxPayPlugin::new()),
+        "qq" => Box::new(QqPayPlugin::new()),
+        "paypal" => Box::new(PayPalPayPlugin::new()),
         _ => return Err(format!("不支持的支付类型: {}", pay_type)),
     };
     plugin.init(config.clone())?;
@@ -82,7 +84,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 一比一还原PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
@@ -138,7 +139,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let appid = app_info.id;
     let current_time = Utc::now().timestamp();
 
-    // 查询用户 - 一比一还原PHP
     let u_res = sqlx::query_as::<_, (u64, Option<u64>)>(
         "SELECT id, inviter_id FROM u_user WHERE (phone = ? OR email = ? OR acctno = ?) AND appid = ?"
     )
@@ -162,7 +162,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 查询商品 - 一比一还原PHP
     let g_res = sqlx::query_as::<_, (i64, String, String, i64, String, i64, String)>(
         "SELECT id, name, type, money, blurb, val, state FROM u_goods WHERE id = ? AND appid = ?",
     )
@@ -184,13 +183,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 一比一还原PHP: if($Gres['state'] != 'y')$this->out->e(152);
     if state != "y" {
         render_error(res, "商品已下架", 152, app_key);
         return;
     }
 
-    // 生成订单号 - 一比一还原PHP: $order_no = date("YmdHis",time()).rand(10000,99999);
     use rand::SeedableRng;
     let mut rng = rand::rngs::StdRng::from_entropy();
     let order_no = format!(
@@ -211,7 +208,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     order_data.insert("add_time", serde_json::json!(current_time));
     order_data.insert("appid", serde_json::json!(appid));
 
-    // 一比一还原PHP: 代理分佣逻辑
     if let Some(inv_uid) = inviter_id {
         // 查询代理信息
         let a_res = sqlx::query_as::<_, (Option<i64>, Option<f64>)>(
@@ -238,7 +234,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 
-    // 一比一还原PHP: 代理商品检查
     if goods_type == "agent" {
         let ag_res =
             sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE id = ? AND appid = ?")
@@ -273,7 +268,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 构建回调URL - 一比一还原PHP
     // 注意：notify 是异步通知，return 是同步跳转
     let notify_url = format!("{}/api/index/notify/{}/{}", server_url, pay_type, order_no);
     let return_url = format!("{}/api/index/return/{}/{}", server_url, pay_type, order_no);
@@ -283,7 +277,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     // 获取支付配置并调用支付插件
     let pay_result = if pay_type == "ali" {
-        // 一比一还原PHP: if($this->app['pay_ali_state'] != 'on' || empty($this->app['pay_ali_config']))$this->out->e(150);
         if app_info.alipay_state != "on" {
             render_error(res, "支付宝支付未开启", 150, app_key);
             return;
@@ -336,7 +329,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
         plugin.create(&order)
     } else if pay_type == "wx" {
-        // 一比一还原PHP: if($this->app['pay_wx_state'] != 'on' || empty($this->app['pay_wx_config']))$this->out->e(150);
         if app_info.wechat_pay_state != "on" {
             render_error(res, "微信支付未开启", 150, app_key);
             return;
@@ -388,6 +380,52 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         };
 
         plugin.create(&order)
+    } else if pay_type == "qq" {
+        // QQ 钱包支付
+        let config = serde_json::json!({}); // QQ 支付配置暂从 u_app 扩展字段读取，当前传空使用插件默认
+        let plugin = match create_pay_plugin("qq", &config) {
+            Ok(p) => p,
+            Err(e) => {
+                render_error(res, e, 150, app_key);
+                return;
+            }
+        };
+
+        let order = PayOrder {
+            order_no: order_no.clone(),
+            name: goods_name.clone(),
+            money: money as f64,
+            notify_url: notify_url.clone(),
+            return_url: return_url.clone(),
+            pay_type: pay_mode.to_string(),
+            client_ip: None,
+            scene_info: None,
+        };
+
+        plugin.create(&order)
+    } else if pay_type == "paypal" {
+        // PayPal 支付
+        let config = serde_json::json!({});
+        let plugin = match create_pay_plugin("paypal", &config) {
+            Ok(p) => p,
+            Err(e) => {
+                render_error(res, e, 150, app_key);
+                return;
+            }
+        };
+
+        let order = PayOrder {
+            order_no: order_no.clone(),
+            name: goods_name.clone(),
+            money: money as f64,
+            notify_url: notify_url.clone(),
+            return_url: return_url.clone(),
+            pay_type: pay_mode.to_string(),
+            client_ip: None,
+            scene_info: None,
+        };
+
+        plugin.create(&order)
     } else {
         render_error(res, "不支持的支付类型", 201, app_key);
         return;
@@ -396,13 +434,11 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 处理支付结果
     let pay_info = match pay_result {
         Ok(result) => {
-            // 一比一还原PHP: if(!$result || !isset($result['code']) || !isset($result['msg']))$this->out->e(156);
             if !result.success {
                 render_error(res, result.message.clone(), 156, app_key);
                 return;
             }
 
-            // 一比一还原PHP: if(!isset($result['data']))$this->out->e(157);
             let pay_url = match (&result.pay_url, &result.qrcode) {
                 (Some(url), _) => url.clone(),
                 (None, Some(qr)) => qr.clone(),
@@ -425,7 +461,6 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 一比一还原PHP: 插入订单
     let inviter_id_val = order_data.get("inviter_id").and_then(|v| v.as_i64());
     let divide_money_val = order_data.get("divide_money").and_then(|v| v.as_f64());
 

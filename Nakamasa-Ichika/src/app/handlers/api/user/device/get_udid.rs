@@ -56,7 +56,6 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &get_req.token, 32, 32);
 
@@ -75,7 +74,6 @@ pub async fn get_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     };
 
     // 直接从用户信息中获取设备列表（避免额外数据库查询）
-    // PHP: $this->out->setData(['list'=>json_decode($this->user['sn_list'],true)])->e(200,'获取成功');
     let device_list: Vec<DeviceItem> = user_info
         .sn_list
         .as_ref()

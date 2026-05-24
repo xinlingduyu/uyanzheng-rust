@@ -97,7 +97,6 @@ impl<T: Serialize> SignedApiResponse<T> {
         data: Option<T>,
     ) -> Self {
         let time = chrono::Utc::now().timestamp();
-        // 签名算法: md5(code + time + appkey) - 与PHP保持一致
         let sign_data = format!("{}{}{}", code, time, app_key);
         let sign = md5_to_str(&md5_hex(sign_data.as_bytes())).to_string();
 
@@ -181,7 +180,6 @@ impl<T: Serialize> SignedApiResponse<T> {
 
 /// 带加密的API响应结构
 /// 当应用配置了加密时，data字段会被加密为字符串
-/// 参考PHP: Ue/tools/out.php 的加密逻辑
 #[derive(Serialize)]
 #[allow(dead_code)]
 pub struct EncryptedApiResponse {
@@ -235,7 +233,6 @@ impl EncryptedApiResponse {
     }
 
     /// 创建带加密的响应 - 核心方法
-    /// 参考PHP逻辑：
     /// 1. 先将data序列化为JSON
     /// 2. 使用加密器加密
     /// 3. 返回加密后的字符串

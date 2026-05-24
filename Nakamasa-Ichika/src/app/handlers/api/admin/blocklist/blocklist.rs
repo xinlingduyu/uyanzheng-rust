@@ -1,5 +1,4 @@
 //! Admin Blocklist controller
-//! 管理员黑名单控制器 - PHP逻辑一比一还原
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -37,7 +36,7 @@ struct SearchOptions {
     keyword: String,
 }
 
-/// 列表项 - 与PHP返回结构一致
+/// 列表项
 #[derive(Debug, Serialize)]
 struct BlocklistItem {
     id: u64,
@@ -48,7 +47,7 @@ struct BlocklistItem {
     appid: Option<i64>,
 }
 
-/// 分页响应 - 与PHP返回结构一致
+/// 分页响应
 #[derive(Debug, Serialize)]
 struct PageResponse {
     #[serde(rename = "currentPage")]
@@ -60,7 +59,7 @@ struct PageResponse {
     page_total: u32,
 }
 
-/// 获取列表 - PHP: getList()
+/// 获取列表
 #[handler]
 pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -115,16 +114,15 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let size = list_req.size.max(1);
     let offset = (page - 1) * size;
 
-    // 构建查询条件 - PHP: (appid = ? or appid is null)
+    // 构建查询条件
     let mut where_conditions = vec!["(appid = ? OR appid IS NULL)".to_string()];
     let _where_params: Vec<i64> = vec![appid as i64];
     let mut keyword_param: Option<String> = None;
 
-    // 处理搜索条件 - PHP: keyword 搜索 sn 或 ip
+    // 处理搜索条件
     if let Some(ref so) = list_req.so
         && !so.keyword.is_empty()
     {
-        // PHP: (sn LIKE ? or ip LIKE ?)
         // 但数据库用的是 type + val 结构，所以改为: (val LIKE ?)
         where_conditions.push("val LIKE ?".to_string());
         keyword_param = Some(format!("%{}%", so.keyword));
@@ -152,7 +150,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         }
     };
 
-    // 查询数据 - PHP: order('id desc')->page($page,$size)
+    // 查询数据
     let query = format!(
         "SELECT id, type, val, time, appid FROM u_app_blocklist WHERE {} ORDER BY id DESC LIMIT ? OFFSET ?",
         where_clause
@@ -241,7 +239,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 #[allow(dead_code)]
 struct AddRequest {
     #[serde(default)]
-    id: Option<i64>, // 忽略，PHP中也没用到
+    id: Option<i64>,
     #[serde(rename = "type")]
     type_: String,
     val: String,
@@ -249,7 +247,7 @@ struct AddRequest {
     all: String, // 'y' = 全局(NULL), 'n' = 当前应用(appid)
 }
 
-/// 添加 - PHP: add()
+/// 添加
 #[handler]
 pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -269,8 +267,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 参数验证
-    // PHP: ip => ['ip','','IP不规范',!empty($_POST['sn'])]
-    // PHP: sn => ['reg','[a-zA-Z0-9_-]+','机器码不规范',!empty($_POST['ip'])]
     // 这里简化为: type必须是 'ip' 或 'sn'，val根据type验证
     let mut validator = Validator::new();
     validator
@@ -321,7 +317,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 构建数据
-    // PHP: if($_POST['all'] == 'n'){ $data['appid'] = $this->appid; }
     let appid_value: Option<i64> = if add_req.all == "n" {
         Some(appid as i64)
     } else {
@@ -344,7 +339,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(r) => {
             let add_id = r.last_insert_id() as i64;
 
-            // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($add_id)
+            // 记录日志
             let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
@@ -383,7 +378,7 @@ struct EditRequest {
     all: String,
 }
 
-/// 编辑 - PHP: edit()
+/// 编辑
 #[handler]
 pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -467,7 +462,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 构建更新数据
-    // PHP: if($_POST['all'] == 'n'){ $data['appid'] = $this->appid; }else{ $data['appid'] = NULL; }
     let appid_value: Option<i64> = if edit_req.all == "n" {
         Some(appid as i64)
     } else {
@@ -486,7 +480,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(_) => {
-            // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
+            // 记录日志
             let time = chrono::Utc::now().timestamp();
             let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
@@ -520,7 +514,7 @@ struct DelRequest {
     id: u64,
 }
 
-/// 删除 - PHP: del()
+/// 删除
 #[handler]
 pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -539,7 +533,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 参数验证 - PHP: id => ['int','1,11','删除ID有误']
+    // 参数验证
     if del_req.id < 1 {
         res.render(Json(ApiResponse::<()>::error("删除ID有误", 201)));
         return;
@@ -566,7 +560,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 执行删除 - PHP: $this->db->where('id = ?',[$_POST['id']])->delete()
+    // 执行删除
     let result = sqlx::query("DELETE FROM u_app_blocklist WHERE id = ?")
         .bind(del_req.id as i64)
         .execute(app_state.get_db())
@@ -574,7 +568,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(r) => {
-            // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
+            // 记录日志
             let time = chrono::Utc::now().timestamp();
             let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
@@ -612,7 +606,7 @@ struct DelAllRequest {
     ids: Vec<u64>,
 }
 
-/// 批量删除 - PHP: delall()
+/// 批量删除
 #[handler]
 pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let app_state = match depot.obtain::<Arc<AppState>>() {
@@ -631,7 +625,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 参数验证 - PHP: ids => ['isArr','','删除选中ID有误']
+    // 参数验证
     if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.contains(&0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
@@ -658,7 +652,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    // 构建IN查询 - PHP: $placeholders = implode(',', array_fill(0,count($_POST['ids']), '?'))
+    // 构建IN查询
     let placeholders: String = del_req
         .ids
         .iter()
@@ -676,7 +670,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match result {
         Ok(r) => {
-            // 记录日志 - PHP: $this->log->u('adm',$this->adminfo['id'])->add($res)
+            // 记录日志
             let time = chrono::Utc::now().timestamp();
             let ip = get_client_ip(req).to_string();
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {

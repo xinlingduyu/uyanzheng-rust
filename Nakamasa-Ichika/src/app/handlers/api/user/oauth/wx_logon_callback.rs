@@ -130,7 +130,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $checkRules = ['code' => ['wordnum','32,32','CODE参数不规范'], 'state' => ['wordnum','32,32','状态标识参数不规范']];
     let code = match req.query::<String>("code") {
         Some(c) if c.len() >= 10 && c.len() <= 64 => c,
         _ => {
@@ -156,7 +155,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $wxlogonInfo = $this->redis->get('wxlogon_info_'.$_GET['state']);
     let info_key = format!("wxlogon_info_{}", state);
     let info_str = match redis_util.get(redis_pool, &info_key).await {
         Ok(Some(s)) => s,
@@ -170,7 +168,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: $logon_info = json_decode($wxlogonInfo,true);
     let logon_info: WxLogonInfo = match serde_json::from_str(&info_str) {
         Ok(info) => info,
         Err(_) => {
@@ -189,7 +186,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // PHP: $url='https://api.weixin.qq.com/sns/oauth2/access_token?appid='.$logon_info['wxConfig']['appID'].'&secret={}&code={}&grant_type=authorization_code';
     let token_url = format!(
         "https://api.weixin.qq.com/sns/oauth2/access_token?appid={}&secret={}&code={}&grant_type=authorization_code",
         app_id, app_secret, code
@@ -220,7 +216,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         }
     };
 
-    // PHP: if(!$arr || !isset($arr['access_token'])){ $this->views['msg'] = isset($arr['errmsg'])?$arr['errmsg']:'未知错误'; }
     let access_token = match token_result.access_token {
         Some(token) => token,
         None => {
@@ -234,7 +229,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
 
     let openid = token_result.openid.unwrap_or_default();
 
-    // PHP: $url='https://api.weixin.qq.com/sns/userinfo?access_token={}&openid='.$arr['openid'].'&lang=zh_CN';
     let user_info_url = format!(
         "https://api.weixin.qq.com/sns/userinfo?access_token={}&openid={}&lang=zh_CN",
         access_token, openid
@@ -269,7 +263,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     let wx_nickname = wx_info.nickname.unwrap_or_else(|| "微信用户".to_string());
     let wx_headimgurl = wx_info.headimgurl.unwrap_or_default();
 
-    // PHP: $this->__logon($_GET['state'],$logon_info,$wx_info);
     let result = __logon(
         app_state,
         &state,
@@ -285,7 +278,6 @@ pub async fn wx_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
     res.render(render_result_page(result.0, result.1, &result.2));
 }
 
-/// PHP: __logon方法 - 登录或注册
 async fn __logon(
     app_state: &Arc<AppState>,
     uuid: &str,
@@ -299,7 +291,6 @@ async fn __logon(
     let current_time = Utc::now().timestamp();
     let appid = logon_info.appid;
 
-    // PHP: $Ures = $this->db->where('open_wx = ? and appid = ?', [$wx_info['openid'],$logon_info['appid']])->fetch('id');
     let existing_user =
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE open_wx = ? AND appid = ?")
             .bind(wx_openid)
@@ -309,7 +300,6 @@ async fn __logon(
 
     match existing_user {
         Ok(Some((uid,))) => {
-            // PHP: 已有用户，直接登录
             let logon_key = format!("logon_{}", uuid);
             if let Err(e) = redis_util
                 .setex(redis_pool, &logon_key, 600, &uid.to_string())
@@ -318,7 +308,6 @@ async fn __logon(
                 }            ("登录成功", 2, "登录成功".to_string())
         }
         Ok(None) => {
-            // PHP: 新用户注册
             // 查询应用配置
             let app_result = sqlx::query_as::<_, (Option<String>, i64, Option<String>, Option<String>, i64, i64)>(
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
@@ -346,18 +335,15 @@ async fn __logon(
             let inviter_award_val = app_cfg.4;
             let invitee_award_val = app_cfg.5;
 
-            // PHP: $pwd = rand(100000,999999);
             let pwd: i32 = rand::thread_rng().r#gen_range(100000..999999);
             let password = {
                 let pwd_str = pwd.to_string();
                 md5_to_str(&md5_hex(pwd_str.as_bytes())).to_string()
             };
 
-            // PHP: $regData = ['open_wx'=>$wx_info['openid'],'password'=>md5($pwd),'nickname'=>$wx_info['nickname'],'avatars'=>$wx_info['headimgurl'],'vip'=>0,'fen'=>0,'reg_time'=>time(),'reg_ip'=>'127.0.0.1','reg_sn'=>$logon_info['udid'],'appid'=>$logon_info['appid']];
             let mut reg_vip: i64 = 0;
             let mut reg_fen: i64 = 0;
 
-            // PHP: if($app['reg_award_val'] > 0){...}
             if reg_award_val > 0 {
                 if reg_award == "vip" {
                     reg_vip = current_time + reg_award_val;
@@ -366,7 +352,6 @@ async fn __logon(
                 }
             }
 
-            // PHP: 邀请人奖励
             let mut inviter_id_val: Option<i64> = None;
             if let Some(inv_id) = logon_info.invid {
                 // 查询邀请人是否存在
@@ -381,7 +366,6 @@ async fn __logon(
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
                     inviter_id_val = Some(inv_id);
 
-                    // PHP: 邀请人奖励
                     if inviter_award_val > 0 {
                         if inviter_award == "vip" {
                             let new_vip = if inv_vip.unwrap_or(0) > current_time {
@@ -403,7 +387,6 @@ async fn __logon(
                         }
                     }
 
-                    // PHP: 受邀者奖励
                     if invitee_award_val > 0 {
                         if invitee_award == "vip" {
                             reg_vip = current_time + invitee_award_val;

@@ -66,7 +66,6 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $checkRules = ['invid' => ['int','1,11','邀请人ID填写有误',true], 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']];
     let mut validator = Validator::new();
     validator.reg("udid", &qq_req.udid, "[a-zA-Z0-9_-]+");
 
@@ -75,13 +74,11 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
-    // PHP: if(empty($this->app['logon_qqopen_config']))$this->out->e(201,'QQ登录未配置');
     let qq_config_str = match &app_info.logon_open_qqconfig {
         Some(config) => config,
         None => {
@@ -90,7 +87,6 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $qqConf = json_decode($this->app['logon_qqopen_config'],true);
     let qq_config: serde_json::Value = match serde_json::from_str(qq_config_str) {
         Ok(json) => json,
         Err(_) => {
@@ -99,7 +95,6 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: if(!$qqConf || !isset($qqConf['appID']) || !isset($qqConf['state']) || !isset($qqConf['appKey']))$this->out->e(201,'微信登录配置有误');
     let app_id = qq_config
         .get("appID")
         .and_then(|v| v.as_str())
@@ -113,19 +108,16 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // PHP: if($qqConf['state'] != 'on')$this->out->e(201,'QQ登录未开启');
     if state_config != "on" {
         render_error(res, "QQ登录未开启", 201, app_key);
         return;
     }
 
-    // PHP: if(empty($qqConf['appID']))$this->out->e(201,'QQ登录appID未配置');
     if app_id.is_empty() {
         render_error(res, "QQ登录appID未配置", 201, app_key);
         return;
     }
 
-    // PHP: if(empty($qqConf['appKey']))$this->out->e(201,'QQ登录appKey未配置');
     if app_key_qq.is_empty() {
         render_error(res, "QQ登录appKey未配置", 201, app_key);
         return;
@@ -135,14 +127,12 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let app_url = app_state.config().app().host().to_string();
     let current_time = Utc::now().timestamp();
 
-    // PHP: $state = md5(uniqid(rand(),TRUE));
     let random_num: u64 = rand::thread_rng().r#gen();
     let state = md5_concat_ints(current_time, random_num as i64, appid as i64);
 
     // 获取客户端IP
     let client_ip = get_client_ip(req);
 
-    // PHP: $data = ['appid'=>$this->app['id'],'udid'=>$_POST['udid'],'ip'=>$this->ip,'invid'=>isset($_POST['invid']) && !empty($_POST['invid'])?$_POST['invid']:null];
     let qqlogon_info = QqLogonInfo {
         appid,
         udid: qq_req.udid.clone(),
@@ -151,7 +141,6 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         create_time: current_time,
     };
 
-    // PHP: $this->redis->setex('qqlogon_info_'.$state,600,json_encode($data));
     let redis_key = format!("qqlogon_info_{}", state);
     let redis_util = &app_state.redis_util;
     let redis_pool = match app_state.redis_pool.as_ref() {
@@ -179,17 +168,14 @@ pub async fn qq_login_web(req: &mut Request, depot: &mut Depot, res: &mut Respon
         return;
     }
 
-    // PHP: $callback = urlencode(getUrl().'/api/user/qqlogon/callback');
     let callback_url = format!("{}/api/user/qqlogonCallback", app_url);
     let encoded_callback = encode(&callback_url);
 
-    // PHP: $url = "https://graph.qq.com/oauth2.0/authorize?response_type=code&client_id=".$qqConf['appID']."&redirect_uri={$callback}&state={$state}";
     let qq_url = format!(
         "https://graph.qq.com/oauth2.0/authorize?response_type=code&client_id={}&redirect_uri={}&state={}",
         app_id, encoded_callback, state
     );
 
-    // PHP: $this->out->setData(['url'=>$url,'uuid'=>$state])->e(200,'获取成功');
     render_success(
         res,
         app_key,

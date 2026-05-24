@@ -54,9 +54,6 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'email' => ['email','','邮箱账号有误']
-    // PHP: 'code'  => ['int','4,6','验证码填写有误']
     let mut validator = Validator::new();
     validator
         .wordnum("token", &set_req.token, 32, 32)
@@ -82,19 +79,14 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $dtime = time() - (60*$this->app['vc_time']);
     let dtime = current_time - (vc_time * 60) as i64;
 
-    // PHP: if(!empty($this->user['email']))$this->out->e(124);
     // 检查用户是否已绑定邮箱
     if user_info.email.is_some() && !user_info.email.as_ref().unwrap().is_empty() {
         render_error(res, "已绑定邮箱", 124, app_key);
         return;
     }
 
-    // PHP: $vcDB = db('vcode');
-    // PHP: $res_code = $vcDB->where('eorp = ? and code = ? and type = ? and usable = ? and time > ? and appid = ?', [$_POST['email'],$_POST['code'],'ubind','y',$dtime,$this->app['id']])->update(['usable'=>'n']);
-    // PHP: if(!$res_code || $vcDB->rowCount() < 1)$this->out->e(119);
     // 验证验证码并标记为已使用
     let verify_result = sqlx::query(
         "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
@@ -121,8 +113,6 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     }
 
-    // PHP: $emailRes = $this->db->where('email = ? and appid = ?',[$_POST['email'],$this->app['id']])->fetch('id');
-    // PHP: if($emailRes)$this->out->e(120,'该邮箱已被绑定');
     // 检查邮箱是否已被其他用户绑定
     let email_check =
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE email = ? AND appid = ?")
@@ -136,7 +126,6 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         return;
     }
 
-    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['email'=>$_POST['email']]);
     // 更新邮箱
     let result = sqlx::query("UPDATE u_user SET email = ? WHERE id = ? AND appid = ?")
         .bind(&set_req.email)
@@ -148,7 +137,6 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -163,10 +151,8 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->out->e(200,"绑定成功");
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
-                // PHP: if(!$res)$this->out->e(201,"绑定失败");
                 render_error(res, "绑定失败", 201, app_key);
             }
         }

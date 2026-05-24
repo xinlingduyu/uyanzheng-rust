@@ -13,7 +13,7 @@ use sqlx::Row;
 use std::sync::Arc;
 
 use crate::app::plugins::pay::{
-    AliPayPlugin, JiePayPlugin, NotifyVerifyResult, PayPlugin, WxPayPlugin,
+    AliPayPlugin, JiePayPlugin, NotifyVerifyResult, PayPalPayPlugin, PayPlugin, QqPayPlugin, WxPayPlugin,
 };
 use crate::core::AppState;
 use crate::core::regex_cache::{XML_CDATA_REGEX, XML_PLAIN_REGEX};
@@ -24,6 +24,8 @@ fn create_plugin(pay_type: &str, config: &serde_json::Value) -> Result<Box<dyn P
         "jie" => Box::new(JiePayPlugin::new()),
         "ali" => Box::new(AliPayPlugin::new()),
         "wx" => Box::new(WxPayPlugin::new()),
+        "qq" => Box::new(QqPayPlugin::new()),
+        "paypal" => Box::new(PayPalPayPlugin::new()),
         _ => return Err(format!("不支持的支付类型: {}", pay_type)),
     };
     plugin.init(config.clone())?;
@@ -448,6 +450,34 @@ pub async fn wx_notify(req: &mut Request, depot: &mut Depot, res: &mut Response)
         "wx",
         "SELECT app_type, pay_wx_type, pay_wx_config FROM u_app WHERE id = ?",
         "wx",
+    )
+    .await;
+}
+
+/// QQ 钱包异步通知
+#[handler]
+pub async fn qq_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    handle_notify_inner(
+        req,
+        depot,
+        res,
+        "qq",
+        "SELECT app_type, pay_qq_type, pay_qq_config FROM u_app WHERE id = ?",
+        "qq",
+    )
+    .await;
+}
+
+/// PayPal 异步通知
+#[handler]
+pub async fn paypal_notify(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    handle_notify_inner(
+        req,
+        depot,
+        res,
+        "paypal",
+        "SELECT app_type, pay_paypal_type, pay_paypal_config FROM u_app WHERE id = ?",
+        "paypal",
     )
     .await;
 }

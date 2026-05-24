@@ -206,7 +206,6 @@ async fn fetch_extend(pool: &sqlx::MySqlPool, appid: u64) -> Option<serde_json::
         app_exten.entry(var_key).or_default().push(var_val);
     }
 
-    // 构建extend - PHP逻辑：多个值保持数组，单个值提取值
     let mut extend = serde_json::Map::new();
     for (k, v) in app_exten {
         if v.len() > 1 {

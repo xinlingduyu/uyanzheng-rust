@@ -1,5 +1,4 @@
 //! 用户认证中间件
-//! 一比一还原PHP base/user.php 的 __init, __dataCheck, __TokenCheck 方法
 
 use super::app_context::AppInfo;
 use crate::app::plugins::encryption::{self, EncryptionConfig, arr_sign, txt_to_arr};
@@ -32,7 +31,6 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 }
 
 /// 用户信息（从Token中解析）
-/// 一比一还原PHP的$this->user结构
 #[derive(Debug, Clone, Serialize)]
 pub struct UserInfo {
     pub uid: u64,
@@ -65,7 +63,6 @@ pub struct UserInfo {
 }
 
 /// Token数据（存储在Redis中）
-/// 一比一还原PHP的token存储结构
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TokenData {
     pub uid: u64,
@@ -77,7 +74,6 @@ pub struct TokenData {
 }
 
 /// 用户认证中间件
-/// 一比一还原PHP的 __init, __dataCheck, tokenCheck 逻辑
 pub struct UserAuth {
     /// 是否检查token
     pub check_token: bool,
@@ -167,7 +163,6 @@ impl Handler for UserAuth {
 
         depot.insert("client_ip", client_ip);
 
-        // PHP: if($this->app['logon_state'] == 'off')$this->out->e(103,$this->app['logon_off_msg']);
         if self.check_logon_state && logon_state == "off" {
             let msg = logon_off_msg.unwrap_or_else(|| "登录功能已关闭".to_string());
             res.render(Json(ApiResponse::<()>::error(msg, 103)));
@@ -261,7 +256,6 @@ impl UserAuth {
     }
 
     /// 数据校验（加密解密）
-    /// 一比一还原 PHP 的 __dataCheck 方法
     async fn data_check_internal(
         &self,
         req: &mut Request,
@@ -320,7 +314,6 @@ impl UserAuth {
             }
         };
 
-        // PHP: if(isset($this->app['mi']) && !empty($this->app['mi'])){...}
         let encryption_info = match &app_info.mi {
             Some(mi) => mi,
             None => {
@@ -329,7 +322,6 @@ impl UserAuth {
             }
         };
 
-        // PHP: if(!isset($_POST['data']) || empty($_POST['data']))$this->out->e(111);
         // 使用零拷贝提取
         let encrypted_data = match FastJson::extract_string(&body_data, "data") {
             Some(Cow::Borrowed(s)) if !s.is_empty() => s.to_owned(),
@@ -362,7 +354,6 @@ impl UserAuth {
             return None;
         }
 
-        // PHP: $_POST = array_merge($_POST, $encryption->txtArr($dedata));
         let mut post_params = txt_to_arr(&decrypted_data);
 
         // 添加原始POST参数（除了data和sign）- 优化遍历
@@ -429,7 +420,6 @@ impl UserAuth {
     }
 
     /// Token 检查
-    /// 一比一还原 PHP 的 __TokenCheck 方法
     /// 优化：添加 L1 缓存减少 Redis 查询
     #[allow(clippy::too_many_arguments)]
     async fn token_check_internal(
@@ -572,7 +562,6 @@ impl UserAuth {
             }
         };
 
-        // PHP: if(!isset($tokenParam['uid']) || !isset($tokenParam['udid']) || !isset($tokenParam['appid']) || !array_key_exists('p',$tokenParam))$this->out->e(128);
         if token_data.appid != app_id {
             res.render(Json(ApiResponse::<()>::error_static("Token无效", 128)));
             ctrl.skip_rest();
@@ -604,7 +593,6 @@ impl UserAuth {
                 }
             };
 
-        // PHP: if($Ures['ban'] > time())$this->out->e(127,$Ures['ban_msg']);
         if let Some(ban_time) = user_info.ban
             && ban_time > current_time
         {
@@ -617,7 +605,6 @@ impl UserAuth {
             return None;
         }
 
-        // PHP: if($Ures['password'] != $tokenParam['p'])$this->out->e(131);
         // 使用常量时间比较防止时序攻击
         let password_valid = if user_type == "kami" {
             user_info.password.is_empty() || constant_time_eq(&user_info.password, &token_data.p)
@@ -669,7 +656,6 @@ impl UserAuth {
 // ============================================================================
 
 /// 保存Token到Redis
-/// PHP: __setToken($token, $data)
 pub async fn set_token(
     redis_util: &crate::core::RedisUtil,
     redis_pool: &deadpool_redis::Pool,
@@ -681,7 +667,6 @@ pub async fn set_token(
     let token_key = format!("{}{}", token_pre, token);
     let data_json = serde_json::to_string(token_data).map_err(|e| format!("序列化失败: {}", e))?;
 
-    // PHP: $this->redis->setex($this->tokenPre.$token,$this->app['logon_token_exp'],json_encode($data));
     // 优化：并行设置 token 和 online 状态
     let udid_md5_bytes = md5_hex(token_data.udid.as_bytes());
     let udid_md5 = md5_to_str(&udid_md5_bytes);

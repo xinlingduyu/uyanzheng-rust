@@ -41,7 +41,6 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &vip_req.token, 32, 32);
 
@@ -62,11 +61,6 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let user_type = user_info.user_type.as_str();
     let current_time = Utc::now().timestamp();
 
-    // PHP: if($this->app['app_type'] == 'user'){
-    // PHP:     if($this->user['vip'] < time())$this->out->e(201,'验证失败');
-    // PHP: }else{
-    // PHP:     if($this->user['vip_exp'] < time())$this->out->e(201,'验证失败');
-    // PHP: }
     // 根据用户类型检查不同的VIP字段
     if user_type == "user" {
         // 普通用户检查vip字段
@@ -76,7 +70,6 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
             return;
         }
     } else if user_type == "kami" {
-        // 卡密用户检查vip_exp字段 - 一比一还原PHP
         let vip_exp_time = user_info.vip_exp.unwrap_or(0);
         if vip_exp_time < current_time {
             render_error(res, "验证失败", 201, app_key);
@@ -87,6 +80,5 @@ pub async fn check_vip(req: &mut Request, depot: &mut Depot, res: &mut Response)
         return;
     }
 
-    // PHP: $this->out->e(200,'验证成功');
     render_success_with_msg(res, "验证成功", app_key);
 }

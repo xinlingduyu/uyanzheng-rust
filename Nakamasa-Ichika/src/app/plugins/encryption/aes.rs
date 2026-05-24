@@ -1,5 +1,4 @@
 //! AES 加解密实现
-//! 一比一还原 PHP Ue/tools/encryption/aes/aes.php
 //! 使用 AES-128-CBC 模式, hex 编码
 
 use super::Encryption;
@@ -44,7 +43,6 @@ impl AesEncryption {
 
 impl Encryption for AesEncryption {
     /// 加密
-    /// PHP: openssl_encrypt($data, 'AES-128-CBC', $key, OPENSSL_RAW_DATA, $iv)
     /// 返回: hex 编码的密文
     fn encode(&self, data: &str) -> Result<String, String> {
         let key = aes::cipher::generic_array::GenericArray::from(self.key);
@@ -59,12 +57,10 @@ impl Encryption for AesEncryption {
             .len();
         buf.truncate(ct_len);
 
-        // PHP 使用 bin2hex, 所以返回 hex 编码
         Ok(hex::encode(&buf))
     }
 
     /// 解密
-    /// PHP: openssl_decrypt(hex2bin($data), 'AES-128-CBC', $key, OPENSSL_RAW_DATA, $iv)
     /// 输入: hex 编码的密文
     fn decode(&self, data: &str) -> Result<String, String> {
         // hex 解码
@@ -101,8 +97,6 @@ mod tests {
 
     #[test]
     fn test_aes_compatibility_with_php() {
-        // 测试与 PHP 的兼容性
-        // PHP 密钥和 IV 必须与测试一致
         let aes = AesEncryption::new("testkey123456789", "testiv1234567890");
 
         let plaintext = "测试数据test";

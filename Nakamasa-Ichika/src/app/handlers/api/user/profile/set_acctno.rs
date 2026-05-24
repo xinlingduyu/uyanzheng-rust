@@ -53,8 +53,6 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'acctno' => ['wordnum','5,12','自定义账号有误，必须以字母开头5~12位']
     let mut validator = Validator::new();
     validator
         .wordnum("token", &set_req.token, 32, 32)
@@ -65,7 +63,6 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     // 只支持用户版应用
     if app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
@@ -86,15 +83,12 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: if(!empty($this->user['acctno']))$this->out->e(123);
     // 检查用户是否已设置账号
     if user_info.acctno.is_some() && !user_info.acctno.as_ref().unwrap().is_empty() {
         render_error(res, "已设置账号", 123, app_key);
         return;
     }
 
-    // PHP: $Anores = $this->db->where('(phone = ? or acctno = ?) and appid = ?',[$_POST['acctno'],$_POST['acctno'],$this->app['id']])->fetch('id');
-    // PHP: if($Anores)$this->out->e(120);
     // 检查账号是否已被使用（同时检查手机号）
     let acctno_check = sqlx::query_as::<_, (i64,)>(
         "SELECT id FROM u_user WHERE (phone = ? OR acctno = ?) AND appid = ?",
@@ -110,7 +104,6 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
         return;
     }
 
-    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['acctno'=>$_POST['acctno']]);
     // 更新账号
     let result = sqlx::query("UPDATE u_user SET acctno = ? WHERE id = ? AND appid = ?")
         .bind(&set_req.acctno)
@@ -122,7 +115,6 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -137,10 +129,8 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->out->e(200,"设置成功");
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
-                // PHP: if(!$res)$this->out->e(201,"设置失败");
                 render_error(res, "设置失败", 201, app_key);
             }
         }

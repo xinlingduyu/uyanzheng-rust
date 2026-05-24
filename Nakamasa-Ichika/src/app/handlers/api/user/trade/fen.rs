@@ -122,9 +122,6 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
-    // PHP: 'fenid' => ['int','1,11','积分事件ID有误']
-    // PHP: 'fenmark'=> ['string','1,128','积分事件标记有误',true]
     let mut validator = Validator::new();
     validator.wordnum("token", &fen_req.token, 32, 32);
     validator.int_u64("fenid", fen_req.fenid, 1, 99_999_999_999);
@@ -155,8 +152,6 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
     let current_time = chrono::Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $fenRes = db('fen_event')->where('id = ? and appid = ?',[$_POST['fenid'],$this->app['id']])->fetch();
-    // PHP: if(!$fenRes)$this->out->e(146);
     // 获取积分事件（使用高性能缓存）
     let fen_event = match get_fen_event(app_state, fen_req.fenid, appid).await {
         Some(event) => event,
@@ -166,14 +161,12 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: 检查积分事件状态
+    // 检查积分事件状态
     if fen_event.state != "on" {
         render_error(res, "积分事件已关闭", 201, app_key);
         return;
     }
 
-    // PHP: $method = '__'.$this->app['app_type'];
-    // PHP: $this->$method();
     if user_type == "user" {
         // 普通用户积分验证
         handle_user_fen_verify(
@@ -208,7 +201,6 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
 }
 
 /// 处理普通用户积分验证
-/// 一比一还原PHP的__user方法
 #[allow(clippy::too_many_arguments)]
 async fn handle_user_fen_verify(
     app_state: &Arc<AppState>,
@@ -226,24 +218,14 @@ async fn handle_user_fen_verify(
     let user_vip = user_info.vip.unwrap_or(0);
     let user_fen = user_info.fen;
 
-    // PHP: if($fenRes['vip_free'] == 'y'){
-    //     if($this->user['vip'] > time()){
-    //         $this->out->e(200,'验证成功');
-    //     }
-    // }
     // VIP免费检查
     if fen_event.vip_free == "y" && user_vip > current_time {
         render_success_with_msg(res, "验证成功", app_key);
         return;
     }
 
-    // PHP: $foData = ['fid'=>$_POST['fenid'],'uid'=>$this->user['id'],'name'=>$fenRes['name'],'fen'=>$fenRes['fen'],'vip'=>$fenRes['vip'],'time'=>time(),'appid'=>$this->app['id']];
     let fo_mark = fen_req.fenmark.as_ref().filter(|m| !m.is_empty());
 
-    // PHP: if($fenRes['vip'] > 0){
-    //     if($this->user['vip'] >= 9999999999)$this->out->e(199);
-    //     ...
-    // }
     if fen_event.vip > 0 {
         // 永久VIP不能兑换
         if user_vip >= 9_999_999_999 {
@@ -272,15 +254,12 @@ async fn handle_user_fen_verify(
         }
     }
 
-    // PHP: if($this->user['fen'] < $fenRes['fen'])$this->out->e(201,'积分余额不足');
     // 检查积分余额
     if user_fen < fen_event.fen {
         render_error(res, "积分余额不足", 201, app_key);
         return;
     }
 
-    // PHP: $addRes = db('fen_order')->add($foData);
-    // PHP: if(!$addRes)$this->out->e(201,'验证失败，请重试');
     // 创建订单
     let insert_result = sqlx::query(
         "INSERT INTO u_fen_order (fid, uid, name, fen, vip, time, appid, mark) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -301,15 +280,6 @@ async fn handle_user_fen_verify(
         return;
     }
 
-    // PHP: if($fenRes['vip'] > 0){
-    //     if($this->user['vip'] > time()){
-    //         $res = $this->db->where(...)->update(['fen'=>...,'vip'=>...]);
-    //     }else{
-    //         $res = $this->db->where(...)->update(['fen'=>...,'vip'=>(time()+$fenRes['vip'])]);
-    //     }
-    // }else{
-    //     $res = $this->db->where(...)->field(['fen'=>-$fenRes['fen']]);
-    // }
     // 更新用户积分/VIP
     let update_result = if fen_event.vip > 0 {
         let new_vip = if user_vip > current_time {
@@ -359,7 +329,6 @@ async fn handle_user_fen_verify(
 }
 
 /// 处理卡密用户积分验证
-/// 一比一还原PHP的__kami方法
 #[allow(clippy::too_many_arguments)]
 async fn handle_kami_fen_verify(
     app_state: &Arc<AppState>,
@@ -376,21 +345,14 @@ async fn handle_kami_fen_verify(
     let appid = user_info.appid;
     let user_val = user_info.val.unwrap_or(0);
 
-    // PHP: if($this->user['type'] != 'fen')$this->out->e(201,'非积分卡不可操作');
     // 只支持积分卡
     if user_info.kami_type.as_deref() != Some("fen") {
         render_error(res, "非积分卡不可操作", 201, app_key);
         return;
     }
 
-    // PHP: $foData = [...];
     let fo_mark = fen_req.fenmark.as_ref().filter(|m| !m.is_empty());
 
-    // PHP: if(isset($_POST['fenmark']) && !empty($_POST['fenmark'])){
-    //     $fenO = db('fen_order')->where(...)->fetch();
-    //     if($fenO)$this->out->e(200,'验证成功');
-    //     $foData['mark'] = $_POST['fenmark'];
-    // }
     if let Some(mark) = fo_mark {
         let exists =
             check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
@@ -400,15 +362,12 @@ async fn handle_kami_fen_verify(
         }
     }
 
-    // PHP: if($this->user['val'] < $fenRes['fen'])$this->out->e(201,'积分余额不足');
     // 检查积分余额
     if user_val < fen_event.fen {
         render_error(res, "积分余额不足", 201, app_key);
         return;
     }
 
-    // PHP: $addRes = db('fen_order')->add($foData);
-    // PHP: if(!$addRes)$this->out->e(201,'验证失败，请重试');
     // 创建订单
     let insert_result = sqlx::query(
         "INSERT INTO u_fen_order (fid, uid, name, fen, vip, time, appid, mark) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -429,7 +388,6 @@ async fn handle_kami_fen_verify(
         return;
     }
 
-    // PHP: $res = $this->db->where('id = ? and appid = ?',[$this->user['id'],$this->app['id']])->field(['val'=>-$fenRes['fen']]);
     // 更新卡密积分
     let update_result =
         sqlx::query("UPDATE u_cdk_kami SET val = val - ? WHERE id = ? AND appid = ?")

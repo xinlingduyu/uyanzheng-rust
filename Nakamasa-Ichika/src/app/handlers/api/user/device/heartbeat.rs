@@ -32,7 +32,6 @@ struct HeartbeatRequest {
 
 /// 心跳接口处理器
 ///
-/// PHP原始逻辑:
 /// 1. 验证token参数（32位字母数字）
 /// 2. 检查logon_state是否为off
 /// 3. 从Redis获取token数据
@@ -70,7 +69,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误']
     // 验证token参数：32位字母数字
     {
         let mut validator = Validator::new();
@@ -82,7 +80,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     }
     let token = heartbeat_req.token;
 
-    // PHP: if($this->app['logon_state'] == 'off')$this->out->e(103,$this->app['logon_off_msg']);
     // 检查登录状态
     if app_info.logon_state == "off" {
         let msg = app_info
@@ -102,7 +99,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: $this->tokenPre = $this->appConfig['USER_TOKEN_PRE'].$this->app['app_type'].'_'.$this->app['id'].'_';
     // token前缀格式: {app_type}_{appid}_（预分配容量）
     let mut token_pre = String::with_capacity(16);
     let _ = write!(&mut token_pre, "{}_{}_", app_type, appid);
@@ -111,9 +107,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let mut token_key = String::with_capacity(48);
     let _ = write!(&mut token_key, "{}{}", token_pre, token);
 
-    // PHP: $this->redis->select(1);
-    // PHP: $token = $this->redis->get($this->tokenPre.$_POST['token']);
-    // PHP: if(!$token)$this->out->e(128);
     let token_str = match redis_util.get(redis_pool, &token_key).await {
         Ok(Some(data)) => data,
         Ok(None) => {
@@ -136,7 +129,6 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: $res = $this->__setToken($_POST['token'],json_decode($token,true));
     // 延长token过期时间
     let token_exp = app_info.logon_token_exp as u64;
     let set_result = set_token(
@@ -145,19 +137,15 @@ pub async fn heartbeat(req: &mut Request, depot: &mut Depot, res: &mut Response)
     .await;
 
     if !set_result {
-        // PHP: if(!$res)$this->out->e(201,'心跳失败，token记录失败');
         render_error(res, "心跳失败，token记录失败", 201, app_key);
         return;
     }
 
-    // PHP: $this->out->e(200);
     // API文档要求返回code=1000表示成功，无data字段
     render_success_msg(res, app_key);
 }
 
-/// 保存token - 一比一还原PHP的__setToken方法
 ///
-/// PHP原始代码:
 /// ```php
 /// protected function __setToken($token,$data){
 ///     $this->redis->select(1);
@@ -190,7 +178,6 @@ async fn set_token(
         None => return false,
     };
 
-    // PHP: $res = $this->redis->setex($this->tokenPre.$token,$this->app['logon_token_exp'],json_encode($data));
     let mut token_key = String::with_capacity(48);
     let _ = write!(&mut token_key, "{}{}", token_pre, token);
 
@@ -202,7 +189,6 @@ async fn set_token(
         return false;
     }
 
-    // PHP: $this->redis->setex($this->tokenPre."online_{$data['uid']}_".md5($data['udid']),$this->app['logon_token_exp'],$token);
     // 使用优化的MD5计算
     let udid_hash_bytes = md5_hex(udid.as_bytes());
     let udid_hash = md5_to_str(&udid_hash_bytes);

@@ -42,7 +42,6 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     let app_key = &app_info.app_key;
 
-    // 一比一还原PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;

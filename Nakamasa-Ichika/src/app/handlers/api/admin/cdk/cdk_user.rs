@@ -1,6 +1,5 @@
 //! Admin CDK User controller
 //! 管理员用户CDK控制器
-//! 对应 PHP controller\admin\cdkUser
 
 use chrono::Utc;
 use salvo::prelude::*;
@@ -633,7 +632,6 @@ fn build_insert_query(query: &str, values: &[String]) -> String {
     result
 }
 
-// 模拟PHP的 uniqid() 和 getcode() 组合生成卡密
 fn generate_kami_code(now: i64, length: usize) -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();

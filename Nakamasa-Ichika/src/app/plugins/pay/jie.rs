@@ -46,7 +46,6 @@ impl JiePayPlugin {
             .collect::<Vec<_>>()
             .join("&");
 
-        // URL解码（与PHP的urldecode(http_build_query())行为一致）
         let decoded = urlencoding::decode(&sign_str).unwrap_or_default();
 
         let empty_key = String::new();

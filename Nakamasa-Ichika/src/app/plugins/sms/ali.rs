@@ -1,5 +1,4 @@
 //! 阿里云短信插件
-//! 一比一还原PHP: Ue/tools/sms/ali/aliSms.php
 
 use super::trait_def::{SmsPlugin, SmsResult};
 use hmac::{Hmac, Mac};
@@ -24,8 +23,7 @@ impl AliSmsPlugin {
         }
     }
 
-    /// percentEncode - 一比一还原PHP
-    /// PHP: urlencode -> 替换 + => %20, * => %2A, %7E => ~
+    /// percentEncode
     fn percent_encode(string: &str) -> String {
         let encoded = urlencoding::encode(string);
         encoded
@@ -34,8 +32,7 @@ impl AliSmsPlugin {
             .replace("%7E", "~")
     }
 
-    /// computeSignature - 一比一还原PHP
-    /// PHP: ksort($parameters); 拼接 canonicalizedQueryString;
+    /// computeSignature
     ///      stringToSign = 'GET&%2F&' . percentEncode(substr($canonicalizedQueryString,1));
     ///      signature = base64_encode(hash_hmac('sha1', $stringToSign, $accessKeySecret . '&', true));
     fn compute_signature(&self, parameters: &std::collections::BTreeMap<&str, String>) -> String {
@@ -85,7 +82,7 @@ impl SmsPlugin for AliSmsPlugin {
         "ali"
     }
 
-    /// 配置表单 - 一比一还原PHP config.php
+    /// 配置表单
     fn config_form(&self) -> serde_json::Value {
         json!({
             "name": "阿里云短信",
@@ -141,7 +138,7 @@ impl SmsPlugin for AliSmsPlugin {
         Ok(())
     }
 
-    /// 发送短信 - 一比一还原PHP
+    /// 发送短信
     fn send(&self, mobile: &str, code: &str, time: i32) -> Result<SmsResult, String> {
         if self.access_key_id.is_none() || self.access_key_id.as_deref() == Some("") {
             return Err("accessKeyId未配置".to_string());
@@ -160,7 +157,7 @@ impl SmsPlugin for AliSmsPlugin {
         let sign_name = self.sign_name.as_ref().unwrap();
         let template_code = self.template_code.as_ref().unwrap();
 
-        // PHP: 构建参数
+        // 构建参数
         let mut params: std::collections::BTreeMap<&str, String> =
             std::collections::BTreeMap::new();
         params.insert("SignName", sign_name.clone());
@@ -189,7 +186,6 @@ impl SmsPlugin for AliSmsPlugin {
         let signature = self.compute_signature(&params);
         params.insert("Signature", signature);
 
-        // PHP: $url = 'http://dysmsapi.aliyuncs.com/?' . http_build_query($params);
         let query: String = params
             .iter()
             .map(|(k, v)| format!("{}={}", urlencoding::encode(k), urlencoding::encode(v)))
@@ -197,7 +193,7 @@ impl SmsPlugin for AliSmsPlugin {
             .join("&");
         let url = format!("http://dysmsapi.aliyuncs.com/?{}", query);
 
-        // 异步发送HTTP请求 - 一比一还原PHP curl
+        // 异步发送HTTP请求
 
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
@@ -212,7 +208,6 @@ impl SmsPlugin for AliSmsPlugin {
                             Ok(text) => {
                                 if let Ok(result) = serde_json::from_str::<serde_json::Value>(&text)
                                 {
-                                    // PHP: if (isset($result['Code']) && $result['Code'] != 'OK')
                                     if let Some(code) = result.get("Code").and_then(|v| v.as_str())
                                         && code != "OK"
                                     {
@@ -229,7 +224,6 @@ impl SmsPlugin for AliSmsPlugin {
                                                 .map(|s| s.to_string()),
                                         });
                                     }
-                                    // PHP: return ['code'=>200,'msg'=>'发送成功'];
                                     return Ok(SmsResult {
                                         success: true,
                                         message: "发送成功".to_string(),

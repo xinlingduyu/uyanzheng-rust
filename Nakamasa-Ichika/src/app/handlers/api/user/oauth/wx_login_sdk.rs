@@ -69,7 +69,6 @@ async fn get_logon_config(pool: &sqlx::MySqlPool, appid: u64) -> Option<LogonCon
     }
 }
 
-/// 生成类似PHP uniqid的唯一ID
 fn generate_uniqid() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -107,7 +106,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $checkRules = ['access_token' => ['wordnum','1,64',''], 'openid' => ['wordnum','1,64',''], 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']];
     let mut validator = Validator::new();
     validator
         .wordnum("access_token", &wx_req.access_token, 1, 128)
@@ -120,13 +118,11 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         return;
     }
 
-    // PHP: if($this->app['app_type'] != 'user')$this->out->e(115);
     if app_info.app_type != "user" {
         render_error(res, "当前应用不支持调用该接口", 115, app_key);
         return;
     }
 
-    // PHP: if(empty($this->app['logon_wxopen_config']))$this->out->e(201,'微信登录未配置');
     let wx_config_str = match &app_info.logon_open_wxconfig {
         Some(config) => config,
         None => {
@@ -135,7 +131,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: $wxConfig = json_decode($this->app['logon_wxopen_config'],true);
     let wx_config: serde_json::Value = match serde_json::from_str(wx_config_str) {
         Ok(json) => json,
         Err(_) => {
@@ -144,13 +139,11 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
         }
     };
 
-    // PHP: if(!$wxConfig || !isset($wxConfig['appID']) || !isset($wxConfig['state']) || !isset($wxConfig['appSecret']))$this->out->e(201,'微信登录配置有误');
     let state_config = wx_config
         .get("state")
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    // PHP: if($wxConfig['state'] != 'on')$this->out->e(201,'微信登录未开启');
     if state_config != "on" {
         render_error(res, "微信登录未开启", 201, app_key);
         return;
@@ -180,7 +173,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     }
 
     // 使用微信互联SDK返回的access_token获取用户信息
-    // PHP: $url='https://api.weixin.qq.com/sns/userinfo?access_token='.$arr['access_token'].'&openid='.$arr['openid'].'&lang=zh_CN';
     let user_info_url = format!(
         "https://api.weixin.qq.com/sns/userinfo?access_token={}&openid={}&lang=zh_CN",
         wx_req.access_token, wx_req.openid
@@ -234,7 +226,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let wx_nickname = wx_info.nickname.unwrap_or_else(|| "微信用户".to_string());
     let wx_headimgurl = wx_info.headimgurl.unwrap_or_default();
 
-    // PHP: 查询是否已有用户
     let existing_user = sqlx::query_as::<_, (u64, String, Option<i64>, Option<String>, Option<String>, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>, Option<String>, Option<String>)>(
         "SELECT id, acctno, phone, email, nickname, avatars, inviter_id, vip, fen, ban, sn_max, extend, ban_msg, open_wx, open_qq
          FROM u_user WHERE open_wx = ? AND appid = ?"
@@ -262,7 +253,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             open_wx,
             open_qq,
         ))) => {
-            // PHP: 已有用户，直接登录
             // 检查是否被禁用
             if let Some(ban_time) = ban
                 && ban_time > current_time
@@ -484,7 +474,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             render_success(res, app_key, Some(response), app_info.mi.as_ref());
         }
         Ok(None) => {
-            // PHP: 新用户注册
             // 查询应用配置
             let app_result = sqlx::query_as::<_, (Option<String>, i64, Option<String>, Option<String>, i64, i64)>(
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
@@ -513,15 +502,12 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let inviter_award_val = app_cfg.4;
             let invitee_award_val = app_cfg.5;
 
-            // PHP: $pwd = rand(100000,999999);
             let pwd: i32 = rand::thread_rng().r#gen_range(100000..999999);
             let password = md5_str_from_str(&pwd.to_string());
 
-            // PHP: $regData = ['open_wx'=>$wx_info['openid'],'password'=>md5($pwd),'nickname'=>$wx_info['nickname'],'avatars'=>$wx_info['headimgurl'],'vip'=>0,'fen'=>0,'reg_time'=>time(),'reg_ip'=>'127.0.0.1','reg_sn'=>$logon_info['udid'],'appid'=>$logon_info['appid']];
             let mut reg_vip: i64 = 0;
             let mut reg_fen: i64 = 0;
 
-            // PHP: if($app['reg_award_val'] > 0){...}
             if reg_award_val > 0 {
                 if reg_award == "vip" {
                     reg_vip = current_time + reg_award_val;
@@ -530,7 +516,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 }
             }
 
-            // PHP: 邀请人奖励
             let mut inviter_id_val: Option<i64> = None;
             if let Some(inv_id) = wx_req.invid {
                 // 查询邀请人是否存在
@@ -545,7 +530,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
                     inviter_id_val = Some(inv_id);
 
-                    // PHP: 邀请人奖励
                     if inviter_award_val > 0 {
                         if inviter_award == "vip" {
                             let new_vip = if inv_vip.unwrap_or(0) > current_time {
@@ -567,7 +551,6 @@ pub async fn wx_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         }
                     }
 
-                    // PHP: 受邀者奖励
                     if invitee_award_val > 0 {
                         if invitee_award == "vip" {
                             reg_vip = current_time + invitee_award_val;

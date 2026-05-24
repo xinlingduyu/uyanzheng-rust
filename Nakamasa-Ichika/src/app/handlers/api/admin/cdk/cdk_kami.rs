@@ -218,7 +218,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             count_query.push_str(condition);
         }
 
-        // 关键词 - 使用OR条件，与PHP一致
         if let Some(keyword) = so.keyword
             && !keyword.is_empty()
         {
@@ -526,7 +525,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 }
 
-// 模拟PHP的 uniqid() 和 getcode() 组合生成卡密
 // 使用栈上MD5优化
 fn generate_kami_code(now: i64, length: usize) -> String {
     use rand::Rng;

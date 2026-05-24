@@ -52,8 +52,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN有误'],
-    // PHP: 'udid' => ['reg','[a-zA-Z0-9_-]+','机器码有误']
     let mut validator = Validator::new();
     validator.wordnum("token", &bind_req.token, 32, 32).reg(
         "udid",
@@ -82,8 +80,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let current_time = chrono::Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $snList_Arr = json_decode($this->user['sn_list'],true);
-    // PHP: if(count($snList_Arr) >= $this->app['logon_sn_num']+$this->user['sn_max'])$this->out->e(172);
     let mut sn_list_arr: Vec<DeviceInfo> = user_info
         .sn_list
         .as_ref()
@@ -96,7 +92,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         return;
     }
 
-    // PHP: foreach ($snList_Arr as $rows){
     //     if($rows['udid'] == $_POST['udid']){$this->out->e(200,"绑定成功");}
     // }
     // 检查设备是否已绑定
@@ -105,8 +100,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         return;
     }
 
-    // PHP: $snList_Arr[] = ['udid'=>$_POST['udid'],'time'=>$rows['time']];
-    // 注意: PHP这里有个bug，使用了$rows['time']，但实际上应该是当前时间
     // 这里修复为使用当前时间
     sn_list_arr.push(DeviceInfo {
         udid: bind_req.udid,
@@ -121,7 +114,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         "u_user"
     };
 
-    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['sn_list'=>json_encode($snList_Arr)]);
     // 使用 format! 构建 SQL，因为表名不能参数化
     let sql = format!(
         "UPDATE {} SET sn_list = ? WHERE id = ? AND appid = ?",
@@ -136,7 +128,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     match result {
         Ok(r) if r.rows_affected() > 0 => {
-            // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
             // 记录日志
             let _ = sqlx::query(
                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",

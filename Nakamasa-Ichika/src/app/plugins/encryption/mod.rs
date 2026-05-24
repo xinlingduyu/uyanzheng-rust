@@ -1,5 +1,4 @@
 //! 加解密插件模块
-//! 一比一还原 PHP Ue/tools/encryption 功能
 //! 支持跨平台运行 (x86_64, aarch64, arm, etc.)
 
 pub mod aes;
@@ -166,7 +165,6 @@ pub fn create_encryption(config: &EncryptionConfig) -> Box<dyn Encryption> {
     }
 }
 
-/// 文本转数组 (模拟 PHP txtArr 方法)
 /// 输入: "key1=val1&key2=val2"
 /// 输出: HashMap {"key1": "val1", "key2": "val2"}
 /// 优化版：预计算容量，减少分配
@@ -189,9 +187,8 @@ pub fn txt_to_arr(txt: &str) -> HashMap<String, String> {
     result
 }
 
-/// 数组签名 (模拟 PHP arrSign 方法)
 /// 按键名排序后拼接，最后加上 key 进行 MD5
-/// 优化版：使用 String::with_capacity 预分配
+/// 使用 String::with_capacity 预分配
 pub fn arr_sign(arr: &HashMap<String, String>, key: &str) -> String {
     let mut sorted_keys: Vec<&String> = arr.keys().collect();
     sorted_keys.sort();

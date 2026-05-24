@@ -1,5 +1,4 @@
 //! Admin User controller
-//! 管理员用户控制器 - PHP逻辑一比一还原
 
 use chrono::Utc;
 use salvo::prelude::*;
@@ -201,7 +200,6 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     where_params_str.push(keyword_pattern.clone());
                 }
                 _ => {
-                    // 默认搜索所有字段 - PHP代码逻辑: (acctno LIKE ? or email LIKE ? or phone LIKE ? or nickname LIKE ?)
                     // 注意: phone是bigint类型，需要CAST
                     where_conditions.push("(acctno LIKE ? OR email LIKE ? OR CAST(phone AS CHAR) LIKE ? OR nickname LIKE ?)".to_string());
                     where_params_str.push(keyword_pattern.clone());

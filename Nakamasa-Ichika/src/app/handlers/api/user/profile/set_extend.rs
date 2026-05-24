@@ -53,9 +53,6 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
         }
     };
 
-    // PHP: 'token' => ['wordnum','32,32','TOKEN不规范'],
-    // PHP: 'key' => ['Reg','[a-zA-Z0-9_-]{2,12}','变量名不规范']
-    // PHP: 'value'  => ['String','1,128','变量值不规范',true]
     let mut validator = Validator::new();
     validator.wordnum("token", &set_req.token, 32, 32).reg(
         "key",
@@ -83,8 +80,6 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
 
-    // PHP: $extend = empty($this->user['extend'])?[]:json_decode($this->user['extend'],true);
-    // PHP: $extend[$_POST['key']] = empty($_POST['value'])?'':$_POST['value'];
     // 获取当前扩展信息并更新
     let mut extend_map = serde_json::Map::new();
 
@@ -96,12 +91,10 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
         extend_map = obj.clone();
     }
 
-    // 更新扩展信息 - 一比一还原PHP逻辑
     let value = set_req.value.as_deref().unwrap_or("");
     extend_map.insert(set_req.key.clone(), serde_json::json!(value));
     let extend_json = serde_json::to_string(&extend_map).unwrap_or_default();
 
-    // PHP: $res = $this->db->where('id = ?',[$this->user['id']])->update(['extend'=>json_encode($extend)]);
     // 更新数据库 - 根据用户类型选择表
     let result = if user_type == "kami" {
         sqlx::query("UPDATE u_cdk_kami SET extend = ? WHERE id = ? AND appid = ?")
@@ -122,7 +115,6 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
-                // PHP: $this->log->u($this->app['app_type'],$this->user['id'])->add($res);
                 // 记录日志
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -137,10 +129,8 @@ pub async fn set_extend(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .execute(app_state.get_db())
                 .await;
 
-                // PHP: $this->out->e(200,"编辑成功");
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {
-                // PHP: if(!$res)$this->out->e(201,"编辑失败");
                 render_error(res, "编辑失败", 201, app_key);
             }
         }
