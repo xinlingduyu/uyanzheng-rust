@@ -88,10 +88,8 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .and_then(|v| serde_json::from_value(v).ok())
         .unwrap_or_default();
 
-    //     if($rows['udid'] == $_POST['udid']){
     //         $find = true;
     //     }else{
-    //         $snList[] = ['udid'=>$rows['udid'],'time'=>$rows['time']];
     //     }
     // }
     let mut found = false;
@@ -110,7 +108,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    //     $snList[] = ['udid'=>$this->user['udid'],'time'=>time()];
     // }
     // 如果当前设备token_state为n且解绑后有空位，自动绑定当前设备
     let max_devices = (logon_sn_num + user_info.sn_max) as usize;
@@ -128,7 +125,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         "sn_list": sn_list_json
     });
 
-    //     if($this->app['logon_sn_unbdeType'] == 'vip'){
     //         ...VIP消耗逻辑
     //     }else{
     //         ...积分消耗逻辑
@@ -144,7 +140,6 @@ pub async fn re_udid(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     render_error(res, "VIP到期无法解绑", 170, app_key);
                     return;
                 }
-                //     $data['vip'] = $this->user['vip']-$this->app['logon_sn_unbdeVal'];
                 // }
                 if user_vip < 9999999999 {
                     update_data["vip"] = serde_json::json!(user_vip - logon_sn_unbde_val as i64);

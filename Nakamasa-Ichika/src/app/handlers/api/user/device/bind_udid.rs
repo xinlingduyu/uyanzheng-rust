@@ -92,7 +92,6 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         return;
     }
 
-    //     if($rows['udid'] == $_POST['udid']){$this->out->e(200,"绑定成功");}
     // }
     // 检查设备是否已绑定
     if sn_list_arr.iter().any(|d| d.udid == bind_req.udid) {

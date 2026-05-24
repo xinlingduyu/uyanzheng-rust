@@ -176,12 +176,7 @@ pub async fn reset_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response)
 }
 
 /// 删除用户的所有token（踢下线）- 优化版
-///     $this->redis->select(1);
-///     $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
 ///     foreach ($keys as $key) {
-///         $token = $this->redis->get($key);
-///         $this->redis->del($this->tokenPre.$token);
-///         $this->redis->del($key);
 ///     }
 /// }
 async fn delete_all_user_tokens(

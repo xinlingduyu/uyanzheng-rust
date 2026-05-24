@@ -359,11 +359,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 
-    //   'name'=>$_POST['name'],
-    //   'fen'=>$_POST['fen'],
-    //   'vip'=>empty($_POST['vip'])?null:$_POST['vip'],
-    //   'vip_free'=>$_POST['vip_free'],
-    //   'appid'=>$this->appid,
     // ];
 
     let insert_result = sqlx::query(
@@ -525,10 +520,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 
-    //   'name'=>$_POST['name'],
-    //   'fen'=>$_POST['fen'],
-    //   'vip'=>$_POST['vip'],
-    //   'vip_free'=>$_POST['vip_free'],
     // ];
 
     let update_result =

@@ -431,7 +431,6 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         Ok(r) => {
             let _add_id = r.last_insert_id() as i64;
 
-            // 记录日志: log->u('adm', adminfo['id'], 'user', add_id)->add(add_id)
             if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                 let _ = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
@@ -584,7 +583,6 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     }
 
-    // 记录日志: log->u('adm', adminfo['id'])->add(res)
     let ip = get_client_ip(req).to_string();
     if let Ok(admin_id) = depot.get::<u64>("admin_id") {
         let _ = sqlx::query(
@@ -833,7 +831,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         ""
     ));
 
-    // vip: !empty($_POST['vip'])?$_POST['vip']:NULL
     let new_vip = edit_req.vip;
     update_sql.push_str(&format!(
         "vip = {}{}, ",
@@ -931,16 +928,13 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if old_vip != edit_req.vip || old_fen != new_fen {
         let mut asset_changes = serde_json::Map::new();
 
-        // if($Ures['vip']!=$data['vip'] && intval($Ures['vip'])>time() || intval($data['vip'])>time())
         if old_vip != edit_req.vip {
             let old_vip_val = old_vip.unwrap_or(0);
             let new_vip_val = edit_req.vip.unwrap_or(0);
             if old_vip_val > now || new_vip_val > now {
-                // $newVip = (intval($data['vip'])<time()?time():intval($data['vip']))-(intval($Ures['vip'])<time()?time():intval($Ures['vip']))
                 let effective_old = if old_vip_val < now { now } else { old_vip_val };
                 let effective_new = if new_vip_val < now { now } else { new_vip_val };
                 let new_vip_diff = effective_new - effective_old;
-                // $asset_changes['vip'] = $newVip>0?'+'.$newVip:$newVip;
                 asset_changes.insert(
                     "vip".to_string(),
                     serde_json::Value::String(if new_vip_diff > 0 {
@@ -952,11 +946,8 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
         }
 
-        // if($Ures['fen']!=$data['fen']){
         if old_fen != new_fen {
-            // $newFen = intval($data['fen'])-intval($Ures['fen']);
             let new_fen_diff = new_fen - old_fen;
-            // $asset_changes['fen'] = $newFen>0?'+'.$newFen:$newFen;
             asset_changes.insert(
                 "fen".to_string(),
                 serde_json::Value::String(if new_fen_diff > 0 {
@@ -967,8 +958,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             );
         }
 
-        // if(!empty($asset_changes)){
-        //     $this->log->asset_changes = $asset_changes;
         // }
         if !asset_changes.is_empty() {
             // log->asset_changes = asset_changes
@@ -983,7 +972,6 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 // 失效用户缓存
                 app_state.invalidate_user_cache(edit_req.id);
 
-                // 记录日志: log->u('adm', adminfo['id'], 'user', id)->add(res)
                 let ip = get_client_ip(req).to_string();
                 if let Ok(admin_id) = depot.get::<u64>("admin_id") {
                     let _ = sqlx::query(

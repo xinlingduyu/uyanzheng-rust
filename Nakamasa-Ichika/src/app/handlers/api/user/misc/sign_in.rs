@@ -167,18 +167,10 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     match add_res {
         Ok(_) => {
-            //     if($this->app['diary_award_val'] > 0){
-            //         if($this->user['vip'] == 9999999999)$this->out->e(200,"签到成功");
-            //         if($this->user['vip'] > time()){
-            //             $upVip = $this->user['vip']+$this->app['diary_award_val'];
             //         }else{
-            //             $upVip = time()+$this->app['diary_award_val'];
             //         }
-            //         db('user')->where('id = ?',[$this->user['id']])->update(['vip'=>$upVip]);
             //     }
             // }else{
-            //     if($this->app['diary_award_val'] > 0){
-            //         db('user')->where('id = ?',[$this->user['id']])->update(['fen'=>$this->user['fen']+$this->app['diary_award_val']]);
             //     }
             // }
             // 更新用户奖励
