@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! HTTP 服务器模块
 //!
 //! 提供高性能、安全的 HTTP/HTTPS/QUIC 服务器配置

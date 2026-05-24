@@ -3,7 +3,6 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::core::zero_copy::StringBuilder;

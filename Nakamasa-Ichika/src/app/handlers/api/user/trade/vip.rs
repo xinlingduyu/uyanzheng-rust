@@ -16,7 +16,7 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::VipRequest;
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success_with_msg,
 };
 use crate::app::utils::validator::Validator;
 

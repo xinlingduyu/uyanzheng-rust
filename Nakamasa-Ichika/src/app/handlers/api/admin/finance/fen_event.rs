@@ -4,7 +4,6 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::core::app_state::AppState;
@@ -13,6 +12,7 @@ use std::sync::Arc;
 // ==================== 获取全部事件列表 ====================
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct FenEventItem {
     id: u64,
     name: String,
@@ -107,9 +107,12 @@ struct FenEventListItem {
 #[derive(Debug, Serialize)]
 struct FenEventListResponse {
     list: Vec<FenEventListItem>,
-    currentPage: i32,
-    pageTotal: i32,
-    dataTotal: i64,
+    #[serde(rename = "currentPage")]
+    current_page: i32,
+    #[serde(rename = "pageTotal")]
+    page_total: i32,
+    #[serde(rename = "dataTotal")]
+    data_total: i64,
 }
 
 #[handler]
@@ -228,9 +231,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
             let response = FenEventListResponse {
                 list,
-                currentPage: page,
-                pageTotal: page_total,
-                dataTotal: data_total,
+                current_page: page,
+                page_total,
+                data_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));
@@ -253,6 +256,7 @@ struct AddFenEventRequest {
     #[serde(default = "default_vip_free")]
     vip_free: String,
     #[serde(default)]
+    #[allow(dead_code)]
     r#type: Option<String>,
 }
 

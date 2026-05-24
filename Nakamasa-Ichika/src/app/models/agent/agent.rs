@@ -3,6 +3,7 @@ use serde_json::Value;
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct Agent {
     pub id: i32,
     pub aggid: i32,

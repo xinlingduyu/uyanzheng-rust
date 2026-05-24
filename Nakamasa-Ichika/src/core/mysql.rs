@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! MySQL 数据库连接池模块
 //!
 //! 提供高性能、可靠的数据库连接管理
@@ -6,7 +8,7 @@
 use crate::config;
 use anyhow::Context;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPoolOptions};
-use sqlx::{Executor, MySql, Pool};
+use sqlx::{MySql, Pool};
 
 use std::cmp::max;
 use std::time::Duration;

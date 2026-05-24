@@ -1,4 +1,4 @@
-use crate::app::plugins::encryption::{Encryption, EncryptionConfig, create_encryption};
+use crate::app::plugins::encryption::{EncryptionConfig, create_encryption};
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use salvo::prelude::Json;
 use serde::Serialize;
@@ -6,6 +6,7 @@ use std::borrow::Cow;
 
 /// 高性能API响应结构 - 使用Cow避免不必要的String分配
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct ApiResponse<T> {
     pub code: i32,
     pub msg: Cow<'static, str>,
@@ -61,6 +62,7 @@ impl ApiResponse<()> {
 /// 带签名的API响应结构 - 包含sign和time字段
 /// 签名算法: md5(code + time + appkey)
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct SignedApiResponse<T> {
     pub code: i32,
     pub msg: Cow<'static, str>,
@@ -180,6 +182,7 @@ impl<T: Serialize> SignedApiResponse<T> {
 /// 当应用配置了加密时，data字段会被加密为字符串
 /// 参考PHP: Ue/tools/out.php 的加密逻辑
 #[derive(Serialize)]
+#[allow(dead_code)]
 pub struct EncryptedApiResponse {
     pub code: i32,
     pub msg: Cow<'static, str>,
@@ -316,6 +319,7 @@ impl EncryptedApiResponse {
 
 /// API响应构建器
 /// 支持根据条件自动选择加密或非加密响应
+#[allow(dead_code)]
 pub struct ApiResponseBuilder<'a> {
     app_key: &'a str,
     encryption_config: Option<&'a EncryptionConfig>,
@@ -362,6 +366,7 @@ impl<'a> ApiResponseBuilder<'a> {
 }
 
 /// 响应类型枚举
+#[allow(dead_code)]
 pub enum ResponseType<T: Serialize> {
     Signed(SignedApiResponse<T>),
     Encrypted(EncryptedApiResponse),

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 短信发送结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SmsResult {
     pub success: bool,
     pub message: String,
@@ -31,6 +32,7 @@ pub trait SmsPlugin: Send + Sync {
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SmsPluginMeta {
     pub name: String,
     pub plugin_type: String,

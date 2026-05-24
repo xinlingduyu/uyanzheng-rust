@@ -18,7 +18,7 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::FenRequest;
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success_with_msg,
 };
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;
@@ -209,6 +209,7 @@ pub async fn fen_verify(req: &mut Request, depot: &mut Depot, res: &mut Response
 
 /// 处理普通用户积分验证
 /// 一比一还原PHP的__user方法
+#[allow(clippy::too_many_arguments)]
 async fn handle_user_fen_verify(
     app_state: &Arc<AppState>,
     res: &mut Response,
@@ -341,11 +342,7 @@ async fn handle_user_fen_verify(
             .bind("user")
             .bind(uid)
             .bind("fen_verify")
-            .bind(if fen_event.vip > 0 {
-                &fen_event.name
-            } else {
-                &fen_event.name
-            })
+            .bind(&fen_event.name)
             .bind(current_time)
             .bind(ip)
             .bind(appid)
@@ -363,6 +360,7 @@ async fn handle_user_fen_verify(
 
 /// 处理卡密用户积分验证
 /// 一比一还原PHP的__kami方法
+#[allow(clippy::too_many_arguments)]
 async fn handle_kami_fen_verify(
     app_state: &Arc<AppState>,
     res: &mut Response,

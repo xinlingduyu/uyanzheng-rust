@@ -74,7 +74,7 @@ impl AiConfigBuilder {
             provider_type: self.provider_type,
             model: self.model,
             api_base: self.api_base,
-            api_key: self.api_key.unwrap_or_else(|| "".to_string()),
+            api_key: self.api_key.unwrap_or_default(),
             extra_headers: self.extra_headers,
             temperature: self.temperature,
             top_p: self.top_p,
@@ -234,23 +234,20 @@ pub fn from_env() -> Result<AiConfig> {
         builder = builder.api_key("EMPTY");
     }
 
-    if let Ok(temp) = std::env::var("AI_TEMPERATURE") {
-        if let Ok(t) = temp.parse::<f32>() {
+    if let Ok(temp) = std::env::var("AI_TEMPERATURE")
+        && let Ok(t) = temp.parse::<f32>() {
             builder = builder.temperature(t);
         }
-    }
 
-    if let Ok(top_p) = std::env::var("AI_TOP_P") {
-        if let Ok(p) = top_p.parse::<f32>() {
+    if let Ok(top_p) = std::env::var("AI_TOP_P")
+        && let Ok(p) = top_p.parse::<f32>() {
             builder = builder.top_p(p);
         }
-    }
 
-    if let Ok(max_tok) = std::env::var("AI_MAX_TOKENS") {
-        if let Ok(m) = max_tok.parse::<u32>() {
+    if let Ok(max_tok) = std::env::var("AI_MAX_TOKENS")
+        && let Ok(m) = max_tok.parse::<u32>() {
             builder = builder.max_tokens(m);
         }
-    }
 
     Ok(builder.build())
 }

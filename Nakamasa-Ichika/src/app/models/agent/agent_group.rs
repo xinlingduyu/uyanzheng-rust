@@ -2,6 +2,7 @@ use serde_json::Value;
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AgentGroup {
     pub id: i32,
     pub name: String,

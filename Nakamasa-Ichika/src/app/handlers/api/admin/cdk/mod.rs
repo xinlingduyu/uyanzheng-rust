@@ -6,6 +6,3 @@ pub mod cdk_kami;
 pub mod cdk_user;
 
 // Re-export all public items for backward compatibility
-pub use cdk_group::*;
-pub use cdk_kami::*;
-pub use cdk_user::*;

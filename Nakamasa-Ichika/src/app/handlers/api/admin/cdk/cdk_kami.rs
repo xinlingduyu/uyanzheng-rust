@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin CDK Kami controller
 //! 管理员CDK卡密控制器
 
@@ -32,7 +34,8 @@ struct SearchOptions {
     type_val: Option<String>,
     use_state: Option<String>,
     keyword: Option<String>,
-    keywordType: Option<String>,
+    #[serde(rename = "keywordType")]
+    keyword_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -63,7 +66,8 @@ struct CDKKamiItem {
     ban_msg: Option<String>,
     sn_max: Option<i64>,
     sn_list: Option<serde_json::Value>,
-    Gname: Option<String>,
+    #[serde(rename = "Gname")]
+    gname: Option<String>,
     state: String,
 }
 
@@ -304,7 +308,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                         .try_get("sn_list")
                         .ok()
                         .and_then(|s: String| serde_json::from_str(&s).ok()),
-                    Gname: row.try_get("Gname").ok(),
+                    gname: row.try_get("Gname").ok(),
                     state: _state.to_string(),
                 });
             }

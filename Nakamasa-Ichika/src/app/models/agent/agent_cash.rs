@@ -2,6 +2,7 @@ use super::super::common::enums::CashWay;
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AgentCash {
     pub id: i32,
     pub agid: i32,

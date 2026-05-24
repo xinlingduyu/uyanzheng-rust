@@ -6,6 +6,7 @@ use sqlx::FromRow;
 /// 黑名单记录
 /// 注意：数据库中 id 是 bigint(20) unsigned，需要使用 u64
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AppBlocklist {
     pub id: u64,
     /// 类型: ip 或 sn

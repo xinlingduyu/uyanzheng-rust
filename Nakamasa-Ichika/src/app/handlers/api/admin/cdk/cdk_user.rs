@@ -10,7 +10,6 @@ use sqlx::Row;
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;
-use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::middleware::get_client_ip;
 use crate::core::zero_copy::StringBuilder;
 use std::sync::Arc;
@@ -36,7 +35,8 @@ struct SearchOptions {
     type_val: Option<String>,
     use_state: Option<String>,
     keyword: Option<String>,
-    keywordType: Option<String>,
+    #[serde(rename = "keywordType")]
+    keyword_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,7 +56,8 @@ struct CDKUserItem {
     out_time: Option<i64>,
     state: String,
     add_user: Option<String>,
-    Gname: Option<String>,
+    #[serde(rename = "Gname")]
+    gname: Option<String>,
     use_user: Option<String>,
 }
 
@@ -200,7 +201,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         // 关键词
         if let Some(keyword) = so.keyword
             && !keyword.is_empty()
-            && let Some(keyword_type) = so.keywordType
+            && let Some(keyword_type) = so.keyword_type
         {
             if keyword_type == "user" {
                 // 搜索用户
@@ -292,7 +293,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     out_time: row.try_get("out_time").ok(),
                     state: row.try_get("state").unwrap_or_default(),
                     add_user: row.try_get("add_user").ok(),
-                    Gname: row.try_get("Gname").ok(),
+                    gname: row.try_get("Gname").ok(),
                     use_user: row.try_get("use_user").ok(),
                 });
             }
@@ -931,7 +932,7 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                         val,
                         note,
                         use_user,
-                        use_time.map(|t| format_time_str(t)).unwrap_or_default(),
+                        use_time.map(format_time_str).unwrap_or_default(),
                         format_time_str(add_time)
                     ));
                 }

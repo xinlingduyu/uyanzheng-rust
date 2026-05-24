@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin Blocklist controller
 //! 管理员黑名单控制器 - PHP逻辑一比一还原
 
@@ -631,7 +633,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 参数验证 - PHP: ids => ['isArr','','删除选中ID有误']
-    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.iter().any(|id| *id == 0) {
+    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.contains(&0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }

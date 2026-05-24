@@ -3,7 +3,6 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 
@@ -29,9 +28,12 @@ struct NoticeItem {
 #[derive(Debug, Serialize)]
 struct ListResponse {
     list: Vec<NoticeItem>,
-    currentPage: u32,
-    pageTotal: u32,
-    dataTotal: u64,
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: u64,
 }
 
 #[handler]
@@ -127,9 +129,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
             let response = ListResponse {
                 list,
-                currentPage: page,
-                pageTotal: page_total,
-                dataTotal: data_total,
+                current_page: page,
+                page_total,
+                data_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));

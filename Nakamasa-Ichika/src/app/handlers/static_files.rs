@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::core::{AppState, is_installed};
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use rust_embed::{EmbeddedFile, RustEmbed};
@@ -110,11 +112,10 @@ fn validate_static_path(file_path: &str, base_dir: &str) -> Result<PathBuf, Stri
             .unwrap_or(base_path.clone())
     };
 
-    if let Ok(canonical_target) = fs::canonicalize(&target_path) {
-        if !canonical_target.starts_with(&canonical_base) {
+    if let Ok(canonical_target) = fs::canonicalize(&target_path)
+        && !canonical_target.starts_with(&canonical_base) {
             return Err("非法路径：不允许访问指定目录外的文件".to_string());
         }
-    }
 
     Ok(full_path)
 }

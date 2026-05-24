@@ -14,7 +14,7 @@ use serde::Serialize;
 
 use nakamasa_ai::{
     AiConfig, AiError, AiProvider, CompletionRequest, Message, MessageRole, PresetConfigs,
-    ProviderType, StreamChunk,
+    ProviderType,
 };
 
 use crate::app::middleware::app_context::{AppInfo, EncryptionInfo};
@@ -168,18 +168,16 @@ fn create_ai_config_from_app_info(app_info: &AppInfo) -> Result<AiConfig, String
     // 如果数据库中是 None，就不设置，保持预设配置中的默认值（对于本地模型是 "EMPTY"）
 
     // 温度参数：如果数据库中有有效值则使用，否则使用预设配置的默认值（通常为0.7）
-    if let Some(temp) = app_info.ai_temperature {
-        if temp > 0.0 && temp <= 2.0 {
+    if let Some(temp) = app_info.ai_temperature
+        && temp > 0.0 && temp <= 2.0 {
             builder = builder.temperature(temp);
         }
-    }
 
     // 最大token数：如果数据库中有有效值则使用，否则使用预设配置的默认值
-    if let Some(max_tok) = app_info.ai_max_tokens {
-        if max_tok > 0 && max_tok <= 32000 {
+    if let Some(max_tok) = app_info.ai_max_tokens
+        && max_tok > 0 && max_tok <= 32000 {
             builder = builder.max_tokens(max_tok as u32);
         }
-    }
 
     Ok(builder.build())
 }
@@ -303,7 +301,7 @@ fn build_messages(ai_req: &AiRequest) -> Result<Vec<Message>, String> {
 #[handler]
 pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 1. 验证用户是否登录
-    let _user_info = match depot.get::<UserInfo>("user_info") {
+    let user_info = match depot.get::<UserInfo>("user_info") {
         Ok(info) => info,
         Err(_) => {
             render_error(res, "未授权", 201, "");
@@ -333,7 +331,7 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 4. 从 AppInfo 创建 AI 配置
-    let mut config = match create_ai_config_from_app_info(&app_info) {
+    let mut config = match create_ai_config_from_app_info(app_info) {
         Ok(cfg) => cfg,
         Err(e) => {
             render_error(res, e, 201, app_key);
@@ -357,6 +355,15 @@ pub async fn ai_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let request_temperature = config.temperature;
     let request_top_p = config.top_p;
     let request_max_tokens = config.max_tokens;
+
+    // 记录 AI 请求用户上下文（审计日志）
+    tracing::debug!(
+        "AI请求: uid={}, model={}, stream={}, messages_len={}",
+        user_info.uid,
+        config.model,
+        ai_req.stream,
+        ai_req.messages.len(),
+    );
 
     // 6. 转换请求消息，兼容 messages 和 Responses API input
     let messages = match build_messages(&ai_req) {

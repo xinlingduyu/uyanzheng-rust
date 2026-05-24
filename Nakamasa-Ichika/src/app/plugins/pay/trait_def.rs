@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 支付订单信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PayOrder {
     pub order_no: String,
     pub name: String,
@@ -25,6 +26,7 @@ fn default_pay_type() -> String {
 
 /// 支付结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PayResult {
     pub success: bool,
     pub pay_url: Option<String>,
@@ -34,6 +36,7 @@ pub struct PayResult {
 
 /// 支付异步通知验签后的标准结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct NotifyVerifyResult {
     /// 商户订单号
     pub order_no: String,
@@ -70,6 +73,7 @@ pub trait PayPlugin: Send + Sync {
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PluginMeta {
     pub name: String,
     pub plugin_type: String,

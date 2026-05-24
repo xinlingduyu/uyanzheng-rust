@@ -22,7 +22,7 @@ use crate::app::models::requests::PayRequest;
 use crate::app::models::responses::PayInfo;
 use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayOrder, PayPlugin, WxPayPlugin};
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success,
 };
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;

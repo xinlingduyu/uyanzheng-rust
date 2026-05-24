@@ -11,7 +11,7 @@
 
 use super::http_client;
 use super::trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
-use crate::core::md5_optimize::{md5_concat_2, md5_hex, md5_to_str};
+use crate::core::md5_optimize::md5_concat_2;
 use serde_json::json;
 use std::collections::BTreeMap;
 

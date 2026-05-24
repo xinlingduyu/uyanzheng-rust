@@ -351,19 +351,17 @@ impl AiProvider for GeminiProvider {
 fn parse_gemini_stream_chunk(text: &str) -> Result<StreamChunk> {
     for line in text.lines() {
         let line = line.trim();
-        if line.starts_with("data: ") {
-            let data = &line[6..];
+        if let Some(data) = line.strip_prefix("data: ") {
             if data == "[DONE]" {
                 return Ok(StreamChunk::done());
             }
             match serde_json::from_str::<GeminiStreamChunk>(data) {
                 Ok(chunk) => {
                     if let Some(candidate) = chunk.candidates.first() {
-                        if let Some(content) = &candidate.content {
-                            if let Some(part) = content.parts.first() {
+                        if let Some(content) = &candidate.content
+                            && let Some(part) = content.parts.first() {
                                 return Ok(StreamChunk::text(&part.text));
                             }
-                        }
                         if candidate.finish_reason.is_some() {
                             return Ok(StreamChunk::done());
                         }

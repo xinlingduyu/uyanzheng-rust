@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # 插件模块 (Plugins Module)
 //!
 //! 本模块提供可热插拔的功能扩展，支持加密、支付、通知等功能。
@@ -145,4 +147,3 @@ pub mod sms;
 // 公开导出
 // ============================================================================
 
-pub use encryption::{Encryption, EncryptionConfig, create_encryption};

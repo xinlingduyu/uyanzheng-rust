@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # TUI 仪表盘模块
 //!
 //! 提供三框终端仪表盘：系统信息 + CPU 走势图 | 资源监控 | 启动日志 | 命令行。
@@ -9,14 +11,14 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Margin, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Gauge, List, ListItem, Paragraph, Wrap},
     Frame, Terminal,
 };
 use std::{
     fs,
-    io::{self, Write},
+    io,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -168,9 +170,9 @@ fn get_disk_usage(path: &Path) -> (u64, u64) {
     use nix::sys::statvfs::statvfs;
     match statvfs(path) {
         Ok(s) => {
-            let bs = s.block_size() as u64;
-            let total = s.blocks() as u64 * bs / 1024 / 1024;
-            let free = s.blocks_free() as u64 * bs / 1024 / 1024;
+            let bs = s.block_size();
+            let total = s.blocks() * bs / 1024 / 1024;
+            let free = s.blocks_free() * bs / 1024 / 1024;
             (total, total.saturating_sub(free))
         }
         Err(_) => (0, 0),
@@ -206,13 +208,11 @@ fn get_cpu_percent() -> f64 {
                         let idle_s = parts[4].trim_end_matches("%idle");
                         if let (Ok(total), Ok(idle)) =
                             (total_s.parse::<f64>(), idle_s.parse::<f64>())
-                        {
-                            if total > 0.0 {
+                            && total > 0.0 {
                                 let pct = ((total - idle) / total) * 100.0;
                                 CPU.store(pct.to_bits(), std::sync::atomic::Ordering::Relaxed);
                                 break;
                             }
-                        }
                     }
                 }
             }
@@ -633,8 +633,8 @@ fn run_tui_inner(log_buffer: Arc<LogBuffer>, running: Arc<AtomicBool>) -> io::Re
                                     app.command_mode = CommandMode::Input;
                                     app.command_buffer.clear(); app.command_cursor = 0;
                                 }
-                                KeyCode::Up => { if !app.auto_scroll { app.scroll_offset = app.scroll_offset.saturating_add(1); } }
-                                KeyCode::Down => { if !app.auto_scroll && app.scroll_offset > 0 { app.scroll_offset -= 1; } }
+                                KeyCode::Up if !app.auto_scroll => { app.scroll_offset = app.scroll_offset.saturating_add(1); }
+                                KeyCode::Down if !app.auto_scroll && app.scroll_offset > 0 => { app.scroll_offset -= 1; }
                                 KeyCode::PageUp => app.scroll_offset = app.scroll_offset.saturating_add(10),
                                 KeyCode::PageDown => app.scroll_offset = app.scroll_offset.saturating_sub(10),
                                 _ => {}
@@ -642,10 +642,10 @@ fn run_tui_inner(log_buffer: Arc<LogBuffer>, running: Arc<AtomicBool>) -> io::Re
                             CommandMode::Input => match key.code {
                                 KeyCode::Enter => { let cmd = app.command_buffer.clone(); app.execute_command(&cmd); }
                                 KeyCode::Esc => { app.command_mode = CommandMode::Normal; app.command_buffer.clear(); app.command_cursor = 0; }
-                                KeyCode::Backspace => { if app.command_cursor > 0 { app.command_buffer.remove(app.command_cursor - 1); app.command_cursor -= 1; } }
-                                KeyCode::Delete => { if app.command_cursor < app.command_buffer.len() { app.command_buffer.remove(app.command_cursor); } }
-                                KeyCode::Left => { if app.command_cursor > 0 { app.command_cursor -= 1; } }
-                                KeyCode::Right => { if app.command_cursor < app.command_buffer.len() { app.command_cursor += 1; } }
+                                KeyCode::Backspace if app.command_cursor > 0 => { app.command_buffer.remove(app.command_cursor - 1); app.command_cursor -= 1; }
+                                KeyCode::Delete if app.command_cursor < app.command_buffer.len() => { app.command_buffer.remove(app.command_cursor); }
+                                KeyCode::Left if app.command_cursor > 0 => { app.command_cursor -= 1; }
+                                KeyCode::Right if app.command_cursor < app.command_buffer.len() => { app.command_cursor += 1; }
                                 KeyCode::Home => app.command_cursor = 0,
                                 KeyCode::End => app.command_cursor = app.command_buffer.len(),
                                 KeyCode::Up => { if let Some(p) = app.command_history.last() { app.command_buffer = p.clone(); app.command_cursor = app.command_buffer.len(); } }

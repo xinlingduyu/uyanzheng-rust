@@ -5,6 +5,7 @@ use sqlx::FromRow;
 
 /// 日志模型 - 对应 u_logs 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct Logs {
     pub id: i64,
     pub ug: UserGroup,

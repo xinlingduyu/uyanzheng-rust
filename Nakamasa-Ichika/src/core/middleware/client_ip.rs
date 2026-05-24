@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! 客户端 IP 获取工具
 //! 默认只使用 TCP 直连地址；只有启用 trust_proxy_headers 且直连地址命中 trusted_proxies 时才信任代理头。
 
@@ -60,13 +62,11 @@ fn extract_remote_ip(remote_addr: &str) -> Option<&str> {
     }
 
     // IPv4 SocketAddr 形如 127.0.0.1:12345；IPv6 裸地址不应走这里。
-    if remote.matches(':').count() == 1 {
-        if let Some((host, _port)) = remote.rsplit_once(':') {
-            if is_valid_ip(host) {
+    if remote.matches(':').count() == 1
+        && let Some((host, _port)) = remote.rsplit_once(':')
+            && is_valid_ip(host) {
                 return Some(host);
             }
-        }
-    }
 
     None
 }

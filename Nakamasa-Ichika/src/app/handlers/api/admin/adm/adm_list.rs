@@ -3,11 +3,10 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
-use crate::core::md5_optimize::{md5_concat_2, md5_hex, md5_to_str};
+use crate::core::md5_optimize::md5_concat_2;
 
 #[derive(Debug, Deserialize)]
 struct GetListRequest {

@@ -4,6 +4,7 @@ use sqlx::FromRow;
 
 /// 商品模型 - 对应 u_goods 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct Goods {
     pub id: i64,
     pub name: String,

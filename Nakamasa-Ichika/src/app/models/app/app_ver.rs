@@ -1,6 +1,7 @@
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AppVer {
     pub id: i32,
     pub ver_name: String, // 有默认值，但NOT NULL

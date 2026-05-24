@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! 数据库迁移模块
 //!
 //! 负责检查并执行数据库版本迁移，支持跨版本更新。
@@ -223,8 +225,8 @@ async fn execute_migration(
 ) -> Result<(), String> {
     tracing::info!("执行迁移 {}: {}", migration.version, migration.description);
 
-    if matches!(migration.migration_type, MigrationType::Database | MigrationType::Both) {
-        if let Some(sql_source) = &migration.sql {
+    if matches!(migration.migration_type, MigrationType::Database | MigrationType::Both)
+        && let Some(sql_source) = &migration.sql {
             let statements: Vec<&str> = match sql_source {
                 SqlSource::String(s) => s
                     .split(';')
@@ -290,7 +292,6 @@ async fn execute_migration(
                 total
             );
         }
-    }
 
     if matches!(migration.migration_type, MigrationType::Config | MigrationType::Both) {
         ensure_default_yaml_sections(config_path)?;

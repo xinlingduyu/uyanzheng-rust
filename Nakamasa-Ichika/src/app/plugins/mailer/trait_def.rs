@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// 邮件发送结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct MailResult {
     pub success: bool,
     pub message: String,
@@ -38,6 +39,7 @@ pub trait MailerPlugin: Send + Sync {
 
 /// 邮件配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct MailerConfig {
     /// SMTP主机
     pub host: String,
@@ -68,6 +70,7 @@ impl Default for MailerConfig {
 
 /// 插件元数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct MailerPluginMeta {
     pub name: String,
     pub plugin_type: String,

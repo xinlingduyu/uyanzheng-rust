@@ -1,9 +1,10 @@
+#![allow(dead_code)]
+
 //! Admin Encryption controller
 //! 管理员加密控制器
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 
@@ -248,10 +249,13 @@ struct EncryptionListItem {
 
 #[derive(Debug, Serialize)]
 struct ListResponse {
-    currentPage: u32,
-    dataTotal: u64,
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: u64,
     list: Vec<EncryptionListItem>,
-    pageTotal: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
 }
 
 #[handler]
@@ -372,10 +376,10 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .collect();
 
             let response = ListResponse {
-                currentPage: page,
-                dataTotal: data_total,
+                current_page: page,
+                data_total,
                 list,
-                pageTotal: page_total,
+                page_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));

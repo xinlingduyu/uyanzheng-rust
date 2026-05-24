@@ -169,8 +169,6 @@ pub mod error;
 pub mod handler_ext;
 
 /// 数据库优化工具
-
-/// 数据库优化工具
 ///
 /// 提供批量插入、连接池管理优化等工具。
 pub mod db_optimize;
@@ -225,15 +223,12 @@ pub mod migration;
 // ============================================================================
 
 // 数据库
-pub use mysql::{BatchInserter, PoolStatus, health_check, init_sqlx_pool, pool_status};
+pub use mysql::init_sqlx_pool;
 
 // Redis
 pub use redis::RedisUtil;
 
 // 缓存
-pub use admin_cache::{AdminCacheService, AdminData, CacheResult};
-pub use cache::*;
-pub use lru_cache::ShardedLruCache;
 
 // 国际化
 pub use i18n::*;
@@ -246,18 +241,11 @@ pub use app_state::AppState;
 pub use handler_ext::*;
 
 // JavaScript 运行时导出
-pub use quickjs_runtime::{CloudFunctionContext, QuickJsRuntime, execute_cloud_function};
+pub use quickjs_runtime::execute_cloud_function;
 
 // 火焰图性能分析导出（仅 Unix 平台）
-#[cfg(unix)]
-pub use flamegraph::{
-    ProfilerStatus, generate_flamegraph_svg, generate_pprof_data, get_status, profile_for_duration,
-    start_profiler, stop_profiler,
-};
 
 // 兼容性别名（保持 API 兼容性）
-#[allow(deprecated)]
-pub use quickjs_runtime::QuickJsRuntime as V8Runtime;
 
 // ============================================================================
 // 核心函数
@@ -329,7 +317,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
     impl IoWrite for TeeWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let _ = std::io::stderr().write(buf);
-            let _ = self.buffer.push_bytes(buf);
+            self.buffer.push_bytes(buf);
             Ok(buf.len())
         }
         fn flush(&mut self) -> std::io::Result<()> {
@@ -408,7 +396,7 @@ pub async fn run(router: Router, cli_args: CliArgs) -> anyhow::Result<()> {
         // 使用命令行参数覆盖配置（泄漏到静态内存以满足 'static 要求）
         let server_config = Box::leak(Box::new(build_server_config_from_cli(&cli_args)));
         let server = server::Server::new(server_config);
-        return Ok(server.start(app_state, router).await?);
+        return server.start(app_state, router).await;
     }
 
     // 初始化 MySQL 连接

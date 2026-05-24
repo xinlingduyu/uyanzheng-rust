@@ -22,8 +22,7 @@ use tokio::spawn;
 
 use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
-use crate::app::models::requests::ModifyPicRequest;
-use crate::app::utils::response::{SignedApiResponse, render_error, render_success_no_encrypt};
+use crate::app::utils::response::{render_error, render_success_no_encrypt};
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;
 
@@ -230,8 +229,8 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
         };
     }
-    if daily_limit > 0 {
-        if let Some(redis_pool) = app_state.try_get_redis() {
+    if daily_limit > 0
+        && let Some(redis_pool) = app_state.try_get_redis() {
             let ttl = seconds_until_midnight();
             match app_state
                 .redis_util
@@ -260,7 +259,6 @@ pub async fn upload(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 }
             }
         }
-    }
 
     // 获取文件字段
     let file: &salvo::http::form::FilePart = match form_data.files.get("file") {

@@ -108,8 +108,7 @@ async fn update_order(
     // 代理分账 — 失败则回滚，资金安全
     if let Some(inv_uid) = inviter_id
         && divide_money > 0
-    {
-        if sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
+        && sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
             .bind(divide_money)
             .bind(inv_uid)
             .bind(appid)
@@ -121,7 +120,6 @@ async fn update_order(
             let _ = tx.rollback().await;
             return false;
         }
-    }
 
     // 根据订单类型处理
     match order_type.as_str() {
@@ -154,20 +152,20 @@ async fn update_order(
                 }
             }
         }
-        "fen" => {
+        "fen"
             if sqlx::query("UPDATE u_user SET fen = fen + ? WHERE id = ?")
                 .bind(val)
                 .bind(uid)
                 .execute(&mut *tx)
                 .await
                 .is_err()
-            {
+            => {
                 let _ = tx.rollback().await;
                 return false;
             }
-        }
         "agent" => {
             // 查询代理组
+            #[allow(clippy::type_complexity)]
             let group_result: Result<Option<(i64, Option<i32>, Option<i32>)>, _> = sqlx::query_as(
                 "SELECT id, pay_divide, km_discount FROM u_agent_group WHERE id = ? AND appid = ?",
             )
@@ -178,7 +176,8 @@ async fn update_order(
 
             if let Ok(Some((aggid, pay_divide, km_discount))) = group_result {
                 // 检查是否已是代理
-                let agent_result: Result<Option<(i64, Option<i32>, Option<i32>)>, _> = sqlx::query_as(
+                #[allow(clippy::type_complexity)]
+            let agent_result: Result<Option<(i64, Option<i32>, Option<i32>)>, _> = sqlx::query_as(
                     "SELECT id, pay_divide, km_discount FROM u_agent WHERE uid = ? AND appid = ?"
                 )
                 .bind(uid)
@@ -219,7 +218,7 @@ async fn update_order(
                 return false;
             }
         }
-        "balance" => {
+        "balance"
             if sqlx::query("UPDATE u_agent SET money = money + ? WHERE uid = ? AND appid = ?")
                 .bind(val)
                 .bind(uid)
@@ -227,11 +226,10 @@ async fn update_order(
                 .execute(&mut *tx)
                 .await
                 .is_err()
-            {
+            => {
                 let _ = tx.rollback().await;
                 return false;
             }
-        }
         _ => {}
     }
 
@@ -271,14 +269,13 @@ async fn get_notify_data(req: &mut Request) -> serde_json::Value {
         return serde_json::Value::Object(data);
     }
 
-    if body.starts_with('{') {
-        if let Ok(serde_json::Value::Object(obj)) = serde_json::from_str::<serde_json::Value>(&body) {
+    if body.starts_with('{')
+        && let Ok(serde_json::Value::Object(obj)) = serde_json::from_str::<serde_json::Value>(&body) {
             for (key, value) in obj {
                 data.insert(key, value);
             }
             return serde_json::Value::Object(data);
         }
-    }
 
     if body.starts_with('<') {
         if let serde_json::Value::Object(obj) = parse_xml_to_json(&body) {

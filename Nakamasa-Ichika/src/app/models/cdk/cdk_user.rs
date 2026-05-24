@@ -6,6 +6,7 @@ use sqlx::{FromRow, Type};
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('vip','fen','addsn')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum CdkType {
     Vip,
     Fen,
@@ -16,6 +17,7 @@ pub enum CdkType {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('adm','agent')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AddRole {
     Adm,
     Agent,
@@ -26,6 +28,7 @@ pub enum AddRole {
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum OutState {
     Y,
     #[default]
@@ -37,6 +40,7 @@ pub enum OutState {
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum State {
     #[default]
     Y,
@@ -45,6 +49,7 @@ pub enum State {
 
 /// 用户卡券模型 (对应 u_cdk_user 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct CdkUser {
     pub id: i64,
     pub gid: i64,

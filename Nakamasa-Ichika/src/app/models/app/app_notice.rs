@@ -1,6 +1,7 @@
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AppNotice {
     pub id: i32,
     pub aid: i32,

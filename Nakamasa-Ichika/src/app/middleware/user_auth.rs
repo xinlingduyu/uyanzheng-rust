@@ -2,11 +2,11 @@
 //! 一比一还原PHP base/user.php 的 __init, __dataCheck, __TokenCheck 方法
 
 use super::app_context::AppInfo;
-use crate::app::plugins::encryption::{self, Encryption, EncryptionConfig, arr_sign, txt_to_arr};
+use crate::app::plugins::encryption::{self, EncryptionConfig, arr_sign, txt_to_arr};
 use crate::app::utils::response::ApiResponse;
 use crate::core::AppState;
 use crate::core::json_optimize::FastJson;
-use crate::core::md5_optimize::{md5_concat_2, md5_hex, md5_str_from_str, md5_to_str};
+use crate::core::md5_optimize::{md5_hex, md5_str_from_str, md5_to_str};
 use crate::core::middleware::get_client_ip;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -81,7 +81,7 @@ pub struct TokenData {
 pub struct UserAuth {
     /// 是否检查token
     pub check_token: bool,
-    /// 允许getUdid、reUdid等接口通过（即使设备不匹配）
+    /// 允许get_udid、re_udid等接口通过（即使设备不匹配）
     pub allow_udid_check: bool,
     /// 是否检查应用登录状态
     pub check_logon_state: bool,
@@ -449,6 +449,7 @@ impl UserAuth {
     /// Token 检查
     /// 一比一还原 PHP 的 __TokenCheck 方法
     /// 优化：添加 L1 缓存减少 Redis 查询
+    #[allow(clippy::too_many_arguments)]
     async fn token_check_internal(
         &self,
         req: &Request,

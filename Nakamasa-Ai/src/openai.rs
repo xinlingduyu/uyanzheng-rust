@@ -383,11 +383,10 @@ fn responses_to_completion(response: OpenAiResponsesResponse) -> Result<Completi
 }
 
 fn extract_response_text(response: &OpenAiResponsesResponse) -> String {
-    if let Some(output_text) = response.output_text.as_deref() {
-        if !output_text.is_empty() {
+    if let Some(output_text) = response.output_text.as_deref()
+        && !output_text.is_empty() {
             return output_text.to_string();
         }
-    }
 
     let mut text = String::new();
     for item in &response.output {

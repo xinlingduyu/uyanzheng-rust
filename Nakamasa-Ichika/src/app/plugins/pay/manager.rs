@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
 /// 支付插件管理器
+#[allow(dead_code)]
 pub struct PayPluginManager {
     plugins: RwLock<HashMap<String, Arc<dyn PayPlugin>>>,
 }
@@ -39,8 +40,7 @@ impl PayPluginManager {
             .map_err(|e| format!("获取读锁失败: {}", e))?;
 
         plugins
-            .get(plugin_type)
-            .map(|p| p.clone())
+            .get(plugin_type).cloned()
             .ok_or_else(|| format!("插件 {} 不存在", plugin_type))
     }
 

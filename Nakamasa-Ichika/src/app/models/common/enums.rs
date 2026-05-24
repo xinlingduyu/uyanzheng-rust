@@ -6,6 +6,7 @@ use sqlx::Type;
 #[derive(Debug, Type, PartialEq, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('ali','wx')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum CashWay {
     Ali, // 支付宝
     Wx,  // 微信支付
@@ -15,6 +16,7 @@ pub enum CashWay {
 #[derive(Debug, Type, PartialEq, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('on','off')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AgentStatus {
     On,  // 启用
     Off, // 禁用
@@ -22,6 +24,7 @@ pub enum AgentStatus {
 
 /// 提现状态枚举 - 对应 u_agent_cash.state (int类型，但这里作为枚举使用)
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum CashState {
     Pending,  // 0 - 待处理
     Approved, // 1 - 已批准
@@ -50,6 +53,7 @@ impl CashState {
 #[derive(Debug, Type, Clone, PartialEq)]
 #[sqlx(type_name = "enum('on','off')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum OnOffStatus {
     On,
     Off,
@@ -60,6 +64,7 @@ pub enum OnOffStatus {
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum YesNoStatus {
     #[default]
     Y,
@@ -71,6 +76,7 @@ pub enum YesNoStatus {
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum SignStatus {
     Y,
     #[default]
@@ -81,6 +87,7 @@ pub enum SignStatus {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('vip','fen','agent')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum GoodsType {
     Vip,
     Fen,
@@ -91,6 +98,7 @@ pub enum GoodsType {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('vip','fen','agent','balance')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum OrderType {
     Vip,
     Fen,
@@ -102,6 +110,7 @@ pub enum OrderType {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('ali','wx')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum PayType {
     Ali, // 支付宝
     Wx,  // 微信支付
@@ -111,6 +120,7 @@ pub enum PayType {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('adm','agent','user','kami')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum UserGroup {
     Adm,   // 管理员
     Agent, // 代理
@@ -122,6 +132,7 @@ pub enum UserGroup {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('user','adm')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum UserType {
     User,
     Adm,
@@ -131,12 +142,14 @@ pub enum UserType {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('user','kami')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AppType {
     User,
     Kami,
 }
 
 /// APP模式枚举 - 对应 u_app.app_mode
+#[allow(dead_code)]
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
@@ -149,6 +162,7 @@ pub enum AppMode {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('phone','email','wordnum')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum RegWay {
     Phone,
     Email,
@@ -159,6 +173,7 @@ pub enum RegWay {
 #[derive(Debug, Type, Clone, Serialize, Deserialize)]
 #[sqlx(type_name = "enum('ali','wx')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum WithdrawWay {
     Ali, // 支付宝
     Wx,  // 微信支付

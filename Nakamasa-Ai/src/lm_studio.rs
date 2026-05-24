@@ -295,18 +295,16 @@ impl AiProvider for LmStudioProvider {
 fn parse_lm_studio_stream_chunk(text: &str) -> Result<StreamChunk> {
     for line in text.lines() {
         let line = line.trim();
-        if line.starts_with("data: ") {
-            let data = &line[6..];
+        if let Some(data) = line.strip_prefix("data: ") {
             if data == "[DONE]" {
                 return Ok(StreamChunk::done());
             }
             match serde_json::from_str::<LmStudioStreamChunk>(data) {
                 Ok(chunk) => {
-                    if let Some(choice) = chunk.choices.first() {
-                        if let Some(content) = &choice.delta.content {
+                    if let Some(choice) = chunk.choices.first()
+                        && let Some(content) = &choice.delta.content {
                             return Ok(StreamChunk::text(content));
                         }
-                    }
                 }
                 Err(_) => continue,
             }

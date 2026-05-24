@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use crate::app::middleware::app_context::AppInfo;
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success_msg,
 };
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;

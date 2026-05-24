@@ -7,6 +7,7 @@ use sqlx::{FromRow, Type};
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum AdminState {
     #[default]
     Y, // 启用
@@ -15,6 +16,7 @@ pub enum AdminState {
 
 /// 管理员模型 - 对应 u_admin 表
 #[derive(Debug, Serialize, Deserialize, FromRow)]
+#[allow(dead_code)]
 pub struct Admin {
     pub id: i64,
     pub user: String,
@@ -27,6 +29,7 @@ pub struct Admin {
 
 /// 管理员登录请求
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct AdminLoginRequest {
     pub user: String,
     pub password: String,
@@ -34,6 +37,7 @@ pub struct AdminLoginRequest {
 
 /// 管理员登录响应
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AdminLoginResponse {
     pub token: String,
     pub info: AdminInfo,
@@ -41,6 +45,7 @@ pub struct AdminLoginResponse {
 
 /// 管理员信息
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AdminInfo {
     pub id: i64,
     pub user: String,
@@ -49,6 +54,7 @@ pub struct AdminInfo {
 
 /// 管理员Token信息
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct AdminTokenInfo {
     pub id: i64,
     pub user: String,

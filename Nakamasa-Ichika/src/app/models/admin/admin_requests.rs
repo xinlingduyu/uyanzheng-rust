@@ -2,6 +2,7 @@
 use serde::Deserialize;
 
 // ========== 通用分页和搜索 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct GetListRequest {
     #[serde(default)]
@@ -12,6 +13,7 @@ pub struct GetListRequest {
     pub so: Option<SearchOptions>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SearchOptions {
     #[serde(default)]
@@ -22,18 +24,21 @@ pub struct SearchOptions {
     pub ug: Option<i32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct DelRequest {
     pub id: i64,
 }
 
 // ========== 管理员相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AdminLoginRequest {
     pub user: String,
     pub password: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddAdminRequest {
     pub notes: String,
@@ -42,6 +47,7 @@ pub struct AddAdminRequest {
 }
 
 // ========== 代理相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddAgentRequest {
     pub gid: i64,
@@ -51,6 +57,7 @@ pub struct AddAgentRequest {
     pub utype: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddAgentGroupRequest {
     pub name: String,
@@ -59,6 +66,7 @@ pub struct AddAgentGroupRequest {
     pub authority: serde_json::Value,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditAgentCashRequest {
     pub id: i64,
@@ -73,6 +81,7 @@ fn default_state() -> String {
 }
 
 // ========== 应用相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct GetInfoRequest {
     #[serde(default)]
@@ -80,6 +89,7 @@ pub struct GetInfoRequest {
 }
 
 // ========== 卡密相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddCDKGroupRequest {
     pub name: String,
@@ -89,6 +99,7 @@ pub struct AddCDKGroupRequest {
     pub price: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddCDKKamiRequest {
     pub gid: i64,
@@ -103,6 +114,7 @@ pub struct AddCDKKamiRequest {
     pub out_state: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditCDKUserRequest {
     pub id: i64,
@@ -111,6 +123,7 @@ pub struct EditCDKUserRequest {
 }
 
 // ========== 加密相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddEncryptionRequest {
     pub name: String,
@@ -129,6 +142,7 @@ fn default_all() -> String {
 }
 
 // ========== 扩展相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddExtendRequest {
     pub name: String,
@@ -139,6 +153,7 @@ pub struct AddExtendRequest {
 }
 
 // ========== 积分事件相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct AddFenEventRequest {
     pub name: String,
@@ -154,6 +169,7 @@ fn default_vip_free() -> String {
 }
 
 // ========== 积分订单相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditFenOrderRequest {
     pub id: i64,
@@ -166,6 +182,7 @@ pub struct EditFenOrderRequest {
 }
 
 // ========== 公告相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditNoticeRequest {
     pub id: i64,
@@ -173,6 +190,7 @@ pub struct EditNoticeRequest {
 }
 
 // ========== 支付设置相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditPayRequest {
     pub id: i64,
@@ -191,6 +209,7 @@ pub struct EditPayRequest {
 }
 
 // ========== 短信设置相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct EditSendRequest {
     pub id: i64,
@@ -217,6 +236,7 @@ pub struct EditSendRequest {
 }
 
 // ========== 下载相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct KamiRequestParam {
     pub path: String,

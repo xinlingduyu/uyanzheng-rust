@@ -2,6 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 // ========== 用户信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub uid: u64,
@@ -27,6 +28,7 @@ pub struct UserInfo {
 }
 
 /// IP 地域信息
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Clone, Default)]
 pub struct IpLocation {
     /// 国家
@@ -37,6 +39,7 @@ pub struct IpLocation {
     pub city: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub token: String,
@@ -48,6 +51,7 @@ pub struct LoginResponse {
 }
 
 // ========== 设备信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeviceInfo {
     pub udid: String,
@@ -55,6 +59,7 @@ pub struct DeviceInfo {
 }
 
 // ========== 商品列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct GoodsItem {
     pub id: i64,
@@ -64,15 +69,20 @@ pub struct GoodsItem {
     pub blurb: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct GoodsListResponse {
-    pub currentPage: u32,
-    pub dataTotal: u32,
+    #[serde(rename = "currentPage")]
+    pub current_page: u32,
+    #[serde(rename = "dataTotal")]
+    pub data_total: u32,
     pub list: Vec<GoodsItem>,
-    pub pageTotal: u32,
+    #[serde(rename = "pageTotal")]
+    pub page_total: u32,
 }
 
 // ========== 订单列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct OrderItem {
     pub order_no: String,
@@ -85,12 +95,14 @@ pub struct OrderItem {
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct OrderListResponse {
     pub list: Vec<OrderItem>,
 }
 
 // ========== 消息列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageItem {
     pub id: i64,
@@ -100,14 +112,19 @@ pub struct MessageItem {
     pub state: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageListResponse {
-    pub currentPage: u32,
-    pub dataTotal: u32,
+    #[serde(rename = "currentPage")]
+    pub current_page: u32,
+    #[serde(rename = "dataTotal")]
+    pub data_total: u32,
     pub list: Vec<MessageItem>,
-    pub pageTotal: u32,
+    #[serde(rename = "pageTotal")]
+    pub page_total: u32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageContentItem {
     pub content: String,
@@ -116,12 +133,14 @@ pub struct MessageContentItem {
     pub state: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageContentResponse {
     pub info: MessageContentItem,
 }
 
 // ========== 支付信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct PayInfo {
     pub order_no: String,
@@ -131,6 +150,7 @@ pub struct PayInfo {
 }
 
 // ========== 签到信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct SignInInfo {
     pub fen: i32,
@@ -139,6 +159,7 @@ pub struct SignInInfo {
 }
 
 // ========== VIP信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct VipInfo {
     pub vip: i64,
@@ -146,6 +167,7 @@ pub struct VipInfo {
 }
 
 // ========== 初始化信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AppInfo {
     pub name: String,
@@ -157,6 +179,7 @@ pub struct AppInfo {
     pub logon_off_msg: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct IniResponse {
     pub info: AppInfo,

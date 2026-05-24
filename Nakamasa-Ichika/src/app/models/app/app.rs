@@ -7,6 +7,7 @@ use sqlx::{FromRow, Type};
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('user','kami')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AppType {
     User,
     Kami,
@@ -16,6 +17,7 @@ pub enum AppType {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('on','off')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 #[derive(Default)]
 pub enum SwitchState {
     #[default]
@@ -27,6 +29,7 @@ pub enum SwitchState {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 #[derive(Default)]
 pub enum ModeState {
     #[default]
@@ -38,6 +41,7 @@ pub enum ModeState {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('phone','email','wordnum')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 #[derive(Default)]
 pub enum RegWay {
     Phone,
@@ -50,6 +54,7 @@ pub enum RegWay {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('vip','fen')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 #[derive(Default)]
 pub enum AwardType {
     #[default]
@@ -59,6 +64,7 @@ pub enum AwardType {
 
 /// 应用模型 (对应 u_app 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct App {
     #[sqlx(rename = "id")]
     pub id: i32,

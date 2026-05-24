@@ -5,4 +5,4 @@ pub mod smtp;
 pub mod trait_def;
 
 pub use smtp::SmtpMailer;
-pub use trait_def::{MailResult, MailerConfig, MailerPlugin, MailerPluginMeta};
+pub use trait_def::{MailerConfig, MailerPlugin};

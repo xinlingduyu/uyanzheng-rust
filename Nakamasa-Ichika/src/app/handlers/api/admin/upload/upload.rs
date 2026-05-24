@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin upload controller
 //! 管理员上传控制器
 

@@ -19,7 +19,7 @@
 //!     │   └── ...
 //!     ├── user.rs         # 用户 API 路由定义
 //!     ├── user/           # 用户 API 处理器
-//!     │   ├── signIn.rs   # 登录
+//!     │   ├── sign_in.rs   # 登录
 //!     │   ├── signUp.rs   # 注册
 //!     │   └── ...
 //!     └── index/          # 首页 API 处理器
@@ -88,7 +88,3 @@ pub mod mcp;
 // 公开导出
 // ============================================================================
 
-pub use api::*;
-pub use health::*;
-pub use hello::*;
-pub use static_files::*;

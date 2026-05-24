@@ -44,20 +44,6 @@
 // ============================================================================
 
 // 开发阶段允许的警告（生产环境应逐步消除）
-#![allow(unused_imports)]
-#![allow(dead_code)]
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
-// Clippy 警告抑制
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::if_same_then_else)]
-#![allow(clippy::match_same_arms)]
-#![allow(clippy::module_inception)]
-#![allow(clippy::manual_slice_fill)]
-#![allow(clippy::collapsible_match)]
-
 // ============================================================================
 // 模块声明
 // ============================================================================

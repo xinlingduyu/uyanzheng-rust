@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! 管理员缓存服务
 //!
 //! 封装管理员信息的缓存逻辑，提供简洁的 API：
@@ -7,7 +9,6 @@
 
 use Nakamasa_utils::{CacheConfig, EvictionPolicy, ShardedCacheV2};
 use sqlx::MySqlPool;
-use std::sync::Arc;
 use std::time::Duration;
 
 /// 管理员缓存条目

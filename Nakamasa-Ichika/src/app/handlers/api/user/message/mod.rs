@@ -1,15 +1,10 @@
 //! Message handlers
-//! Grouped: messageAdd, messageContent, messageEnd, messageList, messageReply
+//! Grouped: message_add, message_content, message_end, message_list, message_reply
 
-pub mod messageAdd;
-pub mod messageContent;
-pub mod messageEnd;
-pub mod messageList;
-pub mod messageReply;
+pub mod message_add;
+pub mod message_content;
+pub mod message_end;
+pub mod message_list;
+pub mod message_reply;
 
 // Re-export for backward compatibility
-pub use messageAdd::*;
-pub use messageContent::*;
-pub use messageEnd::*;
-pub use messageList::*;
-pub use messageReply::*;

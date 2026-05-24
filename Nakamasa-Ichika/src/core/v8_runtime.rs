@@ -5,7 +5,3 @@
 //!
 //! 请使用 `quickjs_runtime` 模块代替。
 
-#[deprecated(note = "已弃用，请使用 quickjs_runtime 模块")]
-pub use crate::core::quickjs_runtime::{
-    CloudFunctionContext, QuickJsRuntime as V8Runtime, execute_cloud_function,
-};

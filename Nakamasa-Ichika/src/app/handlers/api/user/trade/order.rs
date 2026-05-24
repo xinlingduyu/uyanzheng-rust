@@ -16,7 +16,7 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::middleware::user_auth::UserInfo;
 use crate::app::models::requests::OrderRequest;
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success,
 };
 use crate::app::utils::validator::Validator;
 use crate::core::AppState;
@@ -37,10 +37,13 @@ struct OrderItem {
 /// 订单列表响应 - 匹配JSON响应格式
 #[derive(Debug, Serialize)]
 struct OrderListResponse {
-    currentPage: u32,
-    dataTotal: u32,
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: u32,
     list: Vec<OrderItem>,
-    pageTotal: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
 }
 
 #[handler]
@@ -157,10 +160,10 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let page_total = data_total.div_ceil(PAGE_SIZE);
 
             let response = OrderListResponse {
-                currentPage: page,
-                dataTotal: data_total,
+                current_page: page,
+                data_total,
                 list: order_list,
-                pageTotal: page_total,
+                page_total,
             };
 
             render_success(res, app_key, Some(response), app_info.mi.as_ref());

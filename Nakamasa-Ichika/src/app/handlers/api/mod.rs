@@ -21,7 +21,7 @@
 //! │   └── index.rs        # 管理后台首页
 //! ├── user.rs             # 用户 API 路由定义
 //! ├── user/               # 用户 API 处理器
-//! │   ├── signIn.rs       # 登录
+//! │   ├── sign_in.rs       # 登录
 //! │   ├── signUp.rs       # 注册
 //! │   ├── userInfo.rs     # 用户信息
 //! │   ├── fen.rs          # 积分操作

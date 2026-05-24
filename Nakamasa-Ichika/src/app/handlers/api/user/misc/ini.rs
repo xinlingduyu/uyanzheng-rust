@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! 获取配置
 //! 返回应用配置信息：版本、公告、扩展配置
 //! 注意: tokenCheck=false，不需要认证
@@ -10,7 +12,7 @@ use std::sync::Arc;
 
 use crate::app::middleware::app_context::AppInfo;
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success,
 };
 use crate::core::AppState;
 

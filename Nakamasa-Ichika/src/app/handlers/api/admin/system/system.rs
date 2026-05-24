@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin System controller
 //! 管理员系统控制器
 

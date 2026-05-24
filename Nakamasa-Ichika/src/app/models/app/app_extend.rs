@@ -1,6 +1,7 @@
 use sqlx::FromRow;
 
 #[derive(Debug, FromRow)]
+#[allow(dead_code)]
 pub struct AppExtend {
     pub id: i32,
     pub name: String,

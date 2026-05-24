@@ -13,7 +13,7 @@
 
 use chrono::Utc;
 use salvo::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::sync::Arc;
 
 use crate::app::plugins::pay::{AliPayPlugin, JiePayPlugin, PayPlugin, WxPayPlugin};

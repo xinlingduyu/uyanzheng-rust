@@ -10,5 +10,5 @@ pub mod wx;
 
 pub use ali::AliPayPlugin;
 pub use jie::JiePayPlugin;
-pub use trait_def::{NotifyVerifyResult, PayOrder, PayPlugin, PayResult};
+pub use trait_def::{NotifyVerifyResult, PayOrder, PayPlugin};
 pub use wx::WxPayPlugin;

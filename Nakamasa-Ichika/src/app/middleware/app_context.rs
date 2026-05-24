@@ -5,11 +5,10 @@
 //! 支持请求加密解密：根据版本配置的加密方案自动解密客户端请求
 
 use crate::app::plugins::encryption::{
-    Encryption, EncryptionConfig, arr_sign, create_encryption, txt_to_arr,
+    EncryptionConfig, arr_sign, create_encryption, txt_to_arr,
 };
 use crate::app::utils::response::ApiResponse;
 use crate::core::AppState;
-use crate::core::json_optimize::FastJson;
 use chrono::Utc;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -59,8 +58,10 @@ pub struct AppInfo {
     pub sms_state: String,
     pub sms_config: Option<String>,
     pub sms_type: Option<String>,
-    pub logon_sn_unbdeVal: i32,     // 解绑设备消耗数值
-    pub logon_sn_unbdeType: String, // 解绑设备消耗类型 'vip' or 'fen'
+    #[serde(rename = "logon_sn_unbdeVal")]
+    pub logon_sn_unbde_val: i32,     // 解绑设备消耗数值
+    #[serde(rename = "logon_sn_unbdeType")]
+    pub logon_sn_unbde_type: String, // 解绑设备消耗类型 'vip' or 'fen'
     /// 支付宝支付配置
     pub alipay_state: String, // 'on' or 'off'
     pub alipay_type: String,        // 支付插件类型 'jie', 'ali' 等
@@ -262,8 +263,8 @@ impl Handler for AppContext {
             .iter()
             .any(|p| current_path.ends_with(p));
 
-        if self.data_check && !should_skip_encryption {
-            if let Some(ref enc_info) = app_info.mi {
+        if self.data_check && !should_skip_encryption
+            && let Some(ref enc_info) = app_info.mi {
                 // 版本配置了加密方案，需要解密请求
                 match decrypt_and_verify_request(req, enc_info, &app_info.app_key).await {
                     Ok(decrypted_json) => {
@@ -284,7 +285,6 @@ impl Handler for AppContext {
                     }
                 }
             }
-        }
 
         depot.insert("app_info", app_info);
 
@@ -730,8 +730,8 @@ async fn fetch_app_info_with_version(
             .unwrap_or_else(|| "off".to_string()),
         sms_config: row.try_get(37).ok(),
         sms_type: row.try_get(38).ok(),
-        logon_sn_unbdeVal: row.try_get::<Option<i32>, _>(39)?.unwrap_or(0),
-        logon_sn_unbdeType: row
+        logon_sn_unbde_val: row.try_get::<Option<i32>, _>(39)?.unwrap_or(0),
+        logon_sn_unbde_type: row
             .try_get::<Option<String>, _>(40)?
             .unwrap_or_else(|| "fen".to_string()),
         alipay_state: row

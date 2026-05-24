@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # 中间件模块 (Middleware Module)
 //!
 //! 本模块包含所有 HTTP 请求的中间件实现，用于请求预处理和后处理。
@@ -134,17 +136,10 @@ pub mod app_context;
 pub mod cors;
 
 /// 请求体读取中间件（当前未使用，保留以供参考）
-// pub mod body_reader;
-
 pub mod connect;
 
 // ============================================================================
 // 公开导出
 // ============================================================================
 
-pub use admin_auth::*;
-pub use app_context::*;
 // pub use body_reader::*;
-pub use connect::*;
-pub use cors::*;
-pub use user_auth::*;

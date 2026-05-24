@@ -1,15 +1,10 @@
 //! Auth handlers
-//! Grouped: logon, logout, reg, resetPwd, modifyPwd
+//! Grouped: logon, logout, reg, modify_pwd, reset_pwd
 
 pub mod logon;
 pub mod logout;
-pub mod modifyPwd;
+pub mod modify_pwd;
 pub mod reg;
-pub mod resetPwd;
+pub mod reset_pwd;
 
 // Re-export for backward compatibility
-pub use logon::*;
-pub use logout::*;
-pub use modifyPwd::*;
-pub use reg::*;
-pub use resetPwd::*;

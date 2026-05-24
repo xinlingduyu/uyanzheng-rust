@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # 数据模型模块 (Models)
 //! Organized by business domain
 //!
@@ -24,11 +26,4 @@ pub mod user;
 
 // Re-export all for backward compatibility
 pub use admin::*;
-pub use agent::*;
-pub use app::*;
-pub use cdk::*;
-pub use common::*;
-pub use finance::*;
-pub use logs::*;
-pub use message::*;
 pub use user::*;

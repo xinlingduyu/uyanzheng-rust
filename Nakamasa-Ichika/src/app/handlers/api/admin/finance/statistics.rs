@@ -2,20 +2,22 @@
 //! 管理员统计控制器
 
 use chrono::{Duration, Utc};
-use deadpool_redis::redis::{self, AsyncCommands};
+use deadpool_redis::redis;
 use salvo::prelude::*;
 use serde::Serialize;
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::core::app_state::AppState;
+use sqlx::Row;
 use std::sync::Arc;
 
 #[derive(Debug, Serialize)]
 struct UserStatistics {
     count: i64,
-    onLine: i64,
-    onLine_token: i64,
+    #[serde(rename = "onLine")]
+    on_line: i64,
+    #[serde(rename = "onLine_token")]
+    on_line_token: i64,
     sign_in: i64,
     sign_in_yesterday: i64,
     census: Vec<i64>,
@@ -156,8 +158,8 @@ async fn get_user_statistics(
 
     Ok(UserStatistics {
         count,
-        onLine: on_line,
-        onLine_token: on_line_token,
+        on_line,
+        on_line_token,
         sign_in,
         sign_in_yesterday,
         census,

@@ -1,26 +1,16 @@
 //! Oauth handlers
-//! Grouped: wxlogon, wxlogonCallback, wxlogonQuery, wxBindSDK, wxloginSDK, qqBindSDK, qqlogonCallback, qqloginWeb, qqloginQuery, qqloginSDK
+//! Grouped: wxlogon, wx_logon_callback, wx_logon_query, wx_bind_sdk, wx_login_sdk, qq_bind_sdk, qq_logon_callback, qq_login_web, qq_login_query, qq_login_sdk
 
-pub mod qqBindSDK;
-mod http_client;
-pub mod qqloginQuery;
-pub mod qqloginSDK;
-pub mod qqloginWeb;
-pub mod qqlogonCallback;
-pub mod wxBindSDK;
-pub mod wxloginSDK;
+pub mod http_client;
+pub mod qq_bind_sdk;
+pub mod qq_login_query;
+pub mod qq_login_sdk;
+pub mod qq_login_web;
+pub mod qq_logon_callback;
+pub mod wx_bind_sdk;
+pub mod wx_login_sdk;
 pub mod wxlogon;
-pub mod wxlogonCallback;
-pub mod wxlogonQuery;
+pub mod wx_logon_callback;
+pub mod wx_logon_query;
 
 // Re-export for backward compatibility
-pub use qqBindSDK::*;
-pub use qqloginQuery::*;
-pub use qqloginSDK::*;
-pub use qqloginWeb::*;
-pub use qqlogonCallback::*;
-pub use wxBindSDK::*;
-pub use wxloginSDK::*;
-pub use wxlogon::*;
-pub use wxlogonCallback::*;
-pub use wxlogonQuery::*;

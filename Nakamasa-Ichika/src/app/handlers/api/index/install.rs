@@ -2,7 +2,6 @@
 use deadpool_redis::redis::{Client, cmd};
 use rand::Rng;
 use salvo::prelude::*;
-use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -482,6 +481,7 @@ fn write_config_file_secure(path: &str, content: &str) -> std::io::Result<()> {
 /// - admin.token_key (JWT 密钥)
 ///
 /// 加密密钥为 app.code
+#[allow(clippy::too_many_arguments)]
 fn generate_config_yaml(
     mysql_host: &str,
     mysql_port: u16,

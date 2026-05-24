@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # 工具函数模块 (Utilities Module)
 //!
 //! 本模块提供通用的工具函数，供其他模块使用。
@@ -75,5 +77,3 @@ pub mod validator;
 // 公开导出
 // ============================================================================
 
-pub use response::ApiResponse;
-pub use validator::*;

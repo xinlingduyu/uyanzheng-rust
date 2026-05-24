@@ -4,6 +4,7 @@ use sqlx::FromRow;
 
 /// 验证码模型 - 对应 u_vcode 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct Vcode {
     pub id: i64,
     pub eorp: String,

@@ -2,6 +2,7 @@
 //! 索引API模块
 
 pub mod authentication;
+#[allow(clippy::module_inception)]
 pub mod index;
 pub mod install;
 pub mod notify;

@@ -1,6 +1,7 @@
+#![allow(dead_code)]
+
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 
 /// 零成本抽象：异步执行器包装器

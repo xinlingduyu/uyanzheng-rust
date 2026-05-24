@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin login controller
 //! 管理员登录控制器
 

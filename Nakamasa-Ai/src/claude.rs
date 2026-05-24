@@ -59,6 +59,8 @@ struct ClaudeResponse {
     content: Vec<ClaudeContent>,
     usage: Option<ClaudeUsage>,
     stop_reason: Option<String>,
+    /// 触发停止的序列（由 serde 填充用于反序列化兼容，当前未使用）
+    #[allow(dead_code)]
     stop_sequence: Option<String>,
 }
 
@@ -313,9 +315,14 @@ impl AiProvider for ClaudeProvider {
             model: response.model,
             choices,
             usage: response.usage.map(|u| Usage {
-                prompt_tokens: u.input_tokens,
+                prompt_tokens: u.input_tokens
+                    + u.cache_creation_input_tokens.unwrap_or(0)
+                    + u.cache_read_input_tokens.unwrap_or(0),
                 completion_tokens: u.output_tokens,
-                total_tokens: u.input_tokens + u.output_tokens,
+                total_tokens: u.input_tokens
+                    + u.output_tokens
+                    + u.cache_creation_input_tokens.unwrap_or(0)
+                    + u.cache_read_input_tokens.unwrap_or(0),
             }),
         })
     }
@@ -386,7 +393,7 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
         .filter_map(|line| {
             let line = line.trim();
             if line.starts_with("data:") {
-                Some(line[5..].trim())
+                line.strip_prefix("data:").map(str::trim)
             } else if line.starts_with("event:") || line.is_empty() {
                 None // 跳过事件名和空行
             } else {
@@ -418,17 +425,15 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
                     "content_block_delta" => {
                         if let Some(delta) = chunk.delta {
                             // text delta -> 普通文本
-                            if let Some(text) = delta.text {
-                                if !text.is_empty() {
+                            if let Some(text) = delta.text
+                                && !text.is_empty() {
                                     return Ok(StreamChunk::text(&text));
                                 }
-                            }
                             // thinking delta -> extended thinking 文本
-                            if let Some(thinking) = delta.thinking {
-                                if !thinking.is_empty() {
+                            if let Some(thinking) = delta.thinking
+                                && !thinking.is_empty() {
                                     return Ok(StreamChunk::text(&thinking));
                                 }
-                            }
                             // signature delta -> thinking signature
                             if let Some(sig) = delta.signature {
                                 return Ok(StreamChunk::text(&format!(
@@ -442,32 +447,28 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
                         // 记录 thinking block 起始标记
                         if let Some(block) = &chunk.content_block {
                             if block.block_type == "thinking" {
-                                if let Some(text) = &block.thinking {
-                                    if !text.is_empty() {
+                                if let Some(text) = &block.thinking
+                                    && !text.is_empty() {
                                         return Ok(StreamChunk::text(&format!(
                                             "\n【思考中...】{}",
                                             text
                                         )));
                                     }
-                                }
                                 return Ok(StreamChunk::text("\n【思考中...】\n"));
                             }
-                            if block.block_type == "text" {
-                                if let Some(text) = &block.text {
-                                    if !text.is_empty() {
+                            if block.block_type == "text"
+                                && let Some(text) = &block.text
+                                    && !text.is_empty() {
                                         return Ok(StreamChunk::text(text));
                                     }
-                                }
-                            }
                         }
                     }
                     "message_delta" => {
                         // delta 中包含 stop_reason
-                        if let Some(delta) = chunk.delta {
-                            if delta.stop_reason.is_some() || delta.stop_sequence.is_some() {
+                        if let Some(delta) = chunk.delta
+                            && (delta.stop_reason.is_some() || delta.stop_sequence.is_some()) {
                                 return Ok(StreamChunk::done());
                             }
-                        }
                         return Ok(StreamChunk::done());
                     }
                     "message_stop" => {
@@ -475,8 +476,8 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
                     }
                     "message_start" => {
                         // 消息开始，可以忽略或记录 id
-                        if let Some(msg) = &chunk.message {
-                            if let Some(usage) = &msg.usage {
+                        if let Some(msg) = &chunk.message
+                            && let Some(usage) = &msg.usage {
                                 let mut meta = std::collections::HashMap::new();
                                 meta.insert(
                                     "input_tokens".to_string(),
@@ -488,7 +489,6 @@ fn parse_claude_stream_chunk(text: &str) -> Result<StreamChunk> {
                                     metadata: Some(meta),
                                 });
                             }
-                        }
                     }
                     "content_block_stop" | "ping" => {
                         // 忽略

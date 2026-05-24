@@ -8,6 +8,7 @@ use sqlx::{FromRow, Type};
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('vip','fen','addsn')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum CardType {
     Vip,
     Fen,
@@ -18,6 +19,7 @@ pub enum CardType {
 #[derive(Debug, Serialize, Deserialize, Type, Clone, Copy, PartialEq)]
 #[sqlx(type_name = "enum('adm','agent')")]
 #[sqlx(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum AddRole {
     Adm,
     Agent,
@@ -28,6 +30,7 @@ pub enum AddRole {
 #[sqlx(type_name = "enum('y','n')")]
 #[sqlx(rename_all = "lowercase")]
 #[derive(Default)]
+#[allow(dead_code)]
 pub enum OutState {
     Y,
     #[default]
@@ -36,6 +39,7 @@ pub enum OutState {
 
 /// 卡券模型 (对应 u_cdk_kami 表)
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct Kami {
     #[sqlx(rename = "id")]
     pub id: i32,
@@ -116,6 +120,7 @@ pub struct Kami {
 // 实现自定义方法
 impl Kami {
     /// 创建新卡券
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         group_id: i32,
         card_type: CardType,

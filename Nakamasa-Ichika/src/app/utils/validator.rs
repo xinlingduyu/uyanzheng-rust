@@ -30,6 +30,7 @@ static ERR_BETWEEN: &str = "之间";
 static ERR_LENGTH: &str = "长度必须在";
 static ERR_BIT: &str = "位之间";
 
+#[allow(dead_code)]
 pub struct Validator {
     error: Option<String>,
 }

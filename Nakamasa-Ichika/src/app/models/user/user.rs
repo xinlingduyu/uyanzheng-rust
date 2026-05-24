@@ -3,6 +3,7 @@ use sqlx::FromRow;
 
 /// 用户表模型 - 对应 u_user 表
 #[derive(Debug, Serialize, Deserialize, FromRow)]
+#[allow(dead_code)]
 pub struct User {
     pub id: i64,
     pub email: Option<String>,
@@ -28,6 +29,7 @@ pub struct User {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct UserInfo {
     pub uid: i64,
     pub phone: Option<String>,
@@ -44,6 +46,7 @@ pub struct UserInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UserRegisterRequest {
     pub account: String,
     pub code: Option<String>,
@@ -53,6 +56,7 @@ pub struct UserRegisterRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct UserLoginRequest {
     pub account: String,
     pub password: String,
@@ -60,12 +64,14 @@ pub struct UserLoginRequest {
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 pub struct UserLoginResponse {
     pub token: String,
     pub token_state: String,
     pub info: UserInfo,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct UserEditRequest {
     pub id: i64,
@@ -77,6 +83,7 @@ pub struct UserEditRequest {
     pub ban_msg: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct UserAwardRequest {
     pub r#type: String, // vip or fen
@@ -84,6 +91,7 @@ pub struct UserAwardRequest {
     pub val: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct UserListRequest {
     pub pg: Option<i32>,
@@ -91,6 +99,7 @@ pub struct UserListRequest {
     pub so: Option<SearchOptions>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SearchOptions {
     pub status: Option<String>, // n=ban, other=normal

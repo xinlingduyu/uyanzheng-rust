@@ -5,6 +5,7 @@ use sqlx::FromRow;
 
 /// 消息模型 - 对应 u_message 表
 #[derive(Debug, Serialize, Deserialize, FromRow, Clone)]
+#[allow(dead_code)]
 pub struct Message {
     pub id: i64,
     pub uid: i64,

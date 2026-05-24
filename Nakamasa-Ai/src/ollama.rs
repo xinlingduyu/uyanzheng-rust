@@ -286,16 +286,13 @@ fn parse_ollama_stream_chunk(text: &str) -> Result<StreamChunk> {
         return Ok(StreamChunk::text(""));
     }
 
-    match serde_json::from_str::<OllamaStreamChunk>(line) {
-        Ok(chunk) => {
-            if chunk.done {
-                return Ok(StreamChunk::done());
-            }
-            if !chunk.message.content.is_empty() {
-                return Ok(StreamChunk::text(&chunk.message.content));
-            }
+    if let Ok(chunk) = serde_json::from_str::<OllamaStreamChunk>(line) {
+        if chunk.done {
+            return Ok(StreamChunk::done());
         }
-        Err(_) => {}
+        if !chunk.message.content.is_empty() {
+            return Ok(StreamChunk::text(&chunk.message.content));
+        }
     }
     Ok(StreamChunk::text(""))
 }

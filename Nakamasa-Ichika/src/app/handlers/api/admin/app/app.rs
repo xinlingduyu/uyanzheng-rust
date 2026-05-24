@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin app controller
 //! 管理员应用管理控制器
 
@@ -286,9 +288,12 @@ struct AppListItem {
 #[derive(Debug, Serialize)]
 struct ListResponse {
     list: Vec<AppListItem>,
-    currentPage: u32,
-    pageTotal: u32,
-    dataTotal: u64,
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: u64,
 }
 
 #[handler]
@@ -432,9 +437,9 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
             let response = ListResponse {
                 list,
-                currentPage: page,
-                pageTotal: page_total,
-                dataTotal: data_total,
+                current_page: page,
+                page_total,
+                data_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));
@@ -522,10 +527,13 @@ struct GetAllItem {
 
 #[derive(Debug, Serialize)]
 struct GetAllResponse {
-    currentPage: u32,
-    dataTotal: u64,
+    #[serde(rename = "currentPage")]
+    current_page: u32,
+    #[serde(rename = "dataTotal")]
+    data_total: u64,
     list: Vec<GetAllItem>,
-    pageTotal: u32,
+    #[serde(rename = "pageTotal")]
+    page_total: u32,
 }
 
 #[handler]
@@ -591,10 +599,10 @@ pub async fn get_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let page_total = if data_total == 0 { 0 } else { 1 };
 
             let response = GetAllResponse {
-                currentPage: 1,
-                dataTotal: data_total,
+                current_page: 1,
+                data_total,
                 list,
-                pageTotal: page_total,
+                page_total,
             };
 
             res.render(Json(ApiResponse::success("成功", Some(response))));

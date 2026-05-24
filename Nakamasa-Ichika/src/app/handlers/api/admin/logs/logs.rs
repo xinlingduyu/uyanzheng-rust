@@ -184,6 +184,7 @@ async fn get_username(
 }
 
 // 获取目标用户名
+#[allow(dead_code)]
 async fn get_tousername(toug: &str, touid: i64, db: &sqlx::MySqlPool) -> Option<String> {
     match toug {
         "kami" => sqlx::query_scalar(
@@ -207,6 +208,7 @@ async fn get_tousername(toug: &str, touid: i64, db: &sqlx::MySqlPool) -> Option<
 }
 
 // 获取UG显示名称
+#[allow(dead_code)]
 fn get_ug_display(ug: &str) -> &'static str {
     match ug {
         "adm" => "管理员",
@@ -218,6 +220,7 @@ fn get_ug_display(ug: &str) -> &'static str {
 }
 
 // 获取日志类型显示
+#[allow(dead_code)]
 fn get_log_type_display(ug: &str, log_type: &str) -> String {
     let mapping = get_log_type_mapping();
     let types = match ug {
@@ -228,10 +231,10 @@ fn get_log_type_display(ug: &str, log_type: &str) -> String {
         _ => return log_type.to_string(),
     };
 
-    if types.contains(&log_type.to_string()) {
+if types.contains(&log_type.to_string()) {
         log_type.to_string()
     } else {
-        log_type.to_string()
+        "未知".to_string()
     }
 }
 

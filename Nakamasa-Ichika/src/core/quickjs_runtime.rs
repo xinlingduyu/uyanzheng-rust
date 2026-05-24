@@ -150,11 +150,10 @@ fn validate_http_url(url: &str) -> Result<(), String> {
     if host.eq_ignore_ascii_case("localhost") {
         return Err("禁止访问本机地址".to_string());
     }
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        if is_private_or_loopback_ip(ip) {
+    if let Ok(ip) = host.parse::<IpAddr>()
+        && is_private_or_loopback_ip(ip) {
             return Err("禁止访问内网或本机地址".to_string());
         }
-    }
 
     let port = parsed.port_or_known_default().unwrap_or(80);
     if let Ok(addrs) = (host, port).to_socket_addrs() {
@@ -1297,6 +1296,7 @@ impl Default for QuickJsRuntime {
 }
 
 /// 执行云函数
+#[allow(clippy::too_many_arguments)]
 pub async fn execute_cloud_function(
     code: &str,
     db: MySqlPool,

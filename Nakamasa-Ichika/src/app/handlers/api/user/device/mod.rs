@@ -1,15 +1,10 @@
 //! Device handlers
-//! Grouped: getUdid, bindUdid, reUdid, heartbeat, ban
+//! Grouped: get_udid, bind_udid, re_udid, heartbeat, ban
 
 pub mod ban;
-pub mod bindUdid;
-pub mod getUdid;
+pub mod bind_udid;
+pub mod get_udid;
 pub mod heartbeat;
-pub mod reUdid;
+pub mod re_udid;
 
 // Re-export for backward compatibility
-pub use ban::*;
-pub use bindUdid::*;
-pub use getUdid::*;
-pub use heartbeat::*;
-pub use reUdid::*;

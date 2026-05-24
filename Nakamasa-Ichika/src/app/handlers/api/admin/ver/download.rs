@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin Download controller
 //! 管理员下载控制器
 

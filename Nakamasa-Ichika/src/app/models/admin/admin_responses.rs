@@ -2,6 +2,7 @@
 use serde::Serialize;
 
 // ========== 管理员信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AdminInfo {
     pub id: u64,
@@ -14,6 +15,7 @@ pub struct AdminInfo {
     pub appid: Option<u64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AdminLoginResponse {
     pub token: String,
@@ -22,6 +24,7 @@ pub struct AdminLoginResponse {
 }
 
 // ========== 管理员列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AdminListItem {
     pub id: u64,
@@ -30,6 +33,7 @@ pub struct AdminListItem {
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AdminListResponse {
     pub list: Vec<AdminListItem>,
@@ -39,6 +43,7 @@ pub struct AdminListResponse {
 }
 
 // ========== 代理列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AgentListItem {
     pub id: i64,
@@ -51,6 +56,7 @@ pub struct AgentListItem {
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AgentListResponse {
     pub list: Vec<AgentListItem>,
@@ -60,6 +66,7 @@ pub struct AgentListResponse {
 }
 
 // ========== 代理组列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AgentGroupListItem {
     pub id: i64,
@@ -68,6 +75,7 @@ pub struct AgentGroupListItem {
     pub km_discount: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct AgentGroupListResponse {
     pub list: Vec<AgentGroupListItem>,
@@ -77,6 +85,7 @@ pub struct AgentGroupListResponse {
 }
 
 // ========== 用户列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct UserListItem {
     pub id: i64,
@@ -89,6 +98,7 @@ pub struct UserListItem {
     pub ban: Option<i64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct UserListResponse {
     pub list: Vec<UserListItem>,
@@ -98,6 +108,7 @@ pub struct UserListResponse {
 }
 
 // ========== 卡密组列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKGroupListItem {
     pub id: i64,
@@ -108,6 +119,7 @@ pub struct CDKGroupListItem {
     pub price: f64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKGroupListResponse {
     pub list: Vec<CDKGroupListItem>,
@@ -117,6 +129,7 @@ pub struct CDKGroupListResponse {
 }
 
 // ========== 卡密列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKKamiListItem {
     pub id: i64,
@@ -131,6 +144,7 @@ pub struct CDKKamiListItem {
     pub add_time: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKKamiListResponse {
     pub list: Vec<CDKKamiListItem>,
@@ -140,6 +154,7 @@ pub struct CDKKamiListResponse {
 }
 
 // ========== 用户卡密列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKUserItem {
     pub id: i64,
@@ -152,6 +167,7 @@ pub struct CDKUserItem {
     pub use_time: Option<i64>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct CDKUserListResponse {
     pub list: Vec<CDKUserItem>,
@@ -161,6 +177,7 @@ pub struct CDKUserListResponse {
 }
 
 // ========== 加密列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct EncryptionListItem {
     pub id: i64,
@@ -170,6 +187,7 @@ pub struct EncryptionListItem {
     pub config: Option<serde_json::Value>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct EncryptionListResponse {
     pub list: Vec<EncryptionListItem>,
@@ -179,6 +197,7 @@ pub struct EncryptionListResponse {
 }
 
 // ========== 扩展列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct ExtendItem {
     pub id: i64,
@@ -187,6 +206,7 @@ pub struct ExtendItem {
     pub var_val: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct ExtendListResponse {
     pub list: Vec<ExtendItem>,
@@ -196,6 +216,7 @@ pub struct ExtendListResponse {
 }
 
 // ========== 积分事件列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FenEventListItem {
     pub id: i64,
@@ -205,6 +226,7 @@ pub struct FenEventListItem {
     pub vip_free: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FenEventListResponse {
     pub list: Vec<FenEventListItem>,
@@ -214,6 +236,7 @@ pub struct FenEventListResponse {
 }
 
 // ========== 积分订单列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FenOrderItem {
     pub id: i64,
@@ -222,6 +245,7 @@ pub struct FenOrderItem {
     pub mark: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FenOrderListResponse {
     pub list: Vec<FenOrderItem>,
@@ -231,6 +255,7 @@ pub struct FenOrderListResponse {
 }
 
 // ========== 云函数列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FunctionItem {
     pub id: i64,
@@ -239,6 +264,7 @@ pub struct FunctionItem {
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct FunctionListResponse {
     pub list: Vec<FunctionItem>,
@@ -248,6 +274,7 @@ pub struct FunctionListResponse {
 }
 
 // ========== 商品列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct GoodsItem {
     pub id: i64,
@@ -259,6 +286,7 @@ pub struct GoodsItem {
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct GoodsListResponse {
     pub list: Vec<GoodsItem>,
@@ -268,6 +296,7 @@ pub struct GoodsListResponse {
 }
 
 // ========== 日志列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct LogItem {
     pub id: i64,
@@ -282,6 +311,7 @@ pub struct LogItem {
     pub ip: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct LogsListResponse {
     pub list: Vec<LogItem>,
@@ -291,6 +321,7 @@ pub struct LogsListResponse {
 }
 
 // ========== 消息列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageItem {
     pub id: i64,
@@ -299,6 +330,7 @@ pub struct MessageItem {
     pub time: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct MessageListResponse {
     pub list: Vec<MessageItem>,
@@ -308,6 +340,7 @@ pub struct MessageListResponse {
 }
 
 // ========== 公告列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct NoticeItem {
     pub id: i64,
@@ -316,6 +349,7 @@ pub struct NoticeItem {
     pub time: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct NoticeListResponse {
     pub list: Vec<NoticeItem>,
@@ -325,6 +359,7 @@ pub struct NoticeListResponse {
 }
 
 // ========== 订单列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct OrderItem {
     pub id: i64,
@@ -338,6 +373,7 @@ pub struct OrderItem {
     pub add_time: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct OrderListResponse {
     pub list: Vec<OrderItem>,
@@ -347,6 +383,7 @@ pub struct OrderListResponse {
 }
 
 // ========== 版本列表 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct VerItem {
     pub id: i64,
@@ -356,6 +393,7 @@ pub struct VerItem {
     pub ver_state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct VerListResponse {
     pub list: Vec<VerItem>,
@@ -365,12 +403,14 @@ pub struct VerListResponse {
 }
 
 // ========== 应用信息 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct GetUrlResponse {
     pub url: String,
 }
 
 // ========== 上传响应 ==========
+#[allow(dead_code)]
 #[derive(Debug, Serialize)]
 pub struct UploadResponse {
     pub url: String,

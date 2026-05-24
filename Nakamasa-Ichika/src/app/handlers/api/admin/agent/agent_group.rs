@@ -3,13 +3,13 @@
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::app::utils::validator::Validator;
 use crate::core::zero_copy::StringBuilder;
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct AgentGroupItem {
     id: i64,
     name: String,

@@ -15,7 +15,7 @@ use crate::app::middleware::app_context::AppInfo;
 use crate::app::models::requests::GoodsRequest;
 use crate::app::models::responses::{GoodsItem, GoodsListResponse};
 use crate::app::utils::response::{
-    SignedApiResponse, render_error, render_success, render_success_msg, render_success_with_msg,
+    render_error, render_success,
 };
 use crate::core::AppState;
 
@@ -105,10 +105,10 @@ pub async fn goods(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .collect();
 
             let response = GoodsListResponse {
-                currentPage: page,
-                dataTotal: data_total,
+                current_page: page,
+                data_total,
                 list: goods_list,
-                pageTotal: page_total,
+                page_total,
             };
 
             render_success(res, app_key, Some(response), app_info.mi.as_ref());

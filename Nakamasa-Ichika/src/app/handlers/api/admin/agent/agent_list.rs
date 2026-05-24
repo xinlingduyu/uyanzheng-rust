@@ -1,9 +1,10 @@
+#![allow(dead_code)]
+
 //! Admin Agent List controller
 //! 管理员代理列表控制器
 
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
 
 use crate::app::utils::response::ApiResponse;
 use crate::core::zero_copy::StringBuilder;

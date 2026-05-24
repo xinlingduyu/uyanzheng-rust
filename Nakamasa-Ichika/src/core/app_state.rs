@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # 应用状态模块 (Application State Module)
 //!
 //! 提供全局共享的应用状态管理，包括数据库连接池、Redis 连接池、
@@ -328,7 +330,7 @@ impl AppState {
         let admin_cache = db
             .as_ref()
             .map(|pool| AdminCacheService::new(pool.clone(), 500))
-            .unwrap_or_else(|| AdminCacheService::new_empty());
+            .unwrap_or_else(AdminCacheService::new_empty);
 
         // 用户信息缓存配置 - 高频访问，大容量
         let user_cache_config = V2CacheConfig {

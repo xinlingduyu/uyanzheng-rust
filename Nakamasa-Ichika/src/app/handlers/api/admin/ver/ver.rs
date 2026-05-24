@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin Ver controller
 //! 管理员版本控制器
 
@@ -597,7 +599,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.iter().any(|id| *id == 0) {
+    if del_req.ids.is_empty() || del_req.ids.len() > 1000 || del_req.ids.contains(&0) {
         res.render(Json(ApiResponse::<()>::error("请选择要删除的数据", 201)));
         return;
     }

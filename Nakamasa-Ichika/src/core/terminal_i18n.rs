@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! 终端国际化模块
 //!
 //! 该模块为终端输出提供多语言支持，仅在启动时读取一次系统默认语言。
@@ -27,10 +29,10 @@ use std::fs;
 use std::path::Path;
 
 /// 终端语言资源 - 在启动时一次性加载
-static TERMINAL_RESOURCES: Lazy<HashMap<String, String>> = Lazy::new(|| load_terminal_resources());
+static TERMINAL_RESOURCES: Lazy<HashMap<String, String>> = Lazy::new(load_terminal_resources);
 
 /// 当前终端语言 - 在启动时一次性确定
-static TERMINAL_LANG: Lazy<String> = Lazy::new(|| detect_terminal_language());
+static TERMINAL_LANG: Lazy<String> = Lazy::new(detect_terminal_language);
 
 /// 检测终端语言
 ///

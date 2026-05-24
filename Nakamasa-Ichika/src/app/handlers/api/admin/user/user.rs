@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! Admin User controller
 //! 管理员用户控制器 - PHP逻辑一比一还原
 
@@ -947,7 +949,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     update_sql.push_str(&format!(
         "phone = {}{}, ",
         if new_phone.is_some() { "?" } else { "NULL" },
-        if new_phone.is_some() { "" } else { "" }
+        ""
     ));
 
     // email: 可选，直接赋值
@@ -955,7 +957,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     update_sql.push_str(&format!(
         "email = {}{}, ",
         if new_email.is_some() { "?" } else { "NULL" },
-        if new_email.is_some() { "" } else { "" }
+        ""
     ));
 
     // vip: !empty($_POST['vip'])?$_POST['vip']:NULL
@@ -963,7 +965,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     update_sql.push_str(&format!(
         "vip = {}{}, ",
         if new_vip.is_some() { "?" } else { "NULL" },
-        if new_vip.is_some() { "" } else { "" }
+        ""
     ));
 
     // fen: 默认0
@@ -979,7 +981,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     update_sql.push_str(&format!(
         "ban = {}{}, ",
         if new_ban.is_some() { "?" } else { "NULL" },
-        if new_ban.is_some() { "" } else { "" }
+        ""
     ));
 
     // ban_msg: 直接赋值
@@ -987,7 +989,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     update_sql.push_str(&format!(
         "ban_msg = {}{}, ",
         if new_ban_msg.is_some() { "?" } else { "NULL" },
-        if new_ban_msg.is_some() { "" } else { "" }
+        ""
     ));
 
     // password: 可选
@@ -1457,20 +1459,18 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
     let mut params: Vec<String> = Vec::new();
 
     // 更新昵称 (存储在 notes 字段)
-    if let Some(ref nickname) = update_req.nickname {
-        if !nickname.is_empty() {
+    if let Some(ref nickname) = update_req.nickname
+        && !nickname.is_empty() {
             updates.push("notes = ?");
             params.push(nickname.clone());
         }
-    }
 
     // 更新头像
-    if let Some(ref avatars) = update_req.avatars {
-        if !avatars.is_empty() {
+    if let Some(ref avatars) = update_req.avatars
+        && !avatars.is_empty() {
             updates.push("avatars = ?");
             params.push(avatars.clone());
         }
-    }
 
     if updates.is_empty() {
         res.render(Json(ApiResponse::success_msg("无更新内容")));
@@ -1522,8 +1522,10 @@ pub async fn update_info(req: &mut Request, depot: &mut Depot, res: &mut Respons
 /// POST /admin/user/modifyPassword
 #[derive(Debug, Deserialize)]
 struct ModifyPasswordRequest {
-    oldPassword: String,
-    newPassword: String,
+    #[serde(rename = "oldPassword")]
+    old_password: String,
+    #[serde(rename = "newPassword")]
+    new_password: String,
     #[serde(rename = "newPassword_confirmation")]
     new_password_confirmation: String,
 }
@@ -1559,9 +1561,9 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     // 参数验证
     let mut validator = Validator::new();
     validator
-        .required("oldPassword", &Some(pwd_req.oldPassword.clone()), "旧密码")
-        .required("newPassword", &Some(pwd_req.newPassword.clone()), "新密码")
-        .password("newPassword", &pwd_req.newPassword, 6, 32);
+        .required("oldPassword", &Some(pwd_req.old_password.clone()), "旧密码")
+        .required("newPassword", &Some(pwd_req.new_password.clone()), "新密码")
+        .password("newPassword", &pwd_req.new_password, 6, 32);
 
     if let Err(msg) = validator.validate() {
         res.render(Json(ApiResponse::<()>::error(msg, 201)));
@@ -1569,7 +1571,7 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     }
 
     // 验证新密码和确认密码一致
-    if pwd_req.newPassword != pwd_req.new_password_confirmation {
+    if pwd_req.new_password != pwd_req.new_password_confirmation {
         res.render(Json(ApiResponse::<()>::error(
             "新密码与确认密码不一致",
             201,
@@ -1599,16 +1601,16 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     // 验证旧密码
     let adm_pwd_salt = app_state.config().app().admin().keys();
     let old_pwd_hash = {
-        let total_len = pwd_req.oldPassword.len() + adm_pwd_salt.len();
+        let total_len = pwd_req.old_password.len() + adm_pwd_salt.len();
         if total_len <= 256 {
             let mut buf = [0u8; 256];
-            buf[..pwd_req.oldPassword.len()].copy_from_slice(pwd_req.oldPassword.as_bytes());
-            buf[pwd_req.oldPassword.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
+            buf[..pwd_req.old_password.len()].copy_from_slice(pwd_req.old_password.as_bytes());
+            buf[pwd_req.old_password.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
             let hash_bytes = md5_hex(&buf[..total_len]);
             md5_to_str(&hash_bytes).to_string()
         } else {
             let mut buf = Vec::with_capacity(total_len);
-            buf.extend_from_slice(pwd_req.oldPassword.as_bytes());
+            buf.extend_from_slice(pwd_req.old_password.as_bytes());
             buf.extend_from_slice(adm_pwd_salt.as_bytes());
             let hash_bytes = md5_hex(&buf);
             md5_to_str(&hash_bytes).to_string()
@@ -1622,16 +1624,16 @@ pub async fn modify_password(req: &mut Request, depot: &mut Depot, res: &mut Res
 
     // 计算新密码哈希
     let new_pwd_hash = {
-        let total_len = pwd_req.newPassword.len() + adm_pwd_salt.len();
+        let total_len = pwd_req.new_password.len() + adm_pwd_salt.len();
         if total_len <= 256 {
             let mut buf = [0u8; 256];
-            buf[..pwd_req.newPassword.len()].copy_from_slice(pwd_req.newPassword.as_bytes());
-            buf[pwd_req.newPassword.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
+            buf[..pwd_req.new_password.len()].copy_from_slice(pwd_req.new_password.as_bytes());
+            buf[pwd_req.new_password.len()..total_len].copy_from_slice(adm_pwd_salt.as_bytes());
             let hash_bytes = md5_hex(&buf[..total_len]);
             md5_to_str(&hash_bytes).to_string()
         } else {
             let mut buf = Vec::with_capacity(total_len);
-            buf.extend_from_slice(pwd_req.newPassword.as_bytes());
+            buf.extend_from_slice(pwd_req.new_password.as_bytes());
             buf.extend_from_slice(adm_pwd_salt.as_bytes());
             let hash_bytes = md5_hex(&buf);
             md5_to_str(&hash_bytes).to_string()

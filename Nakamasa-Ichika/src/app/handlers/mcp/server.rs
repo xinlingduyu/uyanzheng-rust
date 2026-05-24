@@ -36,7 +36,7 @@ use salvo::prelude::*;
 use tokio::sync::broadcast;
 
 use crate::app::plugins::pay::manager::PayPluginManager;
-use crate::app::plugins::pay::{PayOrder, PayPlugin};
+use crate::app::plugins::pay::PayOrder;
 use crate::core::AppState;
 
 // ============================================================================
@@ -570,12 +570,11 @@ fn dispatch(body: &str, state: &Arc<AppState>, app_id: u64) -> String {
                 _ => make_error(-32601, &format!("Unknown tool: {}", name)),
             };
             // 如果有 id，包装为带 id 的响应
-            if let Some(id_val) = id {
-                if let Ok(mut resp_val) = serde_json::from_str::<serde_json::Value>(&resp) {
+            if let Some(id_val) = id
+                && let Ok(mut resp_val) = serde_json::from_str::<serde_json::Value>(&resp) {
                     resp_val["id"] = id_val.clone();
                     return serde_json::to_string(&resp_val).unwrap_or(resp);
                 }
-            }
             resp
         }
         _ => make_error(-32601, &format!("Method not found: {}", method)),

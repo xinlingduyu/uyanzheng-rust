@@ -2,6 +2,7 @@
 use serde::Deserialize;
 
 // ========== 认证相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct LoginRequest {
     pub account: String,
@@ -9,6 +10,7 @@ pub struct LoginRequest {
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct KamiLoginRequest {
     pub account: String,
@@ -17,6 +19,7 @@ pub struct KamiLoginRequest {
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub account: String,
@@ -28,11 +31,13 @@ pub struct RegisterRequest {
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct LogoutRequest {
     pub token: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ResetPwdRequest {
     pub account: String,
@@ -40,6 +45,7 @@ pub struct ResetPwdRequest {
     pub new_password: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct GetCodeRequest {
     pub account: String,
@@ -48,6 +54,7 @@ pub struct GetCodeRequest {
 }
 
 // ========== 微信登录相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct WxLogonRequest {
     #[serde(default)]
@@ -55,17 +62,20 @@ pub struct WxLogonRequest {
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct WxCallbackRequest {
     pub code: String,
     pub state: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct WxQueryRequest {
     pub uuid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct WxLoginSDKRequest {
     pub access_token: String,
@@ -76,23 +86,27 @@ pub struct WxLoginSDKRequest {
 }
 
 // ========== 用户信息相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct InfoRequest {
     pub token: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ModifyNameRequest {
     pub token: String,
     pub name: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ModifyPicRequest {
     pub token: String,
     pub file: String, // 通过上传接口获取的文件URL
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ModifyPwdRequest {
     pub token: String,
@@ -100,6 +114,7 @@ pub struct ModifyPwdRequest {
     pub new_password: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SetEmailRequest {
     pub token: String,
@@ -107,6 +122,7 @@ pub struct SetEmailRequest {
     pub code: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SetPhoneRequest {
     pub token: String,
@@ -114,12 +130,14 @@ pub struct SetPhoneRequest {
     pub code: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SetAcctnoRequest {
     pub token: String,
     pub acctno: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ReEmailRequest {
     pub token: String,
@@ -127,6 +145,7 @@ pub struct ReEmailRequest {
     pub code: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct RePhoneRequest {
     pub token: String,
@@ -134,12 +153,14 @@ pub struct RePhoneRequest {
     pub code: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct ReUdidRequest {
     pub token: String,
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SetExtendRequest {
     pub token: String,
@@ -149,24 +170,28 @@ pub struct SetExtendRequest {
 }
 
 // ========== 设备相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct BindUdidRequest {
     pub token: String,
     pub udid: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct GetUdidRequest {
     pub token: String,
 }
 
 // ========== 商品订单相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct GoodsRequest {
     #[serde(default)]
     pub pg: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct OrderRequest {
     pub token: String,
@@ -174,12 +199,14 @@ pub struct OrderRequest {
     pub pg: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct OrderQueryRequest {
     pub token: String,
     pub order: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct PayRequest {
     /// 充值账号：自定义账号、手机号、邮箱（和token字段二选一）
@@ -198,6 +225,7 @@ pub struct PayRequest {
     pub mode: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct KamiTopupRequest {
     pub token: String,
@@ -207,6 +235,7 @@ pub struct KamiTopupRequest {
 }
 
 // ========== 消息相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct MessageAddRequest {
     pub token: String,
@@ -216,6 +245,7 @@ pub struct MessageAddRequest {
     pub file: Option<serde_json::Value>, // JSON数组格式的文件URL列表
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct MessageListRequest {
     pub token: String,
@@ -223,12 +253,14 @@ pub struct MessageListRequest {
     pub pg: Option<u32>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct MessageContentRequest {
     pub token: String,
     pub mid: i64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct MessageReplyRequest {
     pub token: String,
@@ -238,6 +270,7 @@ pub struct MessageReplyRequest {
     pub file: Option<serde_json::Value>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct MessageEndRequest {
     pub token: String,
@@ -245,6 +278,7 @@ pub struct MessageEndRequest {
 }
 
 // ========== 积分相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct FenRequest {
     pub token: String,
@@ -254,24 +288,28 @@ pub struct FenRequest {
 }
 
 // ========== VIP相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct VipRequest {
     pub token: String,
 }
 
 // ========== 签到相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct SignInRequest {
     pub token: String,
 }
 
 // ========== 心跳相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct HeartbeatRequest {
     pub token: String,
 }
 
 // ========== 初始化相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct IniRequest {
     #[serde(default)]
@@ -279,6 +317,7 @@ pub struct IniRequest {
 }
 
 // ========== 云函数相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct CloudFunctionRequest {
     pub token: String,
@@ -288,6 +327,7 @@ pub struct CloudFunctionRequest {
 }
 
 // ========== 微信SDK绑定相关 ==========
+#[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 pub struct WxBindSDKRequest {
     pub token: String,
