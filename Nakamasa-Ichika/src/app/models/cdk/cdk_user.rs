@@ -82,16 +82,19 @@ pub struct CdkUser {
 
 impl CdkUser {
     /// 检查卡券是否已使用
+    #[allow(dead_code)]
     pub fn is_used(&self) -> bool {
         self.use_uid.is_some() && self.use_time.is_some()
     }
 
     /// 检查卡券是否有效
+    #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         self.state == State::Y && !self.is_used()
     }
 
     /// 使用卡券
+    #[allow(dead_code)]
     pub fn use_card(&mut self, user_id: i64, use_ip: String) {
         let now = chrono::Utc::now().timestamp();
         self.use_uid = Some(user_id);

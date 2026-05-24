@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 管理员缓存服务
 //!
 //! 封装管理员信息的缓存逻辑，提供简洁的 API：
@@ -57,6 +55,7 @@ pub enum CacheResult<T> {
 
 impl<T> CacheResult<T> {
     #[inline]
+    #[allow(dead_code)]
     pub fn is_hit(&self) -> bool {
         matches!(self, CacheResult::Hit(_))
     }
@@ -442,7 +441,8 @@ impl AdminCacheService {
 
 /// 缓存统计信息
 #[derive(Debug, Clone)]
-pub struct AdminCacheStats {
+#[allow(dead_code)]
+    pub struct AdminCacheStats {
     pub entries: usize,
     pub name_index_entries: usize,
 }

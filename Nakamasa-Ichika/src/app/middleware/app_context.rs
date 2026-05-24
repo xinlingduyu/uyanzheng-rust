@@ -125,6 +125,7 @@ impl AppContext {
 
     /// 跳过API路由检查
     #[inline]
+    #[allow(dead_code)]
     pub fn skip_router_check(mut self) -> Self {
         self.api_router_check = false;
         self

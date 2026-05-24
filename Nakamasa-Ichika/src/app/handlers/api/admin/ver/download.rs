@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin Download controller
 //! 管理员下载控制器
 
@@ -9,6 +7,7 @@ use serde::Deserialize;
 use crate::app::utils::response::ApiResponse;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct KamiRequestParam {
     path: String,
     sign: String,

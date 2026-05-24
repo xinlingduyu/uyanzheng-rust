@@ -59,6 +59,7 @@ impl PayPluginManager {
     }
 
     /// 初始化插件
+    #[allow(dead_code)]
     pub fn init_plugin(&self, plugin_type: &str, config: serde_json::Value) -> Result<(), String> {
         let mut plugins = self
             .plugins

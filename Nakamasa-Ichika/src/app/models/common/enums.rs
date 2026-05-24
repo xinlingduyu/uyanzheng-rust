@@ -32,6 +32,7 @@ pub enum CashState {
 }
 
 impl CashState {
+    #[allow(dead_code)]
     pub fn from_i32(val: i32) -> Self {
         match val {
             1 => CashState::Approved,
@@ -40,6 +41,7 @@ impl CashState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_i32(&self) -> i32 {
         match self {
             CashState::Pending => 0,

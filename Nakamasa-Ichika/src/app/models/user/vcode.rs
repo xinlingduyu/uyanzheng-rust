@@ -19,11 +19,13 @@ pub struct Vcode {
 
 impl Vcode {
     /// 检查验证码是否过期
+    #[allow(dead_code)]
     pub fn is_expired(&self, current_time: i64, expiry_seconds: i32) -> bool {
         current_time - self.time > expiry_seconds as i64
     }
 
     /// 检查验证码是否有效
+    #[allow(dead_code)]
     pub fn is_valid(&self, input_code: i32, current_time: i64, expiry_seconds: i32) -> bool {
         self.usable == YesNoStatus::Y
             && self.code == input_code
@@ -31,6 +33,7 @@ impl Vcode {
     }
 
     /// 标记验证码为已使用
+    #[allow(dead_code)]
     pub fn mark_as_used(&mut self) {
         self.usable = YesNoStatus::N;
     }

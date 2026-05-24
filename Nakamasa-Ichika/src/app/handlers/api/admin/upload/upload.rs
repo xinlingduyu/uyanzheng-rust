@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin upload controller
 //! 管理员上传控制器
 
@@ -11,6 +9,7 @@ use std::path::{Path, PathBuf};
 use crate::app::utils::response::ApiResponse;
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct UploadResponse {
     url: String,
 }

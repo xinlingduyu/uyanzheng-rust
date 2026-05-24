@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! # 数据模型模块 (Models)
 //! Organized by business domain
 //!

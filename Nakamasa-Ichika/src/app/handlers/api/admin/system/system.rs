@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin System controller
 //! 管理员系统控制器
 
@@ -31,11 +29,6 @@ pub async fn uinfo(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {
     res.render(Json(ApiResponse::success("成功", Some(data))));
 }
 
-#[derive(Debug, Deserialize)]
-struct UloginRequest {
-    user: String,
-    password: String,
-}
 
 #[handler]
 pub async fn ulogin(_req: &mut Request, _depot: &mut Depot, res: &mut Response) {

@@ -23,10 +23,12 @@ pub struct Agent {
 
 // 为UAgent结构体添加业务方法
 impl Agent {
+    #[allow(dead_code)]
     pub fn is_active(&self) -> bool {
         self.state == AgentStatus::On
     }
 
+    #[allow(dead_code)]
     pub fn has_withdrawal_info(&self) -> bool {
         self.cash_name.is_some() && self.cash_account.is_some() && self.cash_way.is_some()
     }

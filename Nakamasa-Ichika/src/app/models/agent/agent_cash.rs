@@ -19,18 +19,22 @@ pub struct AgentCash {
 
 // 为UAgentCash结构体添加业务方法
 impl AgentCash {
+    #[allow(dead_code)]
     pub fn is_pending(&self) -> bool {
         self.state == Some(0)
     }
 
+    #[allow(dead_code)]
     pub fn is_approved(&self) -> bool {
         self.state == Some(1)
     }
 
+    #[allow(dead_code)]
     pub fn is_rejected(&self) -> bool {
         self.state == Some(2)
     }
 
+    #[allow(dead_code)]
     pub fn processing_time(&self) -> Option<i32> {
         self.end_time.map(|end| end - self.add_time)
     }

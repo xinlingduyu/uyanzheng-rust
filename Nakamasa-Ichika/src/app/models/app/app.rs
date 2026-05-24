@@ -214,6 +214,7 @@ pub struct App {
 // 实现自定义方法
 impl App {
     /// 创建新应用
+    #[allow(dead_code)]
     pub fn new(key: String, app_type: AppType, name: String) -> Self {
         Self {
             id: 0, // 数据库自增
@@ -268,6 +269,7 @@ impl App {
     }
 
     /// 检查应用是否启用
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.state == SwitchState::On
     }

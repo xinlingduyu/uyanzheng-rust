@@ -1,9 +1,8 @@
-#![allow(dead_code)]
-
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Default)]
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct MysqlConfig {
     host: Option<String>,
     port: Option<u16>,
@@ -24,14 +23,8 @@ impl MysqlConfig {
     pub fn user(&self) -> &str {
         self.user.as_deref().unwrap_or("mysql")
     }
-    pub fn password(&self) -> &str {
-        self.password.as_deref().unwrap_or("mysql")
-    }
     pub fn dbname(&self) -> &str {
         self.dbname.as_deref().unwrap_or("mysql")
-    }
-    pub fn schema(&self) -> &str {
-        self.schema.as_deref().unwrap_or("public")
     }
 
     /// 检查密码是否已加密

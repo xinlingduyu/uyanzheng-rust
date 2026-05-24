@@ -23,6 +23,7 @@ pub struct Logs {
 
 impl Logs {
     /// 检查日志是否有效
+    #[allow(dead_code)]
     pub fn is_valid(&self) -> bool {
         self.state == YesNoStatus::Y
     }

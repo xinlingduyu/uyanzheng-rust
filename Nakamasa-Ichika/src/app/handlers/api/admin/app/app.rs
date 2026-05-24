@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin app controller
 //! 管理员应用管理控制器
 
@@ -615,6 +613,7 @@ pub async fn get_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AddAppRequest {
     app_name: String,
     #[serde(rename = "app_type")]

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! QQ扫码登录回调
 //!
 //! 功能说明：
@@ -36,6 +34,7 @@ struct QqLogonInfo {
 
 /// QQ access_token响应
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct QqTokenResponse {
     access_token: Option<String>,
     expires_in: Option<i64>,

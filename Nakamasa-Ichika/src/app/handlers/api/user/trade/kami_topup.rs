@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 卡密充值
 //!
 //! 功能说明：
@@ -21,6 +19,7 @@ use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::middleware::get_client_ip;
 
 /// 卡密信息结构体
+#[allow(dead_code)]
 struct KamiInfo {
     id: i64,
     kami_type: String,

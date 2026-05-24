@@ -1,8 +1,7 @@
-#![allow(dead_code)]
-
 use Nakamasa_utils::{decrypt_if_needed, is_encrypted};
 use serde::Deserialize;
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct RedisConfig {
     host: Option<String>,
@@ -35,33 +34,8 @@ impl RedisConfig {
         self.prefix.as_deref().unwrap_or("app_")
     }
 
-    pub fn timeout_ms(&self) -> u64 {
-        self.timeout_ms.unwrap_or(1000)
-    }
-
     pub fn max_connections(&self) -> u32 {
         self.max_connections.unwrap_or(10)
-    }
-
-    // 构建Redis连接URL
-    pub fn connection_url(&self) -> String {
-        let mut url = "redis://".to_string();
-
-        // 添加认证信息
-        if let Some(password) = self.password() {
-            url.push(':');
-            url.push_str(password);
-            url.push('@');
-        }
-
-        // 添加主机和端口
-        url.push_str(self.host());
-        url.push(':');
-        url.push_str(&self.port().to_string());
-        url.push('/');
-        url.push_str(&self.db().to_string());
-
-        url
     }
 
     /// 检查密码是否已加密
@@ -93,10 +67,8 @@ impl RedisConfig {
         let mut url = "redis://".to_string();
 
         // 添加认证信息（使用解密后的密码）
-        if let Some(password) = self.decrypted_password(secret) {
-            url.push(':');
-            url.push_str(&password);
-            url.push('@');
+        if self.decrypted_password(secret).is_some() {
+            url.push_str(":***@");
         }
 
         // 添加主机和端口

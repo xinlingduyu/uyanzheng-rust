@@ -8,6 +8,7 @@ use serde_json::json;
 use std::collections::BTreeMap;
 
 /// 微信支付插件
+#[allow(dead_code)]
 pub struct WxPayPlugin {
     wx_appid: Option<String>,
     wx_mchid: Option<String>,
@@ -27,11 +28,6 @@ impl WxPayPlugin {
             unified_order_url: "https://api.mch.weixin.qq.com/pay/unifiedorder".to_string(),
             order_query_url: "https://api.mch.weixin.qq.com/pay/orderquery".to_string(),
         }
-    }
-
-    /// 设置回调地址
-    pub fn set_notify_url(&mut self, url: String) {
-        self.notify_url = Some(url);
     }
 
     /// 生成随机字符串

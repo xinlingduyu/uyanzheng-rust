@@ -29,15 +29,6 @@ impl AliPayPlugin {
         }
     }
 
-    /// 设置回调地址
-    pub fn set_notify_url(&mut self, url: String) {
-        self.notify_url = Some(url);
-    }
-
-    pub fn set_return_url(&mut self, url: String) {
-        self.return_url = Some(url);
-    }
-
     /// RSA2签名
     fn sign_rsa2(&self, data: &str) -> Result<String, String> {
         use base64::Engine;

@@ -19,6 +19,7 @@ pub struct Goods {
 
 impl Goods {
     /// 检查商品是否可用
+    #[allow(dead_code)]
     pub fn is_available(&self) -> bool {
         self.state == YesNoStatus::Y
     }

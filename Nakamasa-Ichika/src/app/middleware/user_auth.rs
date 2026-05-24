@@ -99,27 +99,9 @@ impl UserAuth {
         }
     }
 
-    /// 跳过token检查
-    pub fn skip_token(mut self) -> Self {
-        self.check_token = false;
-        self
-    }
-
     /// 允许设备检查接口通过
     pub fn allow_udid(mut self) -> Self {
         self.allow_udid_check = true;
-        self
-    }
-
-    /// 跳过登录状态检查
-    pub fn skip_logon_state_check(mut self) -> Self {
-        self.check_logon_state = false;
-        self
-    }
-
-    /// 跳过数据校验
-    pub fn skip_data_check(mut self) -> Self {
-        self.data_check = false;
         self
     }
 }
@@ -711,106 +693,7 @@ pub async fn set_token(
     )
     .map_err(|e| format!("Redis存储失败: {}", e))?;
 
-    Ok(true)
-}
-
-/// 踢掉用户Token
-/// PHP: __delToken($uid)
-pub async fn del_token(
-    redis_util: &crate::core::RedisUtil,
-    redis_pool: &deadpool_redis::Pool,
-    token_pre: &str,
-    uid: u64,
-) -> Result<(), String> {
-    // PHP: $keys = $this->redis->keys($this->tokenPre."online_{$uid}_*");
-    let pattern = format!("online_{}_*", uid);
-
-    let keys = redis_util
-        .keys(redis_pool, &pattern)
-        .await
-        .map_err(|e| format!("Redis查询失败: {}", e))?;
-
-    // PHP: foreach ($keys as $key) { ... }
-    for key in keys {
-        // 获取token
-        if let Ok(Some(token)) = redis_util.get(redis_pool, &key).await {
-            // 删除token
-            let token_key = format!("{}{}", token_pre, token);
-            let _ = redis_util.del(redis_pool, &token_key).await;
-        }
-        // 删除online记录
-        let _ = redis_util.del(redis_pool, &key).await;
-    }
-
-    Ok(())
-}
-
-/// 防刷防爆破冻结
-/// PHP: __freeze()
-pub async fn freeze_ip(
-    redis_util: &crate::core::RedisUtil,
-    redis_pool: &deadpool_redis::Pool,
-    client_ip: &str,
-) -> Result<bool, String> {
-    let ip_md5_bytes = md5_hex(client_ip.as_bytes());
-    let ip_md5 = md5_to_str(&ip_md5_bytes);
-    let num_key = format!("fail_ip_{}_num", ip_md5);
-    let freeze_key = format!("fail_ip_{}", ip_md5);
-
-    // 检查是否已被冻结
-    if redis_util
-        .exists(redis_pool, &freeze_key)
-        .await
-        .unwrap_or(false)
-    {
-        return Ok(true); // 已被冻结
-    }
-
-    // 获取失败次数
-    let fail_num: i32 = redis_util
-        .get(redis_pool, &num_key)
-        .await
-        .map_err(|e| format!("Redis查询失败: {}", e))?
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-
-    if fail_num >= 10 {
-        // PHP: $this->redis->setex('fail_ip_'.md5($this->ip),30*60,time()+(30*60));
-        redis_util
-            .setex(redis_pool, &freeze_key, 30 * 60, "frozen")
-            .await
-            .map_err(|e| format!("Redis存储失败: {}", e))?;
-    } else if fail_num >= 5 {
-        // PHP: $this->redis->setex('fail_ip_'.md5($this->ip),10*60,time()+(10*60));
-        redis_util
-            .setex(redis_pool, &freeze_key, 10 * 60, "frozen")
-            .await
-            .map_err(|e| format!("Redis存储失败: {}", e))?;
-    } else {
-        // PHP: $fail_ip_num++; $this->redis->setex('fail_ip_'.md5($this->ip).'_num',10*60,$fail_ip_num);
-        redis_util
-            .setex(redis_pool, &num_key, 10 * 60, &(fail_num + 1).to_string())
-            .await
-            .map_err(|e| format!("Redis存储失败: {}", e))?;
-    }
-
-    Ok(false)
-}
-
-/// 检查IP是否被冻结
-pub async fn is_frozen(
-    redis_util: &crate::core::RedisUtil,
-    redis_pool: &deadpool_redis::Pool,
-    client_ip: &str,
-) -> bool {
-    let ip_md5_bytes = md5_hex(client_ip.as_bytes());
-    let ip_md5 = md5_to_str(&ip_md5_bytes);
-    let freeze_key = format!("fail_ip_{}", ip_md5);
-
-    redis_util
-        .exists(redis_pool, &freeze_key)
-        .await
-        .unwrap_or(false)
+Ok(true)
 }
 
 // ============================================================================

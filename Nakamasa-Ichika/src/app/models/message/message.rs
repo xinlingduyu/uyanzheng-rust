@@ -22,11 +22,13 @@ pub struct Message {
 
 impl Message {
     /// 检查消息是否已读
+    #[allow(dead_code)]
     pub fn is_read(&self) -> bool {
         self.state == 1
     }
 
     /// 检查是否是回复消息
+    #[allow(dead_code)]
     pub fn is_reply(&self) -> bool {
         self.reply_id.is_some()
     }

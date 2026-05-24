@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin Blocklist controller
 //! 管理员黑名单控制器 - PHP逻辑一比一还原
 
@@ -240,6 +238,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 // ==================== 添加 ====================
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AddRequest {
     #[serde(default)]
     id: Option<i64>, // 忽略，PHP中也没用到

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin User controller
 //! 管理员用户控制器 - PHP逻辑一比一还原
 
@@ -15,129 +13,6 @@ use crate::core::app_state::AppState;
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use crate::core::middleware::get_client_ip;
 
-/// 安全的SQL查询构建器
-/// 所有条件值都通过参数绑定传递，防止SQL注入
-mod safe_query {
-    /// SQL参数值类型
-    #[derive(Debug, Clone)]
-    pub enum SqlParam {
-        Int(i64),
-        Str(String),
-        Null,
-    }
-
-    /// 安全查询构建器
-    pub struct SafeQueryBuilder {
-        table: String,
-        conditions: Vec<String>,
-        params: Vec<SqlParam>,
-        order_by: Option<String>,
-        limit: Option<u32>,
-        offset: Option<u32>,
-    }
-
-    impl SafeQueryBuilder {
-        /// 创建新的查询构建器
-        /// table_name 只允许字母、数字和下划线
-        pub fn new(table_name: &str) -> Self {
-            // 验证表名只包含安全字符
-            let safe_name: String = table_name
-                .chars()
-                .filter(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-
-            Self {
-                table: safe_name,
-                conditions: Vec::new(),
-                params: Vec::new(),
-                order_by: None,
-                limit: None,
-                offset: None,
-            }
-        }
-
-        /// 添加WHERE条件 - 条件模板必须是预定义的安全字符串
-        pub fn add_condition(&mut self, condition: &str, param: SqlParam) -> &mut Self {
-            self.conditions.push(condition.to_string());
-            self.params.push(param);
-            self
-        }
-
-        /// 添加原始条件（仅用于硬编码的条件，如 "ban > ?"）
-        pub fn add_raw_condition(&mut self, condition: &str) -> &mut Self {
-            self.conditions.push(condition.to_string());
-            self
-        }
-
-        /// 设置排序（仅允许预定义的安全字段）
-        pub fn order_by(&mut self, field: &str, desc: bool) -> &mut Self {
-            let safe_field: String = field
-                .chars()
-                .filter(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            self.order_by = Some(format!(
-                "{} {}",
-                safe_field,
-                if desc { "DESC" } else { "ASC" }
-            ));
-            self
-        }
-
-        /// 设置分页
-        pub fn paginate(&mut self, page: u32, size: u32) -> &mut Self {
-            self.limit = Some(size);
-            self.offset = Some((page.saturating_sub(1)) * size);
-            self
-        }
-
-        /// 构建COUNT查询SQL
-        pub fn build_count_sql(&self) -> String {
-            let where_clause = if self.conditions.is_empty() {
-                String::new()
-            } else {
-                format!(" WHERE {}", self.conditions.join(" AND "))
-            };
-            format!(
-                "SELECT COUNT(*) as total FROM {}{}",
-                self.table, where_clause
-            )
-        }
-
-        /// 构建SELECT查询SQL
-        pub fn build_select_sql(&self, fields: &str) -> String {
-            let where_clause = if self.conditions.is_empty() {
-                String::new()
-            } else {
-                format!(" WHERE {}", self.conditions.join(" AND "))
-            };
-
-            let order_clause = self
-                .order_by
-                .as_ref()
-                .map(|o| format!(" ORDER BY {}", o))
-                .unwrap_or_default();
-
-            let limit_clause = match (self.limit, self.offset) {
-                (Some(lim), Some(off)) => format!(" LIMIT {} OFFSET {}", lim, off),
-                (Some(lim), None) => format!(" LIMIT {}", lim),
-                _ => String::new(),
-            };
-
-            format!(
-                "SELECT {} FROM {}{}{}{}",
-                fields, self.table, where_clause, order_clause, limit_clause
-            )
-        }
-
-        /// 获取参数列表
-        pub fn params(&self) -> &[SqlParam] {
-            &self.params
-        }
-    }
-}
-
-#[allow(unused_imports)]
-use safe_query::{SafeQueryBuilder, SqlParam};
 
 #[derive(Debug, Deserialize, Serialize)]
 struct GetListRequest {
@@ -1409,6 +1284,7 @@ pub async fn unbind_sn(_req: &mut Request, _depot: &mut Depot, res: &mut Respons
 /// 更新管理员个人资料
 /// POST /admin/user/updateInfo
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct UpdateInfoRequest {
     #[serde(default)]
     nickname: Option<String>,

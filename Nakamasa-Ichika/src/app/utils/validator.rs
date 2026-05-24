@@ -9,6 +9,11 @@ static PHONE_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^1[3-9]\d{9}
 
 static WORDNUM_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9]+$").unwrap());
 
+#[allow(dead_code)]
+static ERR_NOT_INT: &str = "必须是整数";
+#[allow(dead_code)]
+static ERR_NOT_UINT: &str = "必须是正整数";
+
 static TABLE_PREFIX_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_-]+$").unwrap());
 
@@ -18,8 +23,6 @@ static PASSWORD_REGEX: LazyLock<Regex> =
 // 预分配常用错误消息
 static ERR_EMAIL_FORMAT: &str = "邮箱格式不正确";
 static ERR_PHONE_FORMAT: &str = "手机号格式不正确";
-static ERR_NOT_INT: &str = "必须是整数";
-static ERR_NOT_UINT: &str = "必须是正整数";
 static ERR_VALUE_INVALID: &str = "值不正确";
 static ERR_EMPTY: &str = "不能为空";
 static ERR_FORMAT: &str = "格式不正确";
@@ -95,6 +98,7 @@ impl Validator {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn required_vec(
         &mut self,
         _field: &str,
@@ -154,6 +158,7 @@ impl Validator {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn int_range(&mut self, field: &str, value: &str, min: i64, max: i64) -> &mut Self {
         match value.parse::<i64>() {
             Ok(num) => {
@@ -172,6 +177,7 @@ impl Validator {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn int_range_u64(&mut self, field: &str, value: &str, min: u64, max: u64) -> &mut Self {
         match value.parse::<u64>() {
             Ok(num) => {

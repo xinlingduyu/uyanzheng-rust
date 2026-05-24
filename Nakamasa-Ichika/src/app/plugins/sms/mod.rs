@@ -4,7 +4,6 @@
 pub mod ali;
 mod http_client;
 pub mod jie;
-pub mod manager;
 pub mod tencent;
 pub mod trait_def;
 

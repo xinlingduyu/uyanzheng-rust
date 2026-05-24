@@ -68,6 +68,7 @@ pub trait PayPlugin: Send + Sync {
     fn verify_notify(&self, data: serde_json::Value) -> Result<NotifyVerifyResult, String>;
 
     /// 查询订单
+    #[allow(dead_code)]
     fn query(&self, data: serde_json::Value) -> Result<serde_json::Value, String>;
 }
 

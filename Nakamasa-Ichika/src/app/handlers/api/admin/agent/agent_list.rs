@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin Agent List controller
 //! 管理员代理列表控制器
 
@@ -143,6 +141,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AddAgentRequest {
     gid: i64,
     note: Option<String>,

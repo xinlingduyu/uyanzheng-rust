@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! # 工具函数模块 (Utilities Module)
 //!
 //! 本模块提供通用的工具函数，供其他模块使用。

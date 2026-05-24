@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 获取配置
 //! 返回应用配置信息：版本、公告、扩展配置
 //! 注意: tokenCheck=false，不需要认证
@@ -42,6 +40,7 @@ struct NoticeData {
 
 /// 响应数据
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct IniData {
     #[serde(skip_serializing_if = "Option::is_none")]
     extend: Option<serde_json::Value>,

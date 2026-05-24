@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::core::{AppState, is_installed};
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 use rust_embed::{EmbeddedFile, RustEmbed};
@@ -14,7 +12,6 @@ use std::path::{Path, PathBuf};
 struct Assets;
 
 /// 允许访问的图片扩展名
-const ALLOWED_IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "svg", "ico"];
 
 /// 允许访问的文件扩展名（包括图片和其他安全文件）
 const ALLOWED_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "svg", "ico", "pdf"];

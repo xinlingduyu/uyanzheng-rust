@@ -31,12 +31,12 @@ use crate::core::middleware::get_client_ip;
 
 /// 微信用户信息响应
 #[derive(Debug, serde::Deserialize)]
-struct WxUserInfo {
-    openid: Option<String>,
-    nickname: Option<String>,
-    headimgurl: Option<String>,
-    errcode: Option<i32>,
-    errmsg: Option<String>,
+pub struct WxUserInfo {
+    pub openid: Option<String>,
+    pub nickname: Option<String>,
+    pub headimgurl: Option<String>,
+    pub errcode: Option<i32>,
+    pub errmsg: Option<String>,
 }
 
 /// 应用登录配置

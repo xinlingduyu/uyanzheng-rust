@@ -29,11 +29,13 @@ pub struct Order {
 
 impl Order {
     /// 检查订单是否已完成
+    #[allow(dead_code)]
     pub fn is_completed(&self) -> bool {
         self.state == 1
     }
 
     /// 检查订单是否已支付
+    #[allow(dead_code)]
     pub fn is_paid(&self) -> bool {
         self.state > 0
     }

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 微信扫码登录回调
 //!
 //! 功能说明：
@@ -20,6 +18,8 @@ use salvo::prelude::*;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::app::handlers::api::user::oauth::wx_login_sdk::WxUserInfo;
+
 use crate::core::md5_optimize::{md5_hex, md5_to_str};
 
 use crate::core::AppState;
@@ -38,6 +38,7 @@ struct WxLogonInfo {
 
 /// 微信access_token响应
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct WxTokenResponse {
     access_token: Option<String>,
     expires_in: Option<i64>,
@@ -51,7 +52,8 @@ struct WxTokenResponse {
 
 /// 微信用户信息响应
 #[derive(Debug, Deserialize)]
-struct WxUserInfo {
+#[allow(dead_code)]
+struct WxUserInfoResponse {
     openid: Option<String>,
     nickname: Option<String>,
     sex: Option<i32>,

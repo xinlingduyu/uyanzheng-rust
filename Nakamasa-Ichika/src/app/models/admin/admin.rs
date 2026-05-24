@@ -64,6 +64,7 @@ pub struct AdminTokenInfo {
 
 impl Admin {
     /// 检查管理员是否启用
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.state == AdminState::Y
     }

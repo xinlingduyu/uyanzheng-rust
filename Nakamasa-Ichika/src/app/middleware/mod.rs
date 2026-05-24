@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! # 中间件模块 (Middleware Module)
 //!
 //! 本模块包含所有 HTTP 请求的中间件实现，用于请求预处理和后处理。

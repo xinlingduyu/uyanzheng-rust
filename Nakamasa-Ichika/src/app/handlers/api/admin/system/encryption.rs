@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin Encryption controller
 //! 管理员加密控制器
 
@@ -182,6 +180,7 @@ pub async fn get_plug(_req: &mut Request, _depot: &mut Depot, res: &mut Response
 }
 
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct EncryptionItem {
     id: u64,
     name: String,

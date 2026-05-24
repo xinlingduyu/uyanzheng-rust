@@ -16,12 +16,15 @@ pub struct MailResult {
 #[async_trait::async_trait]
 pub trait MailerPlugin: Send + Sync {
     /// 获取插件名称
+    #[allow(dead_code)]
     fn name(&self) -> &str;
 
     /// 获取插件类型
+    #[allow(dead_code)]
     fn plugin_type(&self) -> &str;
 
     /// 获取插件配置表单
+    #[allow(dead_code)]
     fn config_form(&self) -> serde_json::Value;
 
     /// 初始化插件
@@ -68,11 +71,4 @@ impl Default for MailerConfig {
     }
 }
 
-/// 插件元数据
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)]
-pub struct MailerPluginMeta {
-    pub name: String,
-    pub plugin_type: String,
-    pub form: serde_json::Value,
-}
+

@@ -163,6 +163,7 @@ impl Kami {
     }
 
     /// 检查卡券是否已使用
+    #[allow(dead_code)]
     pub fn is_used(&self) -> bool {
         self.user_id.is_some() && self.use_time.is_some()
     }

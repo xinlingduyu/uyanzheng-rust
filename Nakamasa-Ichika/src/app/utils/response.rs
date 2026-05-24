@@ -37,6 +37,7 @@ impl<T: Serialize> ApiResponse<T> {
 
     /// 创建成功响应 - 静态字符串零分配
     #[inline]
+    #[allow(dead_code)]
     pub fn success_static(msg: &'static str, data: Option<T>) -> Self {
         Self::success(msg, data)
     }
@@ -328,6 +329,7 @@ pub struct ApiResponseBuilder<'a> {
 impl<'a> ApiResponseBuilder<'a> {
     /// 创建新的构建器
     #[inline]
+    #[allow(dead_code)]
     pub fn new(app_key: &'a str) -> Self {
         Self {
             app_key,

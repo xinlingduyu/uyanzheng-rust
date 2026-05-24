@@ -428,14 +428,6 @@ impl AppState {
         self.db.as_ref().expect("Database not initialized")
     }
 
-    /// 尝试获取数据库连接池
-    ///
-    /// 返回 `Option`，不会 panic。
-    #[inline]
-    pub fn try_get_db(&self) -> Option<&MySqlPool> {
-        self.db.as_ref()
-    }
-
     /// 获取 Redis 连接池
     ///
     /// # Panics

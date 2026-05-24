@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! 云函数 - V8 JavaScript 引擎实现
 //! 支持在后台编写 JavaScript 代码并通过 API 调用执行
 
@@ -21,6 +19,7 @@ use crate::core::middleware::get_client_ip;
 
 /// 云函数执行结果
 #[derive(Debug, Serialize)]
+#[allow(dead_code)]
 struct CloudFunctionResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     data: Option<serde_json::Value>,

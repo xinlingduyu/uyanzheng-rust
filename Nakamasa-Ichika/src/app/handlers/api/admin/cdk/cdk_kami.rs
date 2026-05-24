@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin CDK Kami controller
 //! 管理员CDK卡密控制器
 
@@ -24,6 +22,7 @@ struct GetListRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SearchOptions {
     add_time: Option<Vec<String>>,
     use_time: Option<Vec<String>>,
@@ -951,6 +950,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OutAllRequest {
     ids: Vec<i64>,
     #[serde(rename = "out")]

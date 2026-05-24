@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! Admin Ver controller
 //! 管理员版本控制器
 
@@ -85,6 +83,7 @@ struct GetListRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct SearchOptions {
     #[serde(default)]
     ver_key: Option<String>,

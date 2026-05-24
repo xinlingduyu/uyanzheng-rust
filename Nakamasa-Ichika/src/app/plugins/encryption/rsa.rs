@@ -131,6 +131,7 @@ impl RsaEncryption {
 
     /// 私钥签名 (SHA256WithRSA)
     /// PHP: rsaSign
+    #[allow(dead_code)]
     pub fn sign(&self, data: &str) -> Result<String, String> {
         let private_key = self
             .private_key
