@@ -141,7 +141,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
     )
     .bind(appid)
     .bind(&cf_req.name)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (code, _func_name, allow, fen) = match f_res {
@@ -222,7 +222,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // 执行云函数（仅在需要时转换 client_ip）
     let result = execute_cloud_function(
         &code,
-        app_state.get_db().clone(),
+        app_state.get_db().expect("db").clone(),
         app_state.redis_pool.clone(),
         app_state.redis_util.clone(),
         client_ip.to_string(),
@@ -258,12 +258,15 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
 
             // 如果消耗积分，更新用户积分
             if fen > 0 && app_type == "user" {
-                let _ = sqlx::query("UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?")
+                if let Err(e) = sqlx::query("UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?")
                     .bind(fen)
                     .bind(user_info.uid)
                     .bind(appid)
-                    .execute(app_state.get_db())
-                    .await;
+                    .execute(app_state.get_db().expect("db"))
+                    .await
+                {
+                    tracing::error!("云函数积分扣减失败: uid={}, fen={}, error={}", user_info.uid, fen, e);
+                }
 
                 // 记录日志
                 let _ = sqlx::query(
@@ -276,7 +279,7 @@ pub async fn cloud_function(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 .bind(current_time)
                 .bind(client_ip)
                 .bind(appid as i64)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
             }
         }

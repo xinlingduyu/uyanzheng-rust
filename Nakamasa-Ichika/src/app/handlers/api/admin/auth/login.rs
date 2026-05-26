@@ -181,7 +181,6 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 struct TokenVerifyInfo {
     id: u64,
     user: String,
-    password: String,
     notes: Option<String>,
     avatars: String,
     lockin: bool,
@@ -289,7 +288,6 @@ pub async fn token_verify(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let info = TokenVerifyInfo {
         id: admin.id,
         user: admin.user.clone(),
-        password: admin.password.clone(),
         notes: admin.notes.clone(),
         avatars: admin.avatars.clone().unwrap_or_default(),
         lockin: admin.lockin,

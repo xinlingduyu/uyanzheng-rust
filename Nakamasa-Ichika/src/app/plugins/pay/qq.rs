@@ -121,10 +121,10 @@ impl QqPayPlugin {
         let client_ip = order.client_ip.as_deref().unwrap_or("127.0.0.1");
 
         let mut params = BTreeMap::new();
-        params.insert("appid".to_string(), self.qq_appid.as_ref().unwrap().clone());
+        params.insert("appid".to_string(), self.qq_appid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone());
         params.insert(
             "mch_id".to_string(),
-            self.qq_mchid.as_ref().unwrap().clone(),
+            self.qq_mchid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone(),
         );
         params.insert("nonce_str".to_string(), nonce_str);
         params.insert("body".to_string(), order.name.clone());
@@ -206,10 +206,10 @@ impl QqPayPlugin {
         let client_ip = order.client_ip.as_deref().unwrap_or("127.0.0.1");
 
         let mut params = BTreeMap::new();
-        params.insert("appid".to_string(), self.qq_appid.as_ref().unwrap().clone());
+        params.insert("appid".to_string(), self.qq_appid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone());
         params.insert(
             "mch_id".to_string(),
-            self.qq_mchid.as_ref().unwrap().clone(),
+            self.qq_mchid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone(),
         );
         params.insert("nonce_str".to_string(), nonce_str);
         params.insert("body".to_string(), order.name.clone());
@@ -292,10 +292,10 @@ impl QqPayPlugin {
         let client_ip = order.client_ip.as_deref().unwrap_or("127.0.0.1");
 
         let mut params = BTreeMap::new();
-        params.insert("appid".to_string(), self.qq_appid.as_ref().unwrap().clone());
+        params.insert("appid".to_string(), self.qq_appid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone());
         params.insert(
             "mch_id".to_string(),
-            self.qq_mchid.as_ref().unwrap().clone(),
+            self.qq_mchid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone(),
         );
         params.insert("nonce_str".to_string(), nonce_str.clone());
         params.insert("body".to_string(), order.name.clone());
@@ -539,10 +539,10 @@ impl PayPlugin for QqPayPlugin {
         let nonce_str = Self::generate_nonce_str();
 
         let mut params = BTreeMap::new();
-        params.insert("appid".to_string(), self.qq_appid.as_ref().unwrap().clone());
+        params.insert("appid".to_string(), self.qq_appid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone());
         params.insert(
             "mch_id".to_string(),
-            self.qq_mchid.as_ref().unwrap().clone(),
+            self.qq_mchid.as_ref().ok_or_else(|| "QQ支付参数未配置".to_string())?.clone(),
         );
         params.insert("out_trade_no".to_string(), out_trade_no.clone());
         params.insert("nonce_str".to_string(), nonce_str);

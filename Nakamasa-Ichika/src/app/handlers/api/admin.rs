@@ -113,7 +113,7 @@ pub fn admin_routes() -> Router {
                 .post(system::system::switch_user_api_code),
         )
         // Dict - 字典数据（不需要认证）
-        .push(Router::with_path("/system/dictAll").get(system::dict::dict_all))
+        .push(Router::with_path("/system/dictAll").hoop(AdminAuth::new()).get(system::dict::dict_all))
         // Notice/Statistics - 需要认证
         .push(
             Router::with_path("/system/notice")

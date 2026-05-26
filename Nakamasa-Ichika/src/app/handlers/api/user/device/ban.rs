@@ -97,7 +97,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .bind(ban_msg)
             .bind(uid as i64)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match update_result {
@@ -121,7 +121,7 @@ pub async fn ban_user(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .bind(current_time)
             .bind("127.0.0.1")
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             render_success_msg(res, app_key);

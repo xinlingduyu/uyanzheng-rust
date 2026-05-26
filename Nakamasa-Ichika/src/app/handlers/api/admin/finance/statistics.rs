@@ -435,7 +435,7 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 获取应用类型
     let app_type: String = match sqlx::query_scalar("SELECT app_type FROM u_app WHERE id = ?")
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await
     {
         Ok(Some(t)) => t,
@@ -451,7 +451,7 @@ pub async fn get(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 优化：并行执行订单统计和用户统计查询
-    let db = app_state.get_db();
+    let db = app_state.get_db().expect("db");
     let redis_pool = &app_state.redis_pool;
 
     let (order_result, user_result) = tokio::join!(

@@ -420,25 +420,21 @@ impl AppState {
 
     /// 获取数据库连接池
     ///
-    /// # Panics
-    ///
-    /// 当数据库未初始化时会 panic。
+    /// 返回 `Option`，不会 panic。
     #[inline]
-    pub fn get_db(&self) -> &MySqlPool {
-        self.db.as_ref().expect("Database not initialized")
+    pub fn get_db(&self) -> Option<&MySqlPool> {
+        self.db.as_ref()
     }
 
     /// 获取 Redis 连接池
     ///
-    /// # Panics
-    ///
-    /// 当 Redis 未初始化时会 panic。
+    /// 返回 `Option`，不会 panic。
     #[inline]
-    pub fn get_redis(&self) -> &RedisPool {
-        self.redis_pool.as_ref().expect("Redis not initialized")
+    pub fn get_redis(&self) -> Option<&RedisPool> {
+        self.redis_pool.as_ref()
     }
 
-    /// 尝试获取 Redis 连接池
+    /// 尝试获取 Redis 连接池（安全版本，返回 Option）
     ///
     /// 返回 `Option`，不会 panic。
     #[inline]

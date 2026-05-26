@@ -75,7 +75,10 @@ async fn update_order(
     // 开启事务
     let mut tx = match db.begin().await {
         Ok(t) => t,
-        Err(_) => return false,
+        Err(e) => {
+            tracing::error!("支付通知开启事务失败: order_no={}, error={}", order_no, e);
+            return false;
+        }
     };
 
     // 原子幂等：只有 state=0 的订单允许进入发放流程
@@ -89,21 +92,28 @@ async fn update_order(
     .await
     {
         Ok(r) => r,
-        Err(_) => {
-            let _ = tx.rollback().await;
+        Err(e) => {
+            tracing::error!("支付通知订单状态更新失败: order_no={}, error={}", order_no, e);
+            if let Err(re) = tx.rollback().await {
+                tracing::error!("事务回滚失败: order_no={}, error={}", order_no, re);
+            }
             return false;
         }
     };
 
     if update_result.rows_affected() == 0 {
         // 已被其他并发通知处理过，按幂等成功返回，不重复发放
-        let _ = tx.commit().await;
+        if let Err(e) = tx.commit().await {
+            tracing::error!("幂等分支事务提交失败: order_no={}, error={}", order_no, e);
+        }
         return true;
     }
 
     // 卡密应用只处理余额充值
     if app_type == "kami" && order_type != "balance" {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("卡密回滚失败: order_no={}, error={}", order_no, e);
+        }
         return false;
     }
 
@@ -119,7 +129,9 @@ async fn update_order(
             .is_err()
         {
             tracing::error!("代理分账失败: order_no={}, inviter_uid={}, amount={}", order_no, inv_uid, divide_money);
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("代理分账回滚失败: order_no={}, error={}", order_no, e);
+            }
             return false;
         }
 
@@ -149,7 +161,10 @@ async fn update_order(
                     .await
                     .is_err()
                 {
-                    let _ = tx.rollback().await;
+                    tracing::error!("VIP更新失败: order_no={}, uid={}", order_no, uid);
+                    if let Err(e) = tx.rollback().await {
+                        tracing::error!("VIP回滚失败: order_no={}, error={}", order_no, e);
+                    }
                     return false;
                 }
             }
@@ -162,7 +177,10 @@ async fn update_order(
                 .await
                 .is_err()
             => {
-                let _ = tx.rollback().await;
+                tracing::error!("积分更新失败: order_no={}, uid={}", order_no, uid);
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("积分回滚失败: order_no={}, error={}", order_no, e);
+                }
                 return false;
             }
         "agent" => {
@@ -176,48 +194,84 @@ async fn update_order(
             .fetch_optional(&mut *tx)
             .await;
 
-            if let Ok(Some((aggid, pay_divide, km_discount))) = group_result {
-                // 检查是否已是代理
-                #[allow(clippy::type_complexity)]
-            let agent_result: Result<Option<(i64, Option<i32>, Option<i32>)>, _> = sqlx::query_as(
-                    "SELECT id, pay_divide, km_discount FROM u_agent WHERE uid = ? AND appid = ?"
-                )
-                .bind(uid)
-                .bind(appid)
-                .fetch_optional(&mut *tx)
-                .await;
-
-                if let Ok(Some((agent_id, old_pay_divide, old_km_discount))) = agent_result {
-                    // 更新代理等级
-                    if old_pay_divide.unwrap_or(0) < pay_divide.unwrap_or(0)
-                        || old_km_discount.unwrap_or(100) > km_discount.unwrap_or(100)
-                    {
-                        let _ = sqlx::query(
-                            "UPDATE u_agent SET pay_divide = GREATEST(pay_divide, ?), km_discount = LEAST(km_discount, ?) WHERE id = ?"
+            match group_result {
+                Ok(Some((aggid, pay_divide, km_discount))) => {
+                    // 检查是否已是代理
+                    #[allow(clippy::type_complexity)]
+                    let agent_result: Result<Option<(i64, Option<i32>, Option<i32>)>, _> =
+                        sqlx::query_as(
+                            "SELECT id, pay_divide, km_discount FROM u_agent WHERE uid = ? AND appid = ?",
                         )
-                        .bind(pay_divide.unwrap_or(0))
-                        .bind(km_discount.unwrap_or(100))
-                        .bind(agent_id)
-                        .execute(&mut *tx)
+                        .bind(uid)
+                        .bind(appid)
+                        .fetch_optional(&mut *tx)
                         .await;
+
+                    match agent_result {
+                        Ok(Some((agent_id, old_pay_divide, old_km_discount))) => {
+                            // 更新代理等级
+if (old_pay_divide.unwrap_or(0) < pay_divide.unwrap_or(0)
+                        || old_km_discount.unwrap_or(100) > km_discount.unwrap_or(100))
+                        && let Err(e) = sqlx::query(
+                                    "UPDATE u_agent SET pay_divide = GREATEST(pay_divide, ?), km_discount = LEAST(km_discount, ?) WHERE id = ?"
+                                )
+                                .bind(pay_divide.unwrap_or(0))
+                                .bind(km_discount.unwrap_or(100))
+                                .bind(agent_id)
+                                .execute(&mut *tx)
+                                .await
+                                {
+                                    tracing::error!("代理等级更新失败: order_no={}, agent_id={}, error={}", order_no, agent_id, e);
+                                    if let Err(re) = tx.rollback().await {
+                                        tracing::error!("代理等级回滚失败: order_no={}, error={}", order_no, re);
+                                    }
+                                    return false;
+                                }
+                        }
+                        Ok(None) => {
+                            // 新开通代理
+                            if let Err(e) = sqlx::query(
+                                "INSERT INTO u_agent (aggid, uid, pay_divide, km_discount, time, appid) VALUES (?, ?, ?, ?, ?, ?)"
+                            )
+                            .bind(aggid)
+                            .bind(uid)
+                            .bind(pay_divide.unwrap_or(0))
+                            .bind(km_discount.unwrap_or(100))
+                            .bind(Utc::now().timestamp())
+                            .bind(appid)
+                            .execute(&mut *tx)
+                            .await
+                            {
+                                tracing::error!("代理开通失败: order_no={}, uid={}, error={}", order_no, uid, e);
+                                if let Err(re) = tx.rollback().await {
+                                    tracing::error!("代理开通回滚失败: order_no={}, error={}", order_no, re);
+                                }
+                                return false;
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("查询代理失败: order_no={}, uid={}, error={}", order_no, uid, e);
+                            if let Err(re) = tx.rollback().await {
+                                tracing::error!("代理查询回滚失败: order_no={}, error={}", order_no, re);
+                            }
+                            return false;
+                        }
                     }
-                } else {
-                    // 新开通代理
-                    let _ = sqlx::query(
-                        "INSERT INTO u_agent (aggid, uid, pay_divide, km_discount, time, appid) VALUES (?, ?, ?, ?, ?, ?)"
-                    )
-                    .bind(aggid)
-                    .bind(uid)
-                    .bind(pay_divide.unwrap_or(0))
-                    .bind(km_discount.unwrap_or(100))
-                    .bind(Utc::now().timestamp())
-                    .bind(appid)
-                    .execute(&mut *tx)
-                    .await;
                 }
-            } else {
-                let _ = tx.rollback().await;
-                return false;
+                Ok(None) => {
+                    tracing::error!("代理组不存在: order_no={}, group_id={}", order_no, val);
+                    if let Err(e) = tx.rollback().await {
+                        tracing::error!("代理组回滚失败: order_no={}, error={}", order_no, e);
+                    }
+                    return false;
+                }
+                Err(e) => {
+                    tracing::error!("查询代理组失败: order_no={}, group_id={}, error={}", order_no, val, e);
+                    if let Err(re) = tx.rollback().await {
+                        tracing::error!("代理组查询回滚失败: order_no={}, error={}", order_no, re);
+                    }
+                    return false;
+                }
             }
         }
         "balance"
@@ -229,7 +283,10 @@ async fn update_order(
                 .await
                 .is_err()
             => {
-                let _ = tx.rollback().await;
+                tracing::error!("余额更新失败: order_no={}, uid={}", order_no, uid);
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("余额回滚失败: order_no={}, error={}", order_no, e);
+                }
                 return false;
             }
         _ => {}
@@ -346,7 +403,7 @@ async fn handle_notify_inner(
     let order = match sqlx::query("SELECT * FROM u_order WHERE order_no = ? AND payment = ?")
         .bind(&order_no)
         .bind(payment)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await
     {
         Ok(Some(o)) => o,
@@ -367,7 +424,7 @@ async fn handle_notify_inner(
     let appid: i64 = order.get("appid");
     let app = match sqlx::query(config_sql)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await
     {
         Ok(Some(a)) => a,
@@ -413,7 +470,7 @@ async fn handle_notify_inner(
     };
 
     // 更新订单
-    if update_order(app_state.get_db(), &order, &notify_result, &app_type).await {
+    if update_order(app_state.get_db().expect("db"), &order, &notify_result, &app_type).await {
         res.render(Text::Plain("success"));
     } else {
         res.render(Text::Plain("fail"));

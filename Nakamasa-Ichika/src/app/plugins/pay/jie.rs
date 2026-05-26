@@ -157,7 +157,7 @@ impl PayPlugin for JiePayPlugin {
         }
 
         let mut data = BTreeMap::new();
-        data.insert("pid".to_string(), self.pid.as_ref().unwrap().clone());
+        data.insert("pid".to_string(), self.pid.as_ref().ok_or_else(|| "PID未配置".to_string())?.clone());
         data.insert("trade_no".to_string(), order.order_no.clone());
         data.insert("name".to_string(), order.name.clone());
         data.insert("money".to_string(), format!("{}", order.money));

@@ -237,7 +237,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         count_sql_query = count_sql_query.bind(param);
     }
 
-    let total: i64 = match count_sql_query.fetch_one(app_state.get_db()).await {
+    let total: i64 = match count_sql_query.fetch_one(app_state.get_db().expect("db")).await {
         Ok(row) => row.try_get("total").unwrap_or(0),
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
@@ -256,7 +256,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -401,7 +401,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     )
     .bind(add_req.gid)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (group_id, _group_name, group_val, group_type) = match group_result {
@@ -422,10 +422,10 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let prefix = add_req.pre.unwrap_or_default();
     let note = add_req.note.clone().unwrap_or_default();
     let out_state = add_req.out_state.clone();
-    let has_out = out_state.is_some() && !out_state.as_ref().unwrap().is_empty();
+    let has_out = out_state.as_ref().is_some_and(|s| !s.is_empty());
 
     // 开始事务
-    let mut tx = match app_state.get_db().begin().await {
+    let mut tx = match app_state.get_db().expect("db").begin().await {
         Ok(tx) => tx,
         Err(e) => {
             let error_msg = format!("创建失败: 无法开始事务 {}", e);
@@ -497,6 +497,14 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
             Err(e) => {
                 tracing::error!("第 {} 条卡密插入失败: {}", i + 1, e);
+                if let Err(rollback_err) = tx.rollback().await {
+                    tracing::error!("事务回滚失败: {}", rollback_err);
+                }
+                res.render(Json(ApiResponse::<()>::error(
+                    format!("创建失败: 卡密插入出错 - {}", e),
+                    201,
+                )));
+                return;
             }
         }
     }
@@ -624,7 +632,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query("UPDATE u_cdk_kami SET val = val + ? WHERE type = 'fen' AND val < 9999999999 AND use_id IS NULL AND use_time IS NOT NULL AND appid = ?")
             .bind(award_req.val)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     } else {
         // 奖励会员卡
@@ -632,7 +640,7 @@ pub async fn award(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(award_req.val)
             .bind(now)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     };
 
@@ -697,7 +705,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         "SELECT id, type, use_time FROM u_cdk_kami WHERE id = ?",
     )
     .bind(edit_req.id)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (_id, cdk_type, use_time) = match check_result {
@@ -771,7 +779,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     sql_query = sql_query.bind(edit_req.id);
 
-    let result = sql_query.execute(app_state.get_db()).await;
+    let result = sql_query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {
@@ -813,7 +821,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_cdk_kami WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -863,14 +871,14 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
         // 取消封禁
         sqlx::query("UPDATE u_cdk_kami SET ban = NULL WHERE id = ?")
             .bind(edit_req.id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     } else {
         // 设置封禁（永久）
         sqlx::query("UPDATE u_cdk_kami SET ban = ? WHERE id = ?")
             .bind(9999999999i64)
             .bind(edit_req.id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     };
 
@@ -930,7 +938,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sql_query = sql_query.bind(id);
     }
 
-    let result = sql_query.execute(app_state.get_db()).await;
+    let result = sql_query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {
@@ -998,7 +1006,7 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sql_query = sql_query.bind(id);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -1026,7 +1034,7 @@ pub async fn out_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 update_sql = update_sql.bind(id);
             }
 
-            let _ = update_sql.execute(app_state.get_db()).await;
+            let _ = update_sql.execute(app_state.get_db().expect("db")).await;
 
             res.render(Json(ApiResponse::success_msg("导出成功")));
         }
@@ -1085,7 +1093,7 @@ pub async fn get_log(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     )
     .bind(log_req.id)
     .bind(appid)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -1161,7 +1169,7 @@ pub async fn unbind_sn(req: &mut Request, depot: &mut Depot, res: &mut Response)
         "SELECT id, sn_list FROM u_cdk_kami WHERE id = ?",
     )
     .bind(unbind_req.id)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (_id, sn_list) = match check_result {
@@ -1207,7 +1215,7 @@ pub async fn unbind_sn(req: &mut Request, depot: &mut Depot, res: &mut Response)
     let result = sqlx::query("UPDATE u_cdk_kami SET sn_list = ? WHERE id = ?")
         .bind(new_sn_list_json)
         .bind(unbind_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -1258,7 +1266,7 @@ pub async fn clear(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 清理已使用的卡密
     let result = sqlx::query("DELETE FROM u_cdk_kami WHERE use_time IS NOT NULL AND appid = ?")
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

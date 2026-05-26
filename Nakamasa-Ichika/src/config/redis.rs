@@ -67,10 +67,10 @@ impl RedisConfig {
         let mut url = "redis://".to_string();
 
         // 添加认证信息（使用解密后的密码，非空才添加）
-        if let Some(password) = self.decrypted_password(secret) {
-            if !password.is_empty() {
-                url.push_str(&format!(":{}@", password));
-            }
+        if let Some(password) = self.decrypted_password(secret)
+            && !password.is_empty()
+        {
+            url.push_str(&format!(":{}@", password));
         }
 
         // 添加主机和端口

@@ -123,9 +123,9 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // 根据应用类型查询卡密
     let kami_info = if app_info.app_type == "user" {
-        query_user_cdk(app_state.get_db(), &topup_req.kami, appid, current_time).await
+        query_user_cdk(app_state.get_db().expect("db"), &topup_req.kami, appid, current_time).await
     } else {
-        query_kami_cdk(app_state.get_db(), &topup_req.kami, appid).await
+        query_kami_cdk(app_state.get_db().expect("db"), &topup_req.kami, appid).await
     };
 
     match kami_info {
@@ -158,7 +158,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
 
             // 卡密版检查：除了设备增绑卡只能同类型的卡密才能充值
             if app_info.app_type != "user" && user_type == "kami" {
-                let user_kami_type = get_user_kami_type(app_state.get_db(), uid, appid).await;
+                let user_kami_type = get_user_kami_type(app_state.get_db().expect("db"), uid, appid).await;
                 if kami.kami_type != "addsn" && kami.kami_type != user_kami_type {
                     render_error(res, "卡密类型不匹配", 145, app_key);
                     return;
@@ -194,7 +194,7 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
             }
 
             // 开始事务
-            let mut tx = match app_state.get_db().begin().await {
+            let mut tx = match app_state.get_db().expect("db").begin().await {
                 Ok(tx) => tx,
                 Err(e) => {
                     tracing::error!("开启事务失败: {}", e);
@@ -237,20 +237,24 @@ pub async fn kami_topup(req: &mut Request, depot: &mut Depot, res: &mut Response
                             )
                             .bind(user_type).bind(uid).bind("kamiTopup")
                             .bind(current_time).bind(ip).bind(appid)
-                            .execute(app_state.get_db()).await {
-                                tracing::warn!("redis op failed: {}", e);
+                            .execute(app_state.get_db().expect("db")).await {
+                                tracing::error!("日志写入失败: {}", e);
                             }
                             render_success(res, app_key, None::<()>, app_info.mi.as_ref());
                         }
                         Err(e) => {
-                            tracing::error!("更新卡密状态失败: {}", e);
-                            let _ = tx.rollback().await;
+                            tracing::error!("更新卡密状态失败: {}. 回滚...", e);
+                            if let Err(re) = tx.rollback().await {
+                                tracing::error!("卡密充值事务回滚失败: error={}", re);
+                            }
                             render_error(res, "充值失败", 201, app_key);
                         }
                     }
                 }
                 Err(msg) => {
-                    let _ = tx.rollback().await;
+                    if let Err(re) = tx.rollback().await {
+                        tracing::error!("卡密充值事务回滚失败: error={}", re);
+                    }
                     render_error(res, msg, 201, app_key);
                 }
             }

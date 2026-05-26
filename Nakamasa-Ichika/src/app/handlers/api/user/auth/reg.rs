@@ -133,6 +133,15 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             render_error(res, "参数解析失败", 201, app_key);
             return;
         }
+};
+
+    // 获取数据库连接池
+    let db = match app_state.get_db() {
+        Some(pool) => pool,
+        None => {
+            render_error(res, "服务器错误", 201, "");
+            return;
+        }
     };
 
     // 检查应用类型
@@ -142,7 +151,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     }
 
     // 获取注册配置
-    let reg_config = match get_reg_config(app_state.get_db(), appid).await {
+    let reg_config = match get_reg_config(db, appid).await {
         Some(config) => config,
         None => {
             render_error(res, "应用配置不存在", 201, app_key);
@@ -210,7 +219,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(&reg_req.account)
     .bind(&reg_req.account)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(db)
     .await;
 
     match user_check {
@@ -236,7 +245,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         .bind(ip)
         .bind(appid)
         .bind(ip_time)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(db)
         .await;
 
         if let Ok(Some(_)) = ip_check {
@@ -255,7 +264,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         .bind(&reg_req.udid)
         .bind(appid)
         .bind(sn_time)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(db)
         .await;
 
         if let Ok(Some(_)) = sn_check {
@@ -278,11 +287,11 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             "UPDATE u_vcode SET usable = 'n' WHERE eorp = ? AND code = ? AND type = ? AND usable = 'y' AND time > ? AND appid = ?"
         )
         .bind(&reg_req.account)
-        .bind(reg_req.code.unwrap())
+        .bind(reg_req.code.unwrap_or(0))
         .bind("reg")
         .bind(dtime)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(db)
         .await;
 
         match verify_result {
@@ -291,7 +300,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                     tracing::warn!(
                         "[注册调试] 验证码不正确: account={}, code={}",
                         reg_req.account,
-                        reg_req.code.unwrap()
+                        reg_req.code.unwrap_or(0)
                     );
                     render_error(res, "验证码不正确", 119, app_key);
                     return;
@@ -335,7 +344,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         )
         .bind(invid)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(db)
         .await;
 
         match inviter_check {
@@ -361,26 +370,30 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                             inv_vip.unwrap_or(0)
                         };
 
-                        let _ = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?")
+                        if let Err(e) = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ? AND appid = ?")
                             .bind(new_vip)
                             .bind(invid)
                             .bind(appid)
-                            .execute(app_state.get_db())
-                            .await;
+                            .execute(db)
+                            .await {
+                                tracing::error!("邀请人VIP奖励更新失败: {}", e);
+                            }
                         tracing::debug!(
                             "[注册调试] 邀请人VIP奖励: invid={}, new_vip={}",
                             invid,
                             new_vip
                         );
                     } else {
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?",
                         )
                         .bind(reg_config.inviter_award_val)
                         .bind(invid)
                         .bind(appid)
-                        .execute(app_state.get_db())
-                        .await;
+                        .execute(db)
+                        .await {
+                            tracing::error!("邀请人积分奖励更新失败: {}", e);
+                        }
                         tracing::debug!(
                             "[注册调试] 邀请人积分奖励: invid={}, +{}",
                             invid,
@@ -449,7 +462,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(&reg_req.udid)
     .bind(appid)
     .bind(inviter_id)
-    .execute(app_state.get_db())
+    .execute(db)
     .await;
 
     match insert_result {
@@ -458,7 +471,7 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 tracing::debug!("[注册调试] 注册成功: uid={}", result.last_insert_id());
 
                 // 记录日志
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
                 )
                 .bind("user")
@@ -468,8 +481,10 @@ pub async fn register(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 .bind(current_time)
                 .bind(ip)
                 .bind(appid)
-                .execute(app_state.get_db())
-                .await;
+                .execute(db)
+                .await {
+                    tracing::error!("日志写入失败: {}", e);
+                }
 
                 render_success_msg(res, app_key);
             } else {

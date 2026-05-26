@@ -137,7 +137,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         "#,
     )
     .bind(uid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let user_row = match user_result {
@@ -188,11 +188,13 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
         let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
             .bind(&new_sn_list)
             .bind(user_id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
     } else {
-        let client_arr: Vec<serde_json::Value> =
-            serde_json::from_str(sn_list_val.as_ref().unwrap()).unwrap_or_default();
+        let client_arr: Vec<serde_json::Value> = match sn_list_val {
+            Some(ref v) => serde_json::from_str(v).unwrap_or_default(),
+            None => Vec::new(),
+        };
 
         let found = client_arr
             .iter()
@@ -209,7 +211,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                     let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                         .bind(&sn_list_json)
                         .bind(user_id)
-                        .execute(app_state.get_db())
+                        .execute(app_state.get_db().expect("db"))
                         .await;
                 }
             } else {
@@ -218,7 +220,7 @@ pub async fn qq_login_query(req: &mut Request, depot: &mut Depot, res: &mut Resp
                 let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                     .bind(&new_sn_list)
                     .bind(user_id)
-                    .execute(app_state.get_db())
+                    .execute(app_state.get_db().expect("db"))
                     .await;
                 // TODO: 删除该用户所有token
             }

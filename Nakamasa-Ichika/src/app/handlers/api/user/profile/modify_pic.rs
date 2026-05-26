@@ -96,7 +96,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
         .bind(avatars)
         .bind(uid as i64)
         .bind(appid as i64)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -111,7 +111,7 @@ pub async fn modify_pic(req: &mut Request, depot: &mut Depot, res: &mut Response
             .bind(current_time)
             .bind(ip)
             .bind(appid as i64)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             tracing::info!("用户 {} 修改头像成功: {}", uid, avatars);

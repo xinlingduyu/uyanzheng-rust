@@ -234,7 +234,8 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
 
     // 获取登录配置
-    let logon_config = match get_logon_config(app_state.get_db(), appid).await {
+    let db = app_state.get_db().expect("db");
+    let logon_config = match get_logon_config(db, appid).await {
         Some(config) => config,
         None => {
             render_error(res, "应用配置不存在", 201, app_key);
@@ -296,7 +297,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(account)
         .bind(password_hash)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(db)
         .await
     } else if is_phone {
         // 手机号登录 - 使用 idx_user_appid_phone 索引
@@ -308,7 +309,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(account)
         .bind(password_hash)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+                .fetch_optional(db)
         .await
     } else {
         // 账号登录 - 使用 idx_user_appid_acctno 索引
@@ -320,7 +321,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(account)
         .bind(password_hash)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+                .fetch_optional(db)
         .await
     };
 
@@ -366,7 +367,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             let _ = clear_fail_count(redis_util, app_state.redis_pool.as_ref(), ip_hash).await;
             // 处理设备绑定 - 优化：直接传入 sn_list，避免重复查询
             let token_state = handle_user_device_binding(
-                app_state.get_db(),
+                db,
                 id,
                 &login_req.udid,
                 appid,
@@ -453,7 +454,7 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     }            }
 
             // 记录日志
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind("user")
@@ -462,8 +463,10 @@ pub async fn login(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(current_time)
             .bind(ip)
             .bind(appid)
-            .execute(app_state.get_db())
-            .await;
+            .execute(db)
+            .await {
+                tracing::error!("日志写入失败: {}", e);
+            }
 
             let response = LoginResponse {
                 token,
@@ -514,16 +517,20 @@ async fn handle_user_device_binding(
     // 没有绑定任何设备，直接绑定
     if sn_list_str.as_ref().is_none_or(|s| s.is_empty()) {
         let new_sn_list = serde_json::json!([{"udid": udid, "time": current_time}]);
-        let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
+        if let Err(e) = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
             .bind(new_sn_list.to_string())
             .bind(uid)
             .execute(pool)
-            .await;
+            .await {
+                tracing::error!("设备绑定更新失败: {}", e);
+            }
         return "y";
     }
 
-    let sn_list: Vec<serde_json::Value> =
-        serde_json::from_str(&sn_list_str.unwrap()).unwrap_or_default();
+    let sn_list: Vec<serde_json::Value> = match sn_list_str {
+        Some(s) => serde_json::from_str(&s).unwrap_or_default(),
+        None => vec![],
+    };
 
     // 检查当前设备是否已绑定
     let found = sn_list.iter().any(|item| {
@@ -546,19 +553,30 @@ async fn handle_user_device_binding(
         }
         let mut new_list = sn_list;
         new_list.push(serde_json::json!({"udid": udid, "time": current_time}));
-        let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
-            .bind(serde_json::to_string(&new_list).unwrap())
+        let new_list_str = match serde_json::to_string(&new_list) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("序列化设备列表失败: {}", e);
+                return "n";
+            }
+        };
+        if let Err(e) = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
+            .bind(new_list_str)
             .bind(uid)
             .execute(pool)
-            .await;
+            .await {
+                tracing::error!("设备绑定更新失败: {}", e);
+            }
     } else {
         // logon_sn_num为0时，替换所有设备
         let new_sn_list = serde_json::json!([{"udid": udid, "time": current_time}]);
-        let _ = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
+        if let Err(e) = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
             .bind(new_sn_list.to_string())
             .bind(uid)
             .execute(pool)
-            .await;
+            .await {
+                tracing::error!("设备绑定更新失败: {}", e);
+            }
     }
 
     "y"
@@ -608,7 +626,8 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
 
     // 获取登录配置
-    let logon_config = match get_logon_config(app_state.get_db(), appid).await {
+    let db = app_state.get_db().expect("db");
+    let logon_config = match get_logon_config(db, appid).await {
         Some(config) => config,
         None => {
             render_error(res, "应用配置不存在", 201, app_key);
@@ -626,7 +645,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     }
 
     // 获取禁止到期卡密登录配置
-    let logon_ban_expire = get_logon_ban_expire(app_state.get_db(), appid).await;
+let logon_ban_expire = get_logon_ban_expire(db, appid).await;
 
     let current_time = Utc::now().timestamp();
     let ip = get_client_ip(req);
@@ -661,8 +680,8 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
     )
     .bind(&kami_req.account).bind(&kami_req.account).bind(&kami_req.account)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
-    .await;
+        .fetch_optional(db)
+        .await;
 
     match kami_result {
         Ok(Some((
@@ -756,7 +775,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
 
             // 处理设备绑定
             let (final_vip, token_state) = handle_kami_device_binding(
-                app_state.get_db(),
+                db,
                 id,
                 &kami_req.udid,
                 appid,
@@ -836,7 +855,7 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
                     }            }
 
             // 记录日志
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
             )
             .bind("kami")
@@ -845,8 +864,10 @@ pub async fn kami_login(req: &mut Request, depot: &mut Depot, res: &mut Response
             .bind(current_time)
             .bind(ip)
             .bind(appid)
-            .execute(app_state.get_db())
-            .await;
+            .execute(db)
+            .await {
+                tracing::error!("日志写入失败: {}", e);
+            }
 
             // 查询 IP 地域信息
             let ip_location = lookup_ip_location(ip);
@@ -923,7 +944,7 @@ async fn handle_kami_device_binding(
         };
 
         if kami_type == "vip" {
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "UPDATE u_cdk_kami SET use_time = ?, use_ip = ?, sn_list = ?, vip = ? WHERE id = ?",
             )
             .bind(current_time)
@@ -932,9 +953,11 @@ async fn handle_kami_device_binding(
             .bind(new_vip)
             .bind(id)
             .execute(pool)
-            .await;
+            .await {
+                tracing::error!("卡密设备绑定更新失败: {}", e);
+            }
         } else {
-            let _ = sqlx::query(
+            if let Err(e) = sqlx::query(
                 "UPDATE u_cdk_kami SET use_time = ?, use_ip = ?, sn_list = ? WHERE id = ?",
             )
             .bind(current_time)
@@ -942,7 +965,9 @@ async fn handle_kami_device_binding(
             .bind(new_sn_list.to_string())
             .bind(id)
             .execute(pool)
-            .await;
+            .await {
+                tracing::error!("卡密设备绑定更新失败: {}", e);
+            }
         }
         return (new_vip, "y");
     }
@@ -968,18 +993,29 @@ async fn handle_kami_device_binding(
             }
             let mut new_arr = client_arr;
             new_arr.push(serde_json::json!({"udid": udid, "time": current_time}));
-            let _ = sqlx::query("UPDATE u_cdk_kami SET sn_list = ? WHERE id = ?")
-                .bind(serde_json::to_string(&new_arr).unwrap())
+            let new_arr_str = match serde_json::to_string(&new_arr) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::error!("序列化设备列表失败: {}", e);
+                    return (kami_vip, "n");
+                }
+            };
+            if let Err(e) = sqlx::query("UPDATE u_cdk_kami SET sn_list = ? WHERE id = ?")
+                .bind(new_arr_str)
                 .bind(id)
                 .execute(pool)
-                .await;
+                .await {
+                    tracing::error!("卡密设备绑定更新失败: {}", e);
+                }
         } else {
             let new_sn_list = serde_json::json!([{"udid": udid, "time": current_time}]);
-            let _ = sqlx::query("UPDATE u_cdk_kami SET sn_list = ? WHERE id = ?")
+            if let Err(e) = sqlx::query("UPDATE u_cdk_kami SET sn_list = ? WHERE id = ?")
                 .bind(new_sn_list.to_string())
                 .bind(id)
                 .execute(pool)
-                .await;
+                .await {
+                    tracing::error!("卡密设备绑定更新失败: {}", e);
+                }
         }
     } else if logon_sn_dk != "y"
         && let Some(pool) = redis_pool

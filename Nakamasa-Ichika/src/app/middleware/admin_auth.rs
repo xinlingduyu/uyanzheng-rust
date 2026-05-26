@@ -22,7 +22,7 @@ static ERR_DB_ERROR: &str = "数据库错误";
 fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .unwrap_or_default()
         .as_secs()
 }
 
@@ -199,7 +199,7 @@ impl Handler for AdminAuth {
         )
         .bind(id)
         .bind("y")
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
         let admin = match admin_result {

@@ -103,7 +103,13 @@ fn ensure_session_cleanup() {
             loop {
                 tokio::time::sleep(interval).await;
                 let now = Instant::now();
-                let mut sessions = SESSIONS.write().unwrap_or_else(|e| e.into_inner());
+                let mut sessions = match SESSIONS.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                tracing::error!("MCP SESSIONS write lock poisoned: {}", e);
+                e.into_inner()
+            }
+        };
                 let before = sessions.len();
                 sessions.retain(|id, s| {
                     let alive = now.duration_since(s.created_at) < ttl;
@@ -651,7 +657,13 @@ pub async fn sse_handler(_req: &mut Request, depot: &mut Depot, res: &mut Respon
     let session_id = generate_session_id();
 
     {
-        let mut sessions = SESSIONS.write().unwrap_or_else(|e| e.into_inner());
+        let mut sessions = match SESSIONS.write() {
+            Ok(guard) => guard,
+            Err(e) => {
+                tracing::error!("MCP SESSIONS write lock poisoned: {}", e);
+                e.into_inner()
+            }
+        };
         sessions.insert(
             session_id.clone(),
             Arc::new(McpSession {
@@ -719,7 +731,13 @@ pub async fn messages_handler(req: &mut Request, depot: &mut Depot, res: &mut Re
     }
 
     let session = {
-        let sessions = SESSIONS.read().unwrap_or_else(|e| e.into_inner());
+        let sessions = match SESSIONS.read() {
+            Ok(guard) => guard,
+            Err(e) => {
+                tracing::error!("MCP SESSIONS read lock poisoned: {}", e);
+                e.into_inner()
+            }
+        };
         sessions.get(&session_id).cloned()
     };
 

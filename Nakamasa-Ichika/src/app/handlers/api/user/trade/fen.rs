@@ -57,7 +57,7 @@ async fn get_fen_event(app_state: &Arc<AppState>, fenid: u64, appid: u64) -> Opt
     )
     .bind(fenid)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -236,7 +236,7 @@ async fn handle_user_fen_verify(
         // 检查fenmark是否已兑换
         if let Some(mark) = fo_mark {
             let exists =
-                check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+                check_fen_order_exists(app_state.get_db().expect("db"), fen_req.fenid, uid, mark, appid).await;
             if exists {
                 render_error(res, "已经兑换过一次了", 147, app_key);
                 return;
@@ -246,7 +246,7 @@ async fn handle_user_fen_verify(
         // 非VIP兑换，检查fenmark
         if let Some(mark) = fo_mark {
             let exists =
-                check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+                check_fen_order_exists(app_state.get_db().expect("db"), fen_req.fenid, uid, mark, appid).await;
             if exists {
                 render_success_with_msg(res, "验证成功", app_key);
                 return;
@@ -272,7 +272,7 @@ async fn handle_user_fen_verify(
     .bind(current_time)
     .bind(appid)
     .bind(fo_mark)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     if insert_result.is_err() {
@@ -292,14 +292,14 @@ async fn handle_user_fen_verify(
             .bind(new_vip)
             .bind(uid)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     } else {
         sqlx::query("UPDATE u_user SET fen = fen - ? WHERE id = ? AND appid = ?")
             .bind(fen_event.fen)
             .bind(uid)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     };
 
@@ -316,7 +316,7 @@ async fn handle_user_fen_verify(
             .bind(current_time)
             .bind(ip)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             render_success_with_msg(res, "验证成功", app_key);
@@ -355,7 +355,7 @@ async fn handle_kami_fen_verify(
 
     if let Some(mark) = fo_mark {
         let exists =
-            check_fen_order_exists(app_state.get_db(), fen_req.fenid, uid, mark, appid).await;
+            check_fen_order_exists(app_state.get_db().expect("db"), fen_req.fenid, uid, mark, appid).await;
         if exists {
             render_success_with_msg(res, "验证成功", app_key);
             return;
@@ -380,7 +380,7 @@ async fn handle_kami_fen_verify(
     .bind(current_time)
     .bind(appid)
     .bind(fo_mark)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     if insert_result.is_err() {
@@ -394,7 +394,7 @@ async fn handle_kami_fen_verify(
             .bind(fen_event.fen)
             .bind(uid)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match update_result {
@@ -410,7 +410,7 @@ async fn handle_kami_fen_verify(
             .bind(current_time)
             .bind(ip)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             render_success_with_msg(res, "验证成功", app_key);

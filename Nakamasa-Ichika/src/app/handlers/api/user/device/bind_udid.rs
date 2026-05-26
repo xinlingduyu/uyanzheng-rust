@@ -122,7 +122,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .bind(&sn_list_json)
         .bind(uid)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -137,7 +137,7 @@ pub async fn bind_udid(req: &mut Request, depot: &mut Depot, res: &mut Response)
             .bind(current_time)
             .bind(ip)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             render_success(res, app_key, None::<()>, app_info.mi.as_ref());

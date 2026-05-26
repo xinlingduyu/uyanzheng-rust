@@ -633,7 +633,7 @@ async fn fetch_app_info_with_version(
     .bind(version_info.as_ref().map(|v| v.3))
     .bind(version_info.as_ref().map(|v| v.3))
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await?;
 
     let row = match row {

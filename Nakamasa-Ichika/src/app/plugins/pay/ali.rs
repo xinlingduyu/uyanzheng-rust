@@ -44,7 +44,7 @@ impl AliPayPlugin {
         }
 
         // 解析私钥
-        let private_key_pem = self.private_key.as_ref().unwrap();
+        let private_key_pem = self.private_key.as_ref().ok_or_else(|| "私钥未配置".to_string())?;
         let private_key = match RsaPrivateKey::from_pkcs8_pem(private_key_pem) {
             Ok(key) => key,
             Err(_) => {
@@ -77,7 +77,13 @@ impl AliPayPlugin {
             return false;
         }
 
-        let public_key_pem = self.alipay_public_key.as_ref().unwrap();
+        let public_key_pem = match self.alipay_public_key.as_ref() {
+            Some(pk) => pk,
+            None => {
+                tracing::error!("支付宝公钥未配置");
+                return false;
+            }
+        };
         let public_key = match RsaPublicKey::from_public_key_pem(public_key_pem) {
             Ok(key) => key,
             Err(_) => return false,
@@ -128,7 +134,7 @@ impl AliPayPlugin {
             return Err("APPID或私钥未配置".to_string());
         }
 
-        let appid = self.appid.as_ref().unwrap();
+        let appid = self.appid.as_ref().ok_or_else(|| "APPID或私钥未配置".to_string())?;
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // 构建请求参数
@@ -204,7 +210,7 @@ impl AliPayPlugin {
             return Err("APPID或私钥未配置".to_string());
         }
 
-        let appid = self.appid.as_ref().unwrap();
+        let appid = self.appid.as_ref().ok_or_else(|| "APPID或私钥未配置".to_string())?;
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // 构建请求参数
@@ -420,8 +426,9 @@ impl PayPlugin for AliPayPlugin {
         let timestamp = Utc::now().format("%Y-%m-%d %H:%M:%S").to_string();
 
         // 构建查询参数
+        let appid = self.appid.as_ref().ok_or_else(|| "APPID或私钥未配置".to_string())?;
         let mut params = BTreeMap::new();
-        params.insert("app_id".to_string(), self.appid.as_ref().unwrap().clone());
+        params.insert("app_id".to_string(), appid.clone());
         params.insert("method".to_string(), "alipay.trade.query".to_string());
         params.insert("charset".to_string(), "utf-8".to_string());
         params.insert("sign_type".to_string(), "RSA2".to_string());

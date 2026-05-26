@@ -124,7 +124,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -200,7 +200,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         "SELECT id, agid, money FROM u_agent_cash WHERE id = ?",
     )
     .bind(edit_req.id)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (agid, money) = match check_result {
@@ -217,7 +217,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
 
     // 开始事务
-    let mut tx = match app_state.get_db().begin().await {
+    let mut tx = match app_state.get_db().expect("db").begin().await {
         Ok(t) => t,
         Err(e) => {
             tracing::error!("事务开始失败: {}", e);
@@ -247,7 +247,9 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match update_result {
         Ok(r) if r.rows_affected() > 0 => {}
         _ => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("代理提现事务回滚失败: id={}, error={}", edit_req.id, e);
+            }
             res.render(Json(ApiResponse::<()>::error("编辑失败", 201)));
             return;
         }
@@ -264,7 +266,9 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         match money_result {
             Ok(r) if r.rows_affected() > 0 => {}
             _ => {
-                let _ = tx.rollback().await;
+                if let Err(e) = tx.rollback().await {
+                    tracing::error!("代理驳回退款事务回滚失败: id={}, error={}", edit_req.id, e);
+                }
                 res.render(Json(ApiResponse::<()>::error("驳回失败，请重试", 201)));
                 return;
             }
@@ -319,7 +323,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_agent_cash WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

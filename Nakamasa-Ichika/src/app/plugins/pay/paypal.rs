@@ -60,15 +60,14 @@ impl PayPalPayPlugin {
         // 检查缓存的 token 是否仍然有效
         {
             let cache = self.token_cache.lock().map_err(|e| e.to_string())?;
-            if let Some((token, expires)) = cache.as_ref() {
-                if let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
+            if let Some((token, expires)) = cache.as_ref()
+                && let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) {
                     let now_secs = now.as_secs() as i64;
                     let threshold = *expires - 60;
                     if now_secs < threshold {
                         return Ok(token.clone());
                     }
                 }
-            }
         }
 
         // Token 过期或不存在，重新获取
@@ -78,8 +77,8 @@ impl PayPalPayPlugin {
 
         let url = format!("{}/v1/oauth2/token", self.api_base());
         let body = "grant_type=client_credentials";
-        let client_id = self.client_id.as_ref().unwrap();
-        let client_secret = self.client_secret.as_ref().unwrap();
+        let client_id = self.client_id.as_ref().ok_or_else(|| "PayPal Client ID 或 Secret 未配置".to_string())?;
+        let client_secret = self.client_secret.as_ref().ok_or_else(|| "PayPal Client ID 或 Secret 未配置".to_string())?;
 
         let response = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(http_client::post_form_basic(

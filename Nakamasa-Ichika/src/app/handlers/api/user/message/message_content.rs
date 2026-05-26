@@ -109,7 +109,7 @@ pub async fn message_content(req: &mut Request, depot: &mut Depot, res: &mut Res
     .bind(content_req.mid)
     .bind(appid)
     .bind(appid)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -150,7 +150,7 @@ pub async fn message_content(req: &mut Request, depot: &mut Depot, res: &mut Res
             let _ =
                 sqlx::query("UPDATE u_message SET state = 2 WHERE uid IS NULL AND reply_id = ?")
                     .bind(content_req.mid)
-                    .execute(app_state.get_db())
+                    .execute(app_state.get_db().expect("db"))
                     .await;
 
             render_success(res, app_key, Some(list), app_info.mi.as_ref());

@@ -108,7 +108,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM u_order WHERE uid = ? AND appid = ?")
             .bind(uid)
             .bind(appid)
-            .fetch_one(app_state.get_db())
+            .fetch_one(app_state.get_db().expect("db"))
             .await;
 
     let data_total = match count_result {
@@ -124,7 +124,7 @@ pub async fn order(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(appid)
     .bind(PAGE_SIZE)
     .bind(offset)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {

@@ -161,7 +161,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let ip = get_client_ip(req);
 
     // 获取应用验证码配置
-    let vcode_config = get_vcode_config(app_state.get_db(), appid).await;
+    let vcode_config = get_vcode_config(app_state.get_db().expect("db"), appid).await;
 
     // 验证码长度配置
     if vcode_config.vc_length <= 0 {
@@ -177,7 +177,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(ip)
     .bind(current_time - 3600) // timeRange() - 当前小时开始
     .bind(current_time) // timeRange(0,1) - 当前小时结束
-    .fetch_one(app_state.get_db())
+    .fetch_one(app_state.get_db().expect("db"))
     .await;
 
     if let Ok(count) = vcnum
@@ -193,7 +193,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .bind(&code_req.account)
     .bind(current_time - 120)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     if let Ok(Some(_)) = vc_res {
@@ -201,7 +201,7 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         return;
     }
 
-    let mut tx = match app_state.get_db().begin().await {
+    let mut tx = match app_state.get_db().expect("db").begin().await {
         Ok(tx) => tx,
         Err(e) => {
             tracing::error!("开启事务失败: {}", e);
@@ -224,7 +224,9 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     .await;
 
     if insert_result.is_err() {
-        let _ = tx.rollback().await;
+        if let Err(e) = tx.rollback().await {
+            tracing::error!("验证码插入事务回滚失败: error={}", e);
+        }
         tracing::error!("验证码插入失败");
         render_error(res, "验证码获取失败", 201, app_key);
         return;
@@ -267,7 +269,9 @@ pub async fn get_code(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             }
         }
         Err(msg) => {
-            let _ = tx.rollback().await;
+            if let Err(e) = tx.rollback().await {
+                tracing::error!("验证码发送事务回滚失败: error={}", e);
+            }
             render_error(res, msg, 201, app_key);
         }
     }

@@ -159,7 +159,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     let redis_util = &app_state.redis_util;
 
     // 获取登录配置
-    let logon_config = match get_logon_config(app_state.get_db(), appid).await {
+    let logon_config = match get_logon_config(app_state.get_db().expect("db"), appid).await {
         Some(config) => config,
         None => {
             render_error(res, "应用配置不存在", 201, app_key);
@@ -232,7 +232,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
     )
     .bind(&qq_openid)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match existing_user {
@@ -268,7 +268,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let sn_list_result =
                 sqlx::query_as::<_, (Option<String>,)>("SELECT sn_list FROM u_user WHERE id = ?")
                     .bind(id)
-                    .fetch_one(app_state.get_db())
+                    .fetch_one(app_state.get_db().expect("db"))
                     .await;
 
             let sn_list_str = sn_list_result.ok().and_then(|r| r.0);
@@ -280,12 +280,19 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             if sn_list_empty {
                 // 没有绑定任何设备，直接绑定
                 let new_sn_list = serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]);
-                let new_sn_list_str = serde_json::to_string(&new_sn_list).unwrap();
+                let new_sn_list_str = match serde_json::to_string(&new_sn_list) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!("序列化设备列表失败: {}", e);
+                        render_error(res, "登录失败，请重试", 201, app_key);
+                        return;
+                    }
+                };
 
                 let update_result = sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                     .bind(&new_sn_list_str)
                     .bind(id)
-                    .execute(app_state.get_db())
+                    .execute(app_state.get_db().expect("db"))
                     .await;
 
                 if update_result.is_err() {
@@ -294,8 +301,16 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 }
             } else {
                 // 解析已有设备列表
+                let sn_list_str = match sn_list_str {
+                    Some(s) => s,
+                    None => {
+                        tracing::error!("QQ SDK登录设备列表为空");
+                        render_error(res, "登录失败，请重试", 201, app_key);
+                        return;
+                    }
+                };
                 let sn_list: Vec<serde_json::Value> =
-                    match serde_json::from_str(&sn_list_str.unwrap()) {
+                    match serde_json::from_str(&sn_list_str) {
                         Ok(list) => list,
                         Err(_) => {
                             render_error(res, "设备列表解析失败", 201, app_key);
@@ -335,13 +350,20 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             new_list.push(
                                 serde_json::json!({"udid": &qq_req.udid, "time": current_time}),
                             );
-                            let new_list_str = serde_json::to_string(&new_list).unwrap();
+                            let new_list_str = match serde_json::to_string(&new_list) {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    tracing::error!("序列化设备列表失败: {}", e);
+                                    render_error(res, "登录失败，请重试", 201, app_key);
+                                    return;
+                                }
+                            };
 
                             let update_result =
                                 sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                                     .bind(&new_list_str)
                                     .bind(id)
-                                    .execute(app_state.get_db())
+                                    .execute(app_state.get_db().expect("db"))
                                     .await;
 
                             if update_result.is_err() {
@@ -353,13 +375,20 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                         // logon_sn_num为0时，替换所有设备
                         let new_sn_list =
                             serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]);
-                        let new_sn_list_str = serde_json::to_string(&new_sn_list).unwrap();
+                        let new_sn_list_str = match serde_json::to_string(&new_sn_list) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                tracing::error!("序列化设备列表失败: {}", e);
+                                render_error(res, "登录失败，请重试", 201, app_key);
+                                return;
+                            }
+                        };
 
                         let update_result =
                             sqlx::query("UPDATE u_user SET sn_list = ? WHERE id = ?")
                                 .bind(&new_sn_list_str)
                                 .bind(id)
-                                .execute(app_state.get_db())
+                                .execute(app_state.get_db().expect("db"))
                                 .await;
 
                         if update_result.is_err() {
@@ -380,7 +409,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let vip_exp_date = vip
                 .map(|v| {
                     if v > 0 {
-                        let dt = chrono::DateTime::<Utc>::from_timestamp(v, 0).unwrap();
+                        let dt = chrono::DateTime::<Utc>::from_timestamp(v, 0).unwrap_or_default();
                         dt.format("%Y-%m-%d %H:%M:%S").to_string()
                     } else {
                         "未开通".to_string()
@@ -392,7 +421,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             let inv_code =
                 sqlx::query_as::<_, (Option<String>,)>("SELECT inv_code FROM u_user WHERE id = ?")
                     .bind(id)
-                    .fetch_one(app_state.get_db())
+                    .fetch_one(app_state.get_db().expect("db"))
                     .await
                     .ok()
                     .and_then(|r| r.0);
@@ -461,7 +490,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             .bind(current_time)
             .bind(ip)
             .bind(Some(appid))
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             let response = LoginResponse {
@@ -479,7 +508,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
             )
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
             let app_cfg = match app_result {
@@ -530,7 +559,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                 )
                 .bind(inv_id)
                 .bind(appid)
-                .fetch_optional(app_state.get_db())
+                .fetch_optional(app_state.get_db().expect("db"))
                 .await;
 
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
@@ -546,13 +575,13 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                             let _ = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ?")
                                 .bind(new_vip)
                                 .bind(inv_uid)
-                                .execute(app_state.get_db())
+                                .execute(app_state.get_db().expect("db"))
                                 .await;
                         } else {
                             let _ = sqlx::query("UPDATE u_user SET fen = ? WHERE id = ?")
                                 .bind(inv_fen + inviter_award_val)
                                 .bind(inv_uid)
-                                .execute(app_state.get_db())
+                                .execute(app_state.get_db().expect("db"))
                                 .await;
                         }
                     }
@@ -584,7 +613,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
             .bind(appid)
             .bind(inviter_id_val)
             .bind(serde_json::json!([{"udid": &qq_req.udid, "time": current_time}]).to_string())
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             match insert_result {
@@ -599,7 +628,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
 
                     // VIP过期日期格式化
                     let vip_exp_date = if reg_vip > 0 {
-                        let dt = chrono::DateTime::<Utc>::from_timestamp(reg_vip, 0).unwrap();
+                        let dt = chrono::DateTime::<Utc>::from_timestamp(reg_vip, 0).unwrap_or_default();
                         dt.format("%Y-%m-%d %H:%M:%S").to_string()
                     } else {
                         "未开通".to_string()
@@ -669,7 +698,7 @@ pub async fn qq_login_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respon
                     .bind(current_time)
                     .bind(ip)
                     .bind(Some(appid))
-                    .execute(app_state.get_db())
+                    .execute(app_state.get_db().expect("db"))
                     .await;
 
                     let response = LoginResponse {

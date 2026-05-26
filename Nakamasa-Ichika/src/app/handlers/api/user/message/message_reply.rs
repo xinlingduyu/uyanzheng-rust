@@ -76,7 +76,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
     .bind(reply_req.mid)
     .bind(uid)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match m_res {
@@ -105,14 +105,14 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
                 )
                 .bind(uid).bind(&reply_req.content).bind(file)
                 .bind(reply_req.mid).bind(current_time).bind(appid)
-                .execute(app_state.get_db()).await
+                .execute(app_state.get_db().expect("db")).await
             } else {
                 sqlx::query(
                     "INSERT INTO u_message (uid, content, reply_id, time, appid) VALUES (?, ?, ?, ?, ?)"
                 )
                 .bind(uid).bind(&reply_req.content)
                 .bind(reply_req.mid).bind(current_time).bind(appid)
-                .execute(app_state.get_db()).await
+                .execute(app_state.get_db().expect("db")).await
             };
 
             match insert_result {
@@ -124,7 +124,7 @@ pub async fn message_reply(req: &mut Request, depot: &mut Depot, res: &mut Respo
                         )
                         .bind(current_time)
                         .bind(reply_req.mid)
-                        .execute(app_state.get_db())
+                        .execute(app_state.get_db().expect("db"))
                         .await;
 
                         render_success(res, app_key, None::<()>, app_info.mi.as_ref());

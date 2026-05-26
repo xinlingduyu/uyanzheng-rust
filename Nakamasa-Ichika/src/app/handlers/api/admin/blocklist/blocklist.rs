@@ -141,7 +141,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         count_sql = count_sql.bind(kw);
     }
 
-    let total: i64 = match count_sql.fetch_one(app_state.get_db()).await {
+    let total: i64 = match count_sql.fetch_one(app_state.get_db().expect("db")).await {
         Ok(row) => row.try_get("total").unwrap_or(0),
         Err(e) => {
             tracing::error!("数据库查询失败: {}", e);
@@ -164,7 +164,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     sql_query = sql_query.bind(size);
     sql_query = sql_query.bind(offset);
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -332,7 +332,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(&add_req.val)
             .bind(time)
             .bind(appid_value)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match result {
@@ -352,7 +352,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(time)
                 .bind(&ip)
                 .bind(appid)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
             }
 
@@ -453,7 +453,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 先检查记录是否存在
     let exists_result = sqlx::query("SELECT id FROM u_app_blocklist WHERE id = ?")
         .bind(edit_req.id as i64)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
     if matches!(exists_result, Ok(None)) {
@@ -475,7 +475,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(&edit_req.val)
             .bind(appid_value)
             .bind(edit_req.id as i64)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match result {
@@ -494,7 +494,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(time)
                 .bind(&ip)
                 .bind(appid)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
             }
 
@@ -563,7 +563,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // 执行删除
     let result = sqlx::query("DELETE FROM u_app_blocklist WHERE id = ?")
         .bind(del_req.id as i64)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -582,7 +582,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(time)
                 .bind(&ip)
                 .bind(appid)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
             }
 
@@ -666,7 +666,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sql_query = sql_query.bind(*id as i64);
     }
 
-    let result = sql_query.execute(app_state.get_db()).await;
+    let result = sql_query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {
@@ -684,7 +684,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(time)
                 .bind(&ip)
                 .bind(appid)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
             }
 

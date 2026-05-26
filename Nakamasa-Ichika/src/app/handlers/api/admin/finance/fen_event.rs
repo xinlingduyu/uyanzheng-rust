@@ -51,7 +51,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         "SELECT id, name FROM u_fen_event WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -157,14 +157,13 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let mut where_conditions = vec!["appid = ?".to_string()];
     let mut params: Vec<String> = vec![appid.to_string()];
 
-    if let Some(so) = &list_req.so {
-        if let Some(keyword) = &so.keyword
+    if let Some(so) = &list_req.so
+        && let Some(keyword) = &so.keyword
             && !keyword.is_empty()
         {
             where_conditions.push("name LIKE ?".to_string());
             params.push(format!("%{}%", keyword));
         }
-    }
 
     let where_clause = where_conditions.join(" AND ");
     let count_query = format!("SELECT COUNT(*) FROM u_fen_event WHERE {}", where_clause);
@@ -179,7 +178,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         count_sql = count_sql.bind(param);
     }
 
-    let data_total = match count_sql.fetch_one(app_state.get_db()).await {
+    let data_total = match count_sql.fetch_one(app_state.get_db().expect("db")).await {
         Ok((count,)) => count,
         Err(e) => {
             tracing::error!("查询总数失败: {}", e);
@@ -202,7 +201,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     }
     data_sql = data_sql.bind(size).bind(offset);
 
-    let result = data_sql.fetch_all(app_state.get_db()).await;
+    let result = data_sql.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -343,7 +342,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_fen_event WHERE name = ? AND appid = ?")
             .bind(&add_req.name)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -369,7 +368,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(vip_value)
     .bind(&add_req.vip_free)
     .bind(appid)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match insert_result {
@@ -502,7 +501,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_fen_event WHERE name = ? AND appid = ?")
             .bind(&edit_req.name)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -529,7 +528,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(vip_value)
             .bind(&edit_req.vip_free)
             .bind(edit_req.id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match update_result {
@@ -599,7 +598,7 @@ pub async fn edit_state(req: &mut Request, depot: &mut Depot, res: &mut Response
     let result = sqlx::query("UPDATE u_fen_event SET state = ? WHERE id = ?")
         .bind(&edit_state_req.state)
         .bind(edit_state_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -658,7 +657,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_fen_event WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -727,7 +726,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sql_query = sql_query.bind(id);
     }
 
-    let result = sql_query.execute(app_state.get_db()).await;
+    let result = sql_query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(delete_result) => {
@@ -779,7 +778,7 @@ async fn add_log(
     .bind("edit")
     .bind(serde_json::to_string(&asset_changes).unwrap_or_default())
     .bind(now)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await?;
 
     Ok(())

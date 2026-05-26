@@ -177,7 +177,18 @@ impl Handler for UserAuth {
 
         // 数据校验（加密解密）
         let (post_params, _decrypted_data) = if self.data_check {
-            let app_info = depot.get::<AppInfo>("app_info").unwrap();
+            let app_info = match depot.get::<AppInfo>("app_info") {
+                Ok(info) => info,
+                Err(_) => {
+                    tracing::error!("数据校验失败: depot 中缺少 app_info");
+                    res.render(Json(ApiResponse::<()>::error(
+                        "配置错误：应用信息未加载",
+                        500,
+                    )));
+                    ctrl.skip_rest();
+                    return;
+                }
+            };
             match self.data_check_internal(req, app_info, res, ctrl).await {
                 Some(result) => result,
                 None => return,
@@ -816,7 +827,7 @@ async fn fetch_user_info_from_db(
         )
         .bind(uid)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await?;
 
         if let Some(r) = row {
@@ -866,7 +877,7 @@ async fn fetch_user_info_from_db(
         )
         .bind(uid)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await?;
 
         if let Some(r) = row {

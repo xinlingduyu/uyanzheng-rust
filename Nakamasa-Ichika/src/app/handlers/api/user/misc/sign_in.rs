@@ -48,7 +48,7 @@ async fn get_diary_award_config(app_state: &Arc<AppState>, appid: u64) -> DiaryA
         "SELECT diary_award, diary_award_val FROM u_app WHERE id = ?",
     )
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -140,7 +140,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(uid)
     .bind(start_of_day)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     if let Ok(Some(_)) = s_res {
@@ -162,7 +162,7 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(current_time)
     .bind(ip)
     .bind(appid)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match add_res {
@@ -193,18 +193,21 @@ pub async fn sign_in(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                             .bind(new_vip)
                             .bind(uid)
                             .bind(appid)
-                            .execute(app_state.get_db())
+                            .execute(app_state.get_db().expect("db"))
                             .await;
                     }
                     "fen" => {
-                        let _ = sqlx::query(
+                        if let Err(e) = sqlx::query(
                             "UPDATE u_user SET fen = fen + ? WHERE id = ? AND appid = ?",
                         )
                         .bind(award_config.diary_award_val)
                         .bind(uid)
                         .bind(appid)
-                        .execute(app_state.get_db())
-                        .await;
+                        .execute(app_state.get_db().expect("db"))
+                        .await
+                        {
+                            tracing::error!("签到积分发放失败: uid={}, error={}", uid, e);
+                        }
                     }
                     _ => {}
                 }

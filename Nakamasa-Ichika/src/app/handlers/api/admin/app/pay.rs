@@ -145,7 +145,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
 
     let row = sqlx::query(&sql)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
     let row = match row {
@@ -302,7 +302,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(&ch.plugin_type)
             .bind(&config_bytes)
             .bind(edit_req.id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
         if let Err(e) = update {
@@ -332,7 +332,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(now)
     .bind(&ip)
     .bind(Option::<i64>::None)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     res.render(Json(ApiResponse::success_msg("编辑成功")));

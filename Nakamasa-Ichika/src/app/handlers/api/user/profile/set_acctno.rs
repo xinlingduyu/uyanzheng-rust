@@ -96,7 +96,7 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
     .bind(&set_req.acctno)
     .bind(&set_req.acctno)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     if let Ok(Some(_)) = acctno_check {
@@ -109,14 +109,14 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
         .bind(&set_req.acctno)
         .bind(uid)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 记录日志
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, state, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?, ?)"
                 )
                 .bind(user_type)
@@ -126,8 +126,10 @@ pub async fn set_acctno(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .bind(current_time)
                 .bind(ip)
                 .bind(appid)
-                .execute(app_state.get_db())
-                .await;
+                .execute(app_state.get_db().expect("db"))
+                .await {
+                    tracing::error!("日志写入失败: {}", e);
+                }
 
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {

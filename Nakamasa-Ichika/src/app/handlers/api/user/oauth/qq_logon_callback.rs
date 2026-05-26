@@ -185,7 +185,7 @@ pub async fn qq_logon_callback(req: &mut Request, depot: &mut Depot, res: &mut R
         "SELECT logon_qqopen_config FROM u_app WHERE id = ?",
     )
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await
     {
         Ok(Some(config)) => config.0,
@@ -370,7 +370,7 @@ async fn __logon(
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE open_qq = ? AND appid = ?")
             .bind(qq_openid)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match existing_user {
@@ -388,7 +388,7 @@ async fn __logon(
                 "SELECT reg_award, reg_award_val, inviter_award, invitee_award, inviter_award_val, invitee_award_val FROM u_app WHERE id = ?"
             )
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
             let app_cfg = match app_result {
@@ -441,7 +441,7 @@ async fn __logon(
                 )
                 .bind(inv_id)
                 .bind(appid)
-                .fetch_optional(app_state.get_db())
+                .fetch_optional(app_state.get_db().expect("db"))
                 .await;
 
                 if let Ok(Some((inv_uid, inv_vip, inv_fen))) = inv_res {
@@ -457,13 +457,13 @@ async fn __logon(
                             let _ = sqlx::query("UPDATE u_user SET vip = ? WHERE id = ?")
                                 .bind(new_vip)
                                 .bind(inv_uid)
-                                .execute(app_state.get_db())
+                                .execute(app_state.get_db().expect("db"))
                                 .await;
                         } else {
                             let _ = sqlx::query("UPDATE u_user SET fen = ? WHERE id = ?")
                                 .bind(inv_fen + inviter_award_val)
                                 .bind(inv_uid)
-                                .execute(app_state.get_db())
+                                .execute(app_state.get_db().expect("db"))
                                 .await;
                         }
                     }
@@ -494,7 +494,7 @@ async fn __logon(
             .bind(&logon_info.udid)
             .bind(appid)
             .bind(inviter_id_val)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
             match insert_result {

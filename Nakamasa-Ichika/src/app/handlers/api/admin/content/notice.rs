@@ -92,7 +92,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .bind(appid)
             .bind(page_size)
             .bind(offset)
-            .fetch_all(app_state.get_db())
+            .fetch_all(app_state.get_db().expect("db"))
             .await;
 
     match result {
@@ -114,7 +114,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             let count_query = "SELECT COUNT(*) FROM u_app_notice WHERE appid = ? OR appid IS NULL";
             let data_total = match sqlx::query_as::<_, (u64,)>(count_query)
                 .bind(appid)
-                .fetch_one(app_state.get_db())
+                .fetch_one(app_state.get_db().expect("db"))
                 .await
             {
                 Ok((count,)) => count,
@@ -213,7 +213,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(&add_req.content)
     .bind(time)
     .bind(appid_value)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match insert_result {
@@ -259,7 +259,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let result = sqlx::query("UPDATE u_app_notice SET content = ? WHERE id = ?")
         .bind(edit_req.content)
         .bind(edit_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -303,7 +303,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_app_notice WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

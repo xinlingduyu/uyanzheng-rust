@@ -72,7 +72,7 @@ pub async fn message_end(req: &mut Request, depot: &mut Depot, res: &mut Respons
             .bind(end_req.mid)
             .bind(uid)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match result {

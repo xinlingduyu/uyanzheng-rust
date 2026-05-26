@@ -110,8 +110,8 @@ impl SmsPlugin for JieSmsPlugin {
             return Err("模板MID未配置".to_string());
         }
 
-        let _access_key = self.access_key.as_ref().unwrap();
-        let mid = self.mid.as_ref().unwrap();
+        let _access_key = self.access_key.as_ref().ok_or_else(|| "AccessKey未配置".to_string())?;
+        let mid = self.mid.as_ref().ok_or_else(|| "模板MID未配置".to_string())?;
 
         // 注意: param的值是JSON字符串，不是JSON对象
         let param_json = json!({"code": code, "time": time}).to_string();

@@ -104,14 +104,14 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
             .bind(new_hash)
             .bind(uid as i64)
             .bind(appid as i64)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     } else {
         sqlx::query("UPDATE u_user SET password = ? WHERE id = ? AND appid = ?")
             .bind(new_hash)
             .bind(uid as i64)
             .bind(appid as i64)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     };
 
@@ -119,7 +119,7 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 记录日志
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, time, ip, ip_address, appid) VALUES (?, ?, ?, ?, ?, NULL, ?)"
                 )
                 .bind(user_type)
@@ -128,8 +128,10 @@ pub async fn modify_pwd(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .bind(current_time)
                 .bind(ip)
                 .bind(appid as i64)
-                .execute(app_state.get_db())
-                .await;
+                .execute(app_state.get_db().expect("db"))
+                .await {
+                    tracing::error!("日志写入失败: {}", e);
+                }
 
                 // 删除Redis中该用户的所有token（踢下线）
                 if let Some(redis_pool) = app_state.redis_pool.as_ref() {

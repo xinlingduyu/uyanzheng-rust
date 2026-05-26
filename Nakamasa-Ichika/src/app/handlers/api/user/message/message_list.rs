@@ -77,7 +77,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
     )
     .bind(uid)
     .bind(appid)
-    .fetch_one(app_state.get_db())
+    .fetch_one(app_state.get_db().expect("db"))
     .await;
 
     let data_total = match count_result {
@@ -97,7 +97,7 @@ pub async fn message_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         "SELECT id, title, time, last_time, state FROM u_message WHERE uid = ? AND reply_id IS NULL AND appid = ? ORDER BY id DESC LIMIT ? OFFSET ?"
     )
     .bind(uid).bind(appid).bind(PAGE_SIZE).bind(offset)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {

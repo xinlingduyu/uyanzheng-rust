@@ -81,14 +81,14 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
         .bind(&modify_req.name)
         .bind(uid)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
         Ok(r) => {
             if r.rows_affected() > 0 {
                 // 记录日志
-                let _ = sqlx::query(
+                if let Err(e) = sqlx::query(
                     "INSERT INTO u_logs (ug, uid, type, time, ip, appid) VALUES (?, ?, ?, ?, ?, ?)",
                 )
                 .bind("user")
@@ -97,8 +97,10 @@ pub async fn modify_name(req: &mut Request, depot: &mut Depot, res: &mut Respons
                 .bind(current_time)
                 .bind(ip)
                 .bind(appid)
-                .execute(app_state.get_db())
-                .await;
+                .execute(app_state.get_db().expect("db"))
+                .await {
+                    tracing::error!("日志写入失败: {}", e);
+                }
 
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());
             } else {

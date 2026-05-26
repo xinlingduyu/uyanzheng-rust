@@ -50,7 +50,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         "SELECT id, name FROM u_agent_group WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -163,7 +163,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -256,7 +256,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE appid = ? AND name = ?")
             .bind(appid)
             .bind(&add_req.name)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -282,7 +282,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(add_req.km_discount)
     .bind(authority_json)
     .bind(appid)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match insert_result {
@@ -370,7 +370,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(appid)
     .bind(&edit_req.name)
     .bind(edit_req.id)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match check_result {
@@ -396,7 +396,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(edit_req.km_discount)
     .bind(authority_json)
     .bind(edit_req.id)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -450,7 +450,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_agent_group WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

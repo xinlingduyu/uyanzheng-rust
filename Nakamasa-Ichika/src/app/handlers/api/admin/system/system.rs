@@ -80,7 +80,7 @@ pub async fn get_set(_req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let query = "SELECT `key`, `value` FROM u_settings";
 
     let result = sqlx::query_as::<_, (String, String)>(query)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -123,7 +123,7 @@ pub async fn edit_set(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let check_query = "SELECT id FROM u_settings WHERE `key` = ?";
     let exists = sqlx::query(check_query)
         .bind(&edit_req.key)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await
         .is_ok();
 
@@ -131,13 +131,13 @@ pub async fn edit_set(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sqlx::query("UPDATE u_settings SET `value` = ? WHERE `key` = ?")
             .bind(&edit_req.value)
             .bind(&edit_req.key)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     } else {
         sqlx::query("INSERT INTO u_settings (`key`, `value`) VALUES (?, ?)")
             .bind(&edit_req.key)
             .bind(&edit_req.value)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await
     };
 
@@ -185,7 +185,7 @@ pub async fn get_user_api_router(req: &mut Request, depot: &mut Depot, res: &mut
     let query = "SELECT api_router FROM u_app WHERE id = ?";
     let result = sqlx::query(query)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -252,7 +252,7 @@ pub async fn edit_user_api_router(req: &mut Request, depot: &mut Depot, res: &mu
     let result = sqlx::query("UPDATE u_app SET api_router = ? WHERE id = ?")
         .bind(&edit_req.api_router)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -303,7 +303,7 @@ pub async fn switch_user_api_router(req: &mut Request, depot: &mut Depot, res: &
     // 切换到默认路由
     let result = sqlx::query("UPDATE u_app SET api_router = 'default' WHERE id = ?")
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -354,7 +354,7 @@ pub async fn get_user_api_code(req: &mut Request, depot: &mut Depot, res: &mut R
     let query = "SELECT api_code FROM u_app WHERE id = ?";
     let result = sqlx::query(query)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -421,7 +421,7 @@ pub async fn edit_user_api_code(req: &mut Request, depot: &mut Depot, res: &mut 
     let result = sqlx::query("UPDATE u_app SET api_code = ? WHERE id = ?")
         .bind(&edit_req.api_code)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -472,7 +472,7 @@ pub async fn switch_user_api_code(req: &mut Request, depot: &mut Depot, res: &mu
     // 切换到默认代码
     let result = sqlx::query("UPDATE u_app SET api_code = '' WHERE id = ?")
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -551,7 +551,7 @@ pub async fn get_notice_list(req: &mut Request, depot: &mut Depot, res: &mut Res
     let result = sqlx::query(query)
         .bind(appid)
         .bind(limit)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -631,7 +631,7 @@ pub async fn get_statistics(req: &mut Request, depot: &mut Depot, res: &mut Resp
     // 用户总数
     let user: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM u_user WHERE appid = ?")
         .bind(appid)
-        .fetch_one(app_state.get_db())
+        .fetch_one(app_state.get_db().expect("db"))
         .await
         .unwrap_or(0);
 
@@ -643,7 +643,7 @@ pub async fn get_statistics(req: &mut Request, depot: &mut Depot, res: &mut Resp
         "SELECT COUNT(*) FROM u_logs WHERE ug = 'user' AND type = 'login' AND appid = ?",
     )
     .bind(appid)
-    .fetch_one(app_state.get_db())
+    .fetch_one(app_state.get_db().expect("db"))
     .await
     .unwrap_or(0);
 
@@ -651,7 +651,7 @@ pub async fn get_statistics(req: &mut Request, depot: &mut Depot, res: &mut Resp
     let operate: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM u_logs WHERE ug = 'admin' AND appid = ?")
             .bind(appid)
-            .fetch_one(app_state.get_db())
+            .fetch_one(app_state.get_db().expect("db"))
             .await
             .unwrap_or(0);
 
@@ -720,7 +720,7 @@ pub async fn get_login_chart(req: &mut Request, depot: &mut Depot, res: &mut Res
     let result = sqlx::query(query)
         .bind(seven_days_ago_start)
         .bind(appid)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     // 构建日期到数量的映射
@@ -811,7 +811,7 @@ pub async fn get_login_log_list(req: &mut Request, depot: &mut Depot, res: &mut 
     let result = sqlx::query(query)
         .bind(admin_id)
         .bind(limit)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -888,7 +888,7 @@ pub async fn get_operation_log_list(req: &mut Request, depot: &mut Depot, res: &
     let result = sqlx::query(query)
         .bind(admin_id)
         .bind(limit)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {

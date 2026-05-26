@@ -71,7 +71,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         .bind(appid)
         .bind(page_size)
         .bind(offset)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -126,7 +126,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_message WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

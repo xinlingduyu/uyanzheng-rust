@@ -30,6 +30,7 @@ use crate::core::json_optimize::FastJson;
 
 /// 通用支付分支处理函数（QQ/PayPal）
 /// 从 AppInfo 读取对应支付引擎配置，创建插件实例并返回支付结果
+#[allow(clippy::too_many_arguments)]
 fn qq_or_paypal_branch(
     app_info: &AppInfo,
     app_key: &str,
@@ -219,7 +220,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(account)
     .bind(account)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (uid, inviter_id) = match u_res {
@@ -240,7 +241,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     )
     .bind(pay_req.gid)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let (gid, goods_name, goods_type, money, _blurb, val, state) = match g_res {
@@ -292,7 +293,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         )
         .bind(inv_uid)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
         if let Ok(Some((_agent_id, pay_divide))) = a_res
@@ -312,7 +313,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE id = ? AND appid = ?")
                 .bind(val)
                 .bind(appid)
-                .fetch_optional(app_state.get_db())
+                .fetch_optional(app_state.get_db().expect("db"))
                 .await;
 
         match ag_res {
@@ -521,7 +522,7 @@ pub async fn pay(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(appid)
     .bind(inviter_id_val)
     .bind(divide_money_val)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match insert_result {

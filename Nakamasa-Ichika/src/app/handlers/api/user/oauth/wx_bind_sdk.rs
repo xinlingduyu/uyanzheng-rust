@@ -91,7 +91,7 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
     .bind(&bind_req.openid)
     .bind(appid)
     .bind(uid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match existing_user {
@@ -119,7 +119,7 @@ pub async fn wx_bind_sdk(req: &mut Request, depot: &mut Depot, res: &mut Respons
         .bind(&wx_bind_str)
         .bind(uid)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match update_result {

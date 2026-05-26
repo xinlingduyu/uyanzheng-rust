@@ -47,7 +47,7 @@ pub async fn get_all_list(req: &mut Request, depot: &mut Depot, res: &mut Respon
         "SELECT id, name FROM u_cdk_group WHERE appid = ? ORDER BY id DESC",
     )
     .bind(appid)
-    .fetch_all(app_state.get_db())
+    .fetch_all(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -190,12 +190,12 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sqlx::query_as::<_, (i64,)>(&total_query)
             .bind(appid)
             .bind(pattern)
-            .fetch_one(app_state.get_db())
+            .fetch_one(app_state.get_db().expect("db"))
             .await
     } else {
         sqlx::query_as::<_, (i64,)>(&total_query)
             .bind(appid)
-            .fetch_one(app_state.get_db())
+            .fetch_one(app_state.get_db().expect("db"))
             .await
     };
 
@@ -205,14 +205,14 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             .bind(pattern)
             .bind(page_size as i64)
             .bind(offset as i64)
-            .fetch_all(app_state.get_db())
+            .fetch_all(app_state.get_db().expect("db"))
             .await
     } else {
         sqlx::query_as::<_, (u64, String, String, i64, f64, i64)>(&list_query)
             .bind(appid)
             .bind(page_size as i64)
             .bind(offset as i64)
-            .fetch_all(app_state.get_db())
+            .fetch_all(app_state.get_db().expect("db"))
             .await
     };
 
@@ -314,7 +314,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (u64,)>("SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?")
             .bind(appid)
             .bind(&add_req.name)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -338,7 +338,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(add_req.val)
     .bind(add_req.price)
     .bind(appid)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match insert_result {
@@ -410,7 +410,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (u64,)>("SELECT id FROM u_cdk_group WHERE appid = ? AND name = ?")
             .bind(appid)
             .bind(&edit_req.name)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -433,7 +433,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(edit_req.val)
             .bind(edit_req.price)
             .bind(edit_req.id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match result {
@@ -476,7 +476,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_cdk_group WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -517,7 +517,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
 
-    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 || del_all_req.ids.iter().any(|id| *id <= 0) {
+    if del_all_req.ids.is_empty() || del_all_req.ids.len() > 1000 || del_all_req.ids.contains(&0) {
         res.render(Json(ApiResponse::<()>::error("删除选中ID有误", 201)));
         return;
     }
@@ -535,7 +535,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sql_query = sql_query.bind(id);
     }
 
-    let result = sql_query.execute(app_state.get_db()).await;
+    let result = sql_query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {

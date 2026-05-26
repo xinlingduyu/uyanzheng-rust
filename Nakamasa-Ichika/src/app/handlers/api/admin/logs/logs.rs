@@ -453,7 +453,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -473,7 +473,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
                 let app_type: Option<String> = row.try_get("app_type").ok();
 
                 let username =
-                    get_username(&ug, uid, app_type.as_deref(), app_state.get_db()).await;
+                    get_username(&ug, uid, app_type.as_deref(), app_state.get_db().expect("db")).await;
 
                 let details_json = details.and_then(|s| serde_json::from_str(&s).ok());
 
@@ -507,7 +507,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
             }
 
             let total = count_sql
-                .fetch_one(app_state.get_db())
+                .fetch_one(app_state.get_db().expect("db"))
                 .await
                 .unwrap_or_default();
             let page_total = ((total as f64) / (page_size as f64)).ceil() as u32;
@@ -556,7 +556,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_logs WHERE id = ?")
         .bind(id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -655,7 +655,7 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
     sql_query = sql_query.bind(page_size);
     sql_query = sql_query.bind(offset);
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -699,7 +699,7 @@ pub async fn get_list_user(req: &mut Request, depot: &mut Depot, res: &mut Respo
             }
 
             let total = count_sql
-                .fetch_one(app_state.get_db())
+                .fetch_one(app_state.get_db().expect("db"))
                 .await
                 .unwrap_or_default();
 
@@ -802,7 +802,7 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
     sql_query = sql_query.bind(page_size);
     sql_query = sql_query.bind(offset);
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -846,7 +846,7 @@ pub async fn get_list_admin(req: &mut Request, depot: &mut Depot, res: &mut Resp
             }
 
             let total = count_sql
-                .fetch_one(app_state.get_db())
+                .fetch_one(app_state.get_db().expect("db"))
                 .await
                 .unwrap_or_default();
 
@@ -927,7 +927,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         query = query.bind(id);
     }
 
-    let result = query.execute(app_state.get_db()).await;
+    let result = query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {
@@ -968,7 +968,7 @@ pub async fn clean(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_logs WHERE time < ?")
         .bind(cutoff_time)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

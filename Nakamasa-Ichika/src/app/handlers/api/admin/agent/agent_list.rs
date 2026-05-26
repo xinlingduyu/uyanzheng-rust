@@ -113,7 +113,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -193,7 +193,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_agent_group WHERE id = ? AND appid = ?")
             .bind(add_req.gid)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     match check_result {
@@ -215,7 +215,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(0) // 简化处理，实际需要根据user查找uid
             .bind(add_req.note)
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
     match insert_result {
@@ -285,7 +285,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(edit_req.note)
         .bind(edit_req.money)
         .bind(edit_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -328,7 +328,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_agent WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {

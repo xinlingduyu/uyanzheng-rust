@@ -50,7 +50,7 @@ pub async fn get_group(req: &mut Request, depot: &mut Depot, res: &mut Response)
 
     let result = sqlx::query_as::<_, (Option<String>, String)>(query)
         .bind(appid)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -167,7 +167,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
     let count_query = "SELECT COUNT(*) as total FROM u_app_ver WHERE appid = ?";
     let count_result = sqlx::query_as::<_, (i64,)>(count_query)
         .bind(appid)
-        .fetch_one(app_state.get_db())
+        .fetch_one(app_state.get_db().expect("db"))
         .await;
 
     let total = match count_result {
@@ -205,7 +205,7 @@ pub async fn get_list(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         sql_query = sql_query.bind(param);
     }
 
-    let result = sql_query.fetch_all(app_state.get_db()).await;
+    let result = sql_query.fetch_all(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(rows) => {
@@ -356,7 +356,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(add_req.ver_minor)
         .bind(add_req.ver_patch)
         .bind(appid)
-        .fetch_optional(app_state.get_db())
+        .fetch_optional(app_state.get_db().expect("db"))
         .await;
 
     match check_result {
@@ -386,7 +386,7 @@ pub async fn add(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(&add_req.ver_state)
         .bind(&add_req.ver_off_msg)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -516,7 +516,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .bind(&edit_req.ver_off_msg)
         .bind(appid)
         .bind(edit_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -556,7 +556,7 @@ pub async fn del(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 
     let result = sqlx::query("DELETE FROM u_app_ver WHERE id = ?")
         .bind(del_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -615,7 +615,7 @@ pub async fn del_all(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         query = query.bind(id);
     }
 
-    let result = query.execute(app_state.get_db()).await;
+    let result = query.execute(app_state.get_db().expect("db")).await;
 
     match result {
         Ok(r) => {
@@ -660,7 +660,7 @@ pub async fn discard(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let result = sqlx::query("UPDATE u_app_ver SET discard = ? WHERE id = ?")
         .bind(discard_req.discard)
         .bind(discard_req.id)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -698,7 +698,7 @@ pub async fn get_milist(depot: &mut Depot, res: &mut Response) {
     };
 
     let result = sqlx::query_as::<_, (u64, String, String)>("SELECT id, name, type FROM u_app_mi")
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -799,7 +799,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(&submit_req.ver_off_msg)
             .bind(submit_req.discard.unwrap_or(false))
             .bind(id)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
         match result {
@@ -820,7 +820,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(submit_req.ver_minor)
             .bind(submit_req.ver_patch)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
         match check_result {
@@ -851,7 +851,7 @@ pub async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             .bind(&submit_req.ver_off_msg)
             .bind(submit_req.discard.unwrap_or(false))
             .bind(appid)
-            .execute(app_state.get_db())
+            .execute(app_state.get_db().expect("db"))
             .await;
 
         match result {
@@ -925,7 +925,7 @@ pub async fn get_uplog(_req: &mut Request, depot: &mut Depot, res: &mut Response
 
     let result = sqlx::query(query)
         .bind(appid)
-        .fetch_all(app_state.get_db())
+        .fetch_all(app_state.get_db().expect("db"))
         .await;
 
     match result {

@@ -96,7 +96,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
     .bind("ubind")
     .bind(dtime)
     .bind(appid)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match verify_result {
@@ -118,7 +118,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         sqlx::query_as::<_, (i64,)>("SELECT id FROM u_user WHERE email = ? AND appid = ?")
             .bind(&set_req.email)
             .bind(appid)
-            .fetch_optional(app_state.get_db())
+            .fetch_optional(app_state.get_db().expect("db"))
             .await;
 
     if let Ok(Some(_)) = email_check {
@@ -131,7 +131,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .bind(&set_req.email)
         .bind(uid)
         .bind(appid)
-        .execute(app_state.get_db())
+        .execute(app_state.get_db().expect("db"))
         .await;
 
     match result {
@@ -148,7 +148,7 @@ pub async fn set_email(req: &mut Request, depot: &mut Depot, res: &mut Response)
                 .bind(current_time)
                 .bind(ip)
                 .bind(appid)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
 
                 render_success(res, app_key, None::<()>, app_info.mi.as_ref());

@@ -51,7 +51,7 @@ pub async fn get_info(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         "SELECT id, smtp_state, smtp_host, smtp_user, smtp_pass, smtp_port, sms_state, sms_type, vc_time, vc_length, sms_config FROM u_app WHERE id = ?"
     )
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     let info = match app_config {
@@ -377,7 +377,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .bind(&edit_req.sms_type)
     .bind(sms_config_json.as_deref())
     .bind(edit_req.id)
-    .execute(app_state.get_db())
+    .execute(app_state.get_db().expect("db"))
     .await;
 
     match result {
@@ -400,7 +400,7 @@ pub async fn edit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .bind(now)
                 .bind(&ip)
                 .bind(Option::<i64>::None)
-                .execute(app_state.get_db())
+                .execute(app_state.get_db().expect("db"))
                 .await;
 
                 res.render(Json(ApiResponse::success_msg("编辑成功")));

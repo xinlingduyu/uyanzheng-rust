@@ -153,9 +153,9 @@ impl SmsPlugin for AliSmsPlugin {
             return Err("模板CODE未配置".to_string());
         }
 
-        let access_key_id = self.access_key_id.as_ref().unwrap();
-        let sign_name = self.sign_name.as_ref().unwrap();
-        let template_code = self.template_code.as_ref().unwrap();
+        let access_key_id = self.access_key_id.as_ref().ok_or_else(|| "accessKeyId未配置".to_string())?;
+        let sign_name = self.sign_name.as_ref().ok_or_else(|| "签名名称未配置".to_string())?;
+        let template_code = self.template_code.as_ref().ok_or_else(|| "模板CODE未配置".to_string())?;
 
         // 构建参数
         let mut params: std::collections::BTreeMap<&str, String> =

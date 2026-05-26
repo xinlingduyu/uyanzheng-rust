@@ -94,7 +94,7 @@ pub async fn order_query(req: &mut Request, depot: &mut Depot, res: &mut Respons
     .bind(uid)
     .bind(&query_req.order)
     .bind(appid)
-    .fetch_optional(app_state.get_db())
+    .fetch_optional(app_state.get_db().expect("db"))
     .await;
 
     match result {

@@ -140,10 +140,10 @@ impl SmsPlugin for TencentSmsPlugin {
             return Err("模板MID未配置".to_string());
         }
 
-        let appid = self.appid.as_ref().unwrap();
-        let appkey = self.appkey.as_ref().unwrap();
-        let sname = self.sname.as_ref().unwrap();
-        let mid = self.mid.as_ref().unwrap();
+        let appid = self.appid.as_ref().ok_or_else(|| "SDK AppID未配置".to_string())?;
+        let appkey = self.appkey.as_ref().ok_or_else(|| "appkey未配置".to_string())?;
+        let sname = self.sname.as_ref().ok_or_else(|| "短信签名未配置".to_string())?;
+        let mid = self.mid.as_ref().ok_or_else(|| "模板MID未配置".to_string())?;
 
         let random = Self::get_random();
         let cur_time = chrono::Utc::now().timestamp();
